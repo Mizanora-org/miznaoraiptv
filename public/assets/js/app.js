@@ -2588,7 +2588,7 @@ function escAttr(s) {
 try {
   init();
   window.__MZ_BOOTED = true;
-  window.dispatchEvent(new Event("bw:booted"));
+  window.dispatchEvent(new Event("mz:booted"));
 } catch (err) {
   console.error("[Mizanora] boot failed", err);
   window.__MZ_BOOT_ERROR = String(err?.message || err);

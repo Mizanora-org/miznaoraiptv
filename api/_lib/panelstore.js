@@ -27,7 +27,7 @@ function nowIso() {
 }
 
 export function orderId() {
-  return "BW" + Date.now().toString(36).toUpperCase() + crypto.randomBytes(2).toString("hex").toUpperCase();
+  return "MZ" + Date.now().toString(36).toUpperCase() + crypto.randomBytes(2).toString("hex").toUpperCase();
 }
 
 function asList(node) {
@@ -310,7 +310,7 @@ export async function createClient(input = {}) {
   const plan = getPlan(input.planId) || PLANS[1];
   const username = (
     String(input.username || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "") ||
-    "bw" + crypto.randomBytes(3).toString("hex")
+    "mz" + crypto.randomBytes(3).toString("hex")
   ).slice(0, 24);
   const password = String(input.password || "").trim() || generateXtreamPassword(10);
   const days = Number(input.days) || plan.days || 30;

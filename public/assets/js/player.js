@@ -279,14 +279,14 @@ export class MizanoraPlayer {
 
   mountCustomChrome() {
     if (!this.stage || !this.video) return;
-    this.stage.classList.add("bw-custom-player");
+    this.stage.classList.add("mz-custom-player");
 
     // 1. Mount 3D Ambilight Halo Canvas right inside player-shell (behind stage)
     const shell = this.stage.closest(".player-shell");
-    if (shell && !shell.querySelector(".bw-ambilight-canvas")) {
-      shell.classList.add("bw-shell-3d");
+    if (shell && !shell.querySelector(".mz-ambilight-canvas")) {
+      shell.classList.add("mz-shell-3d");
       const canvas = document.createElement("canvas");
-      canvas.className = "bw-ambilight-canvas";
+      canvas.className = "mz-ambilight-canvas";
       canvas.width = 28;
       canvas.height = 16;
       canvas.setAttribute("aria-hidden", "true");
@@ -296,57 +296,57 @@ export class MizanoraPlayer {
     }
 
     // 2. Mount Custom Center Spinner, Play Pulse, Gesture Zones & Studio Bottom Control Deck
-    if (!this.stage.querySelector(".bw-studio-chrome")) {
+    if (!this.stage.querySelector(".mz-studio-chrome")) {
       const chrome = document.createElement("div");
-      chrome.className = "bw-studio-chrome";
+      chrome.className = "mz-studio-chrome";
       chrome.innerHTML = `
-        <div class="bw-buffer-ring" id="bwBufferRing" hidden>
-          <div class="bw-spinner-orb"></div>
-          <span class="bw-buffer-label" id="bwBufferLabel">Tuning Stream...</span>
+        <div class="mz-buffer-ring" id="bwBufferRing" hidden>
+          <div class="mz-spinner-orb"></div>
+          <span class="mz-buffer-label" id="bwBufferLabel">Tuning Stream...</span>
         </div>
 
-        <button type="button" class="bw-center-play-btn" id="bwCenterPlayBtn" aria-label="Play or Pause" hidden>
+        <button type="button" class="mz-center-play-btn" id="bwCenterPlayBtn" aria-label="Play or Pause" hidden>
           <span>▶</span>
         </button>
 
-        <div class="bw-seek-ripple left" id="bwRippleLeft" hidden>⏪ -10s</div>
-        <div class="bw-seek-ripple right" id="bwRippleRight" hidden>+10s ⏩</div>
+        <div class="mz-seek-ripple left" id="bwRippleLeft" hidden>⏪ -10s</div>
+        <div class="mz-seek-ripple right" id="bwRippleRight" hidden>+10s ⏩</div>
 
-        <div class="bw-bottom-deck" id="bwBottomDeck">
-          <div class="bw-timeline-wrap" id="bwTimelineWrap">
-            <div class="bw-timeline-track" id="bwTimelineTrack">
-              <div class="bw-timeline-buffered" id="bwTimelineBuffered"></div>
-              <div class="bw-timeline-progress" id="bwTimelineProgress">
-                <span class="bw-timeline-thumb"></span>
+        <div class="mz-bottom-deck" id="bwBottomDeck">
+          <div class="mz-timeline-wrap" id="bwTimelineWrap">
+            <div class="mz-timeline-track" id="bwTimelineTrack">
+              <div class="mz-timeline-buffered" id="bwTimelineBuffered"></div>
+              <div class="mz-timeline-progress" id="bwTimelineProgress">
+                <span class="mz-timeline-thumb"></span>
               </div>
             </div>
           </div>
 
-          <div class="bw-deck-row">
-            <div class="bw-deck-left">
-              <button type="button" class="bw-ctrl-btn" id="bwPlayPauseBtn" title="Play / Pause (Space)" aria-label="Play or Pause">⏸</button>
-              <button type="button" class="bw-ctrl-btn" id="bwDeckPrevBtn" title="Previous Channel" aria-label="Previous Channel">⏮</button>
-              <button type="button" class="bw-ctrl-btn" id="bwDeckNextBtn" title="Next Channel" aria-label="Next Channel">⏭</button>
+          <div class="mz-deck-row">
+            <div class="mz-deck-left">
+              <button type="button" class="mz-ctrl-btn" id="bwPlayPauseBtn" title="Play / Pause (Space)" aria-label="Play or Pause">⏸</button>
+              <button type="button" class="mz-ctrl-btn" id="bwDeckPrevBtn" title="Previous Channel" aria-label="Previous Channel">⏮</button>
+              <button type="button" class="mz-ctrl-btn" id="bwDeckNextBtn" title="Next Channel" aria-label="Next Channel">⏭</button>
 
-              <div class="bw-vol-group">
-                <button type="button" class="bw-ctrl-btn" id="bwMuteBtn" title="Mute / Unmute (M)" aria-label="Mute">🔊</button>
-                <input type="range" class="bw-vol-slider" id="bwVolSlider" min="0" max="1" step="0.02" value="1" aria-label="Volume" />
+              <div class="mz-vol-group">
+                <button type="button" class="mz-ctrl-btn" id="bwMuteBtn" title="Mute / Unmute (M)" aria-label="Mute">🔊</button>
+                <input type="range" class="mz-vol-slider" id="bwVolSlider" min="0" max="1" step="0.02" value="1" aria-label="Volume" />
               </div>
 
-              <button type="button" class="bw-live-sync-pill" id="bwTimeOrLiveBtn" title="Jump to Live Edge">
-                <span class="bw-live-dot"></span>
+              <button type="button" class="mz-live-sync-pill" id="bwTimeOrLiveBtn" title="Jump to Live Edge">
+                <span class="mz-live-dot"></span>
                 <span id="bwTimeText">LIVE</span>
               </button>
             </div>
 
-            <div class="bw-deck-right">
-              <span class="bw-engine-badge" id="bwEngineBadge">HLS • AUTO</span>
-              <button type="button" class="bw-ctrl-btn bw-pill-ctrl" id="bwAspectBtn" title="Switch Aspect Ratio (Fit / Fill / 16:9 / 4:3)">16:9</button>
-              <button type="button" class="bw-ctrl-btn bw-pill-ctrl" id="bwSpeedBtn" title="Playback Speed" hidden>1x</button>
-              <button type="button" class="bw-ctrl-btn" id="bwGlowToggleBtn" title="Toggle 3D Ambilight Glow">✨</button>
-              <button type="button" class="bw-ctrl-btn" id="bwSnapBtn" title="Capture HD Frame">📸</button>
-              <button type="button" class="bw-ctrl-btn" id="bwDeckPipBtn" title="Picture-in-Picture (P)">⧉</button>
-              <button type="button" class="bw-ctrl-btn bw-fs-btn" id="bwFullscreenBtn" title="Fullscreen (F)" aria-label="Fullscreen">⛶</button>
+            <div class="mz-deck-right">
+              <span class="mz-engine-badge" id="bwEngineBadge">HLS • AUTO</span>
+              <button type="button" class="mz-ctrl-btn mz-pill-ctrl" id="bwAspectBtn" title="Switch Aspect Ratio (Fit / Fill / 16:9 / 4:3)">16:9</button>
+              <button type="button" class="mz-ctrl-btn mz-pill-ctrl" id="bwSpeedBtn" title="Playback Speed" hidden>1x</button>
+              <button type="button" class="mz-ctrl-btn" id="bwGlowToggleBtn" title="Toggle 3D Ambilight Glow">✨</button>
+              <button type="button" class="mz-ctrl-btn" id="bwSnapBtn" title="Capture HD Frame">📸</button>
+              <button type="button" class="mz-ctrl-btn" id="bwDeckPipBtn" title="Picture-in-Picture (P)">⧉</button>
+              <button type="button" class="mz-ctrl-btn mz-fs-btn" id="bwFullscreenBtn" title="Fullscreen (F)" aria-label="Fullscreen">⛶</button>
             </div>
           </div>
         </div>
@@ -608,7 +608,7 @@ export class MizanoraPlayer {
     this.video.addEventListener("pause", () => {
       if (this.els?.playPauseBtn) this.els.playPauseBtn.textContent = "▶";
       if (this.els?.centerPlayBtn) this.els.centerPlayBtn.hidden = false;
-      this.stage.classList.remove("bw-controls-autohide");
+      this.stage.classList.remove("mz-controls-autohide");
     });
 
     this.video.addEventListener("waiting", () => this.showBuffering(true));
@@ -627,10 +627,10 @@ export class MizanoraPlayer {
     let singleTapTimer = null;
     this.stage.addEventListener("click", (e) => {
       if (
-        e.target.closest(".bw-bottom-deck") ||
+        e.target.closest(".mz-bottom-deck") ||
         e.target.closest(".intro-overlay") ||
         e.target.closest(".pro-unlock-overlay") ||
-        e.target.closest(".bw-center-play-btn")
+        e.target.closest(".mz-center-play-btn")
       ) {
         return;
       }
@@ -660,10 +660,10 @@ export class MizanoraPlayer {
       lastTapTime = now;
       singleTapTimer = setTimeout(() => {
         if (isTouch) {
-          if (this.stage.classList.contains("bw-controls-autohide")) {
+          if (this.stage.classList.contains("mz-controls-autohide")) {
             this.bumpControlsVisibility();
           } else {
-            this.stage.classList.add("bw-controls-autohide");
+            this.stage.classList.add("mz-controls-autohide");
           }
         } else {
           togglePlay();
@@ -703,12 +703,12 @@ export class MizanoraPlayer {
 
   bumpControlsVisibility() {
     if (!this.stage) return;
-    this.stage.classList.remove("bw-controls-autohide");
+    this.stage.classList.remove("mz-controls-autohide");
     clearTimeout(this.uiHideTimer);
     if (this.video && !this.video.paused) {
       this.uiHideTimer = setTimeout(() => {
         if (this.video && !this.video.paused && !this.isScrubbing) {
-          this.stage.classList.add("bw-controls-autohide");
+          this.stage.classList.add("mz-controls-autohide");
         }
       }, 3600);
     }

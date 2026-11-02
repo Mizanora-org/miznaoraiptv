@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { sha256 } from "./licenses.js";
+import { sha256, hashApiKey, maskKey } from "./licenses.js";
 import { rtdbGet, rtdbSet } from "./rtdb.js";
 import { BRAND } from "../../data/catalog.js";
 
@@ -44,11 +44,15 @@ function bearer(req) {
 }
 
 export function getClientToken(req) {
-  return bearer(req) || String(req?.headers?.["x-admin-token"] || "").trim();
+  return (
+    bearer(req) ||
+    String(req?.headers?.["x-admin-token"] || "").trim() ||
+    String(req?.headers?.["x-api-key"] || "").trim()
+  );
 }
 
 export function pinHash(pin) {
-  return sha256(`bw:pin:${String(pin || "").trim()}`);
+  return sha256(`mz:pin:${String(pin || "").trim()}`);
 }
 
 function signSession(payloadB64) {
@@ -169,6 +173,40 @@ async function lookupIdToken(idToken) {
   }
 }
 
+/**
+ * Verify an mzk_ admin API key against RTDB panel/apiKeys (stored as sha256 hashes).
+ * NOTE: deliberately NOT cached here — revocation must take effect immediately.
+ * (rtdbGet itself applies only a 5s ttlMs cache.)
+ */
+export async function verifyAdminApiKey(key) {
+  const hash = hashApiKey(key);
+  let record = null;
+  try {
+    record = await rtdbGet(`panel/apiKeys/${hash}`, { ttlMs: 5000 });
+  } catch {
+    record = null;
+  }
+  if (!record || record.revoked) return null;
+  const exp = Number(record.expiresAt || 0);
+  if (exp !== 0 && exp <= Date.now()) return null;
+  try {
+    rtdbSet(`panel/apiKeys/${hash}/lastUsedAt`, Date.now()).catch(() => {});
+  } catch {}
+  return {
+    ok: true,
+    uid: "api-key:" + String(record.label || hash.slice(0, 8)),
+    email: OWNER_EMAIL,
+    role: record.role || "admin",
+    via: "api-key",
+    scopes: record.scopes || ["admin:*"]
+  };
+}
+
+/** Mask for listing keys (mzk_••••abcd). */
+export function maskAdminApiKey(key) {
+  return maskKey(key);
+}
+
 export async function authenticateAdmin(req) {
   const token = getClientToken(req);
   if (!token) {
@@ -185,7 +223,14 @@ export async function authenticateAdmin(req) {
     return { ok: true, uid: session.uid, email: session.email, role: "owner", via: session.via };
   }
 
-  // 2) Automation token
+  // 2) Admin API key (mzk_…) — lets an external panel manage everything with one key
+  if (token.startsWith("mzk_")) {
+    const keyAuth = await verifyAdminApiKey(token);
+    if (keyAuth) return keyAuth;
+    return { ok: false, status: 401, error: "Invalid or revoked admin API key (mzk_…)." };
+  }
+
+  // 3) Automation token
   const automation = process.env.MIZANORA_ADMIN_TOKEN || "";
   if (automation && token === automation) {
     return { ok: true, uid: "automation", email: OWNER_EMAIL, role: "owner", via: "automation-token" };

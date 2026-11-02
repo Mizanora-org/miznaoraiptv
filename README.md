@@ -115,7 +115,33 @@ POST /api/embed?action=trial   {email, whatsapp}
 POST /api/embed?action=reseller/register {name, email, password, whatsapp}
 ```
 
-Poori docs + live demo: **`/embed.html`**.
+Poori docs + live demo: **`/embed.html`** • Full API reference: **`/api.html`** • Admin step-by-step: **`/admin-guide.html`**.
+
+### 🔑 API keys — apna panel banao hamari APIs par
+
+| Key | Role | Kaise milegi |
+| --- | --- | --- |
+| `mzk_…` | **Admin API key** — Xtream users, Stalker/MAG MACs, channels, resellers, orders, settings sab manage via API | Admin Panel → API Keys, ya `POST /api/panel {"action":"admin/api-key-create","label":"my-panel"}` (PIN/Google session chahiye). Ek baar hi dikhti hai; sirf hash store hota hai. Revoke: `admin/api-key-revoke` (foran block). |
+| `mzr_…` | **Reseller key** — apne clients (Xtream + MAC), credits, finance | `reseller/register` par auto milti hai |
+| `mzp_…` | Owner PIN session (12h HMAC) | `admin/pin-login` |
+
+```bash
+# Convention: GET → ?action=… ; POST → body mein {"action":"…", ...}
+# Admin key se Xtream user renew:
+curl -X POST "https://miznaoraiptv.vercel.app/api/panel" -H "x-api-key: mzk_YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"admin/xtream/renew","username":"user1","days":30}'
+
+# Stalker/MAG: MAC bind karo (portal /portal.php se MAC login karega):
+curl -X POST "https://miznaoraiptv.vercel.app/api/panel" -H "x-api-key: mzk_YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"admin/xtream/update","username":"user1","mac":"00:1A:79:AA:BB:CC"}'
+
+# Stalker clients list:
+curl "https://miznaoraiptv.vercel.app/api/panel?action=admin/stalker/list" -H "x-api-key: mzk_YOUR_KEY"
+```
+
+Admin API actions: `admin/xtream-accounts|create|update|renew|suspend|activate|delete` • `admin/stalker/list` • `admin/channels|channel/create|update|delete` • `admin/clients|client-create|renew|suspend|delete` • `admin/resellers|reseller-create|update|credits-topup` • `admin/orders|order-review|payments|trials` • `admin/api-keys|api-key-create|api-key-revoke` • `admin/settings|settings-set` • `admin/analytics|audit|errors` • `admin/pin-login|pin-set` • `admin/me`.
 
 ---
 

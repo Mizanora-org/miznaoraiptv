@@ -91,7 +91,7 @@ function initAdmin() {
   bindAnalyticsDashboard();
 
   subscribeAuth(async (user) => {
-    window.dispatchEvent(new Event("bw-admin-identity-change"));
+    window.dispatchEvent(new Event("mz-admin-identity-change"));
     admState.user = user;
     await evaluateAdminAccess(user);
   });
@@ -2436,7 +2436,7 @@ function bindResellerLedger() {
   let loadedUid = "";
   let current = null;
   const setStatus = (message) => { status.textContent = message; };
-  window.addEventListener("bw-admin-identity-change", () => {
+  window.addEventListener("mz-admin-identity-change", () => {
     loadedUid = ""; current = null;
     uidInput.value = ""; nameInput.value = ""; rows.textContent = ""; setStatus("");
   });
@@ -2871,7 +2871,7 @@ function escAttr(s) {
 try {
   initAdmin();
   window.__MZ_BOOTED = true;
-  window.dispatchEvent(new Event("bw:booted"));
+  window.dispatchEvent(new Event("mz:booted"));
 } catch (err) {
   console.error("[Mizanora] boot failed", err);
   window.__MZ_BOOT_ERROR = String(err?.message || err);
