@@ -16,6 +16,10 @@
       ".read": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true",
       ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true"
     },
+    "epg": {
+      ".read": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true",
+      ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true"
+    },
     "settings": {
       ".read": true,
       ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true"

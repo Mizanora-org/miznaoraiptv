@@ -5,14 +5,28 @@
 import { handleOptions, parseQuery, sendJson, getRequestBaseUrl, corsHeaders } from "../_lib/util.js";
 import { rtdbGet } from "../_lib/rtdb.js";
 import {
-  listChannels, listMovies, listSeries, signStreamFor
+  listChannels, listMovies, listSeries, signStreamFor, getShortEpg, getEpgData
 } from "../_lib/store.js";
+import { programmeXml } from "../_lib/epg.js";
 
 const nowTs = () => Math.floor(Date.now() / 1000);
 const asArray = (value) => Array.isArray(value) ? value.filter(Boolean) : typeof value === "string" ? (value ? [value] : []) : Object.values(value || {}).filter(Boolean);
 const xml = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]));
-const m3uAttr = (value) => xml(value).replace(/[\r\n,]/g, " ");
+// M3U attributes are not XML: preserving '&' is essential for x-tvg-url query auth.
+const m3uAttr = (value) => String(value ?? "").replace(/["\r\n\0]/g, " ").trim();
 const extension = (url, fallback = "mp4") => String(url || "").match(/\.(mp4|mkv|avi|mov|m4v|mpd|m3u8)(?:$|\?)/i)?.[1]?.toLowerCase() || fallback;
+const epgDate = (value) => new Date(Number(value)).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "");
+const epgText = (value) => Buffer.from(String(value || ""), "utf8").toString("base64");
+function epgListing(programme, channel, index) {
+  const start = Math.floor(Number(programme.start) / 1000);
+  const stop = Math.floor(Number(programme.stop) / 1000);
+  return {
+    id: String(index + 1), epg_id: String(channel.epgId || channel.id), title: epgText(programme.title), lang: "en",
+    start: epgDate(programme.start), end: epgDate(programme.stop), description: epgText(programme.description),
+    channel_id: String(programme.channelId), start_timestamp: String(start), stop_timestamp: String(stop),
+    now_playing: start <= nowTs() && stop > nowTs() ? 1 : 0, has_archive: 0
+  };
+}
 
 async function findAccount(username) {
   const u = String(username || "").toLowerCase();
@@ -38,29 +52,32 @@ function sendText(res, status, body, type = "text/plain; charset=utf-8", extra =
 function categoryData(items, prefix) {
   const categories = [];
   const seen = new Map();
-  for (const [index, item] of items.entries()) {
+  const byName = new Map();
+  let sequence = 1;
+  const generatedId = () => {
+    let id;
+    do { id = `${prefix}${sequence++}`; } while (seen.has(id));
+    return id;
+  };
+  for (const item of items) {
     const name = String(item.category || "General");
-    let id = String(item.categoryId || "");
-    if (!id) id = `${prefix}${index + 1}`;
+    const explicit = String(item.categoryId || "");
+    let id = byName.get(name) || "";
+    if (!id && /^\d+$/.test(explicit) && (!seen.has(explicit) || seen.get(explicit) === name)) id = explicit;
+    if (!id) id = generatedId();
     if (!seen.has(id)) {
       seen.set(id, name);
       categories.push({ category_id: id, category_name: name, parent_id: 0 });
     }
-  }
-  // Older records sometimes reused category IDs. Ensure every item resolves to a real category.
-  for (const item of items) {
-    const id = String(item.categoryId || "");
-    if (id && !seen.has(id)) {
-      seen.set(id, item.category || "General");
-      categories.push({ category_id: id, category_name: item.category || "General", parent_id: 0 });
-    }
+    if (!byName.has(name)) byName.set(name, id);
   }
   return categories;
 }
 function categoryIdFor(item, categories, prefix, index) {
+  const name = String(item.category || "General");
   const explicit = String(item.categoryId || "");
-  if (explicit && categories.some((c) => c.category_id === explicit)) return explicit;
-  const found = categories.find((c) => c.category_name === String(item.category || "General"));
+  if (explicit && categories.some((c) => c.category_id === explicit && c.category_name === name)) return explicit;
+  const found = categories.find((c) => c.category_name === name);
   return found?.category_id || `${prefix}${index + 1}`;
 }
 function liveStream(ch, index, categories) {
@@ -221,7 +238,12 @@ export default async function xtreamHandler(req, res) {
           episodes
         });
       }
-      if (action === "get_short_epg" || action === "get_simple_data_table") return sendJson(res, 200, { epg_listings: [] });
+      if (action === "get_short_epg" || action === "get_simple_data_table") {
+        const channel = channels.find((c) => String(c.streamId) === String(q.stream_id) || String(c.id) === String(q.stream_id));
+        if (!channel) return sendJson(res, 404, { error: "Channel not found" });
+        const listings = await getShortEpg(channel, { limit: Number(q.limit) || 10 });
+        return sendJson(res, 200, { epg_listings: listings.map((programme, index) => epgListing(programme, channel, index)) });
+      }
       if (action) return sendJson(res, 400, { error: `Unsupported Xtream action: ${action}` });
 
       const server = new URL(base);
@@ -235,7 +257,7 @@ export default async function xtreamHandler(req, res) {
           max_connections: String(acc.maxConnections || 1), allowed_output_formats: ["m3u8"]
         },
         server_info: {
-          url: server.hostname, xui: true, version: "Mizanora-4.0", revision: 1,
+          url: server.hostname, xui: true, version: "Mizanora-5.0", revision: 5,
           url_without_port: server.hostname, port: serverPort,
           https_port: server.protocol === "https:" ? serverPort : "443", server_protocol: server.protocol.replace(":", ""), rtmp_port: "",
           timezone: "Asia/Karachi", timestamp_now: nowTs(), time_now: new Date().toISOString()
@@ -272,12 +294,43 @@ export default async function xtreamHandler(req, res) {
     }
 
     if (ep === "xmltv") {
-      const channels = await listChannels();
-      let out = '<?xml version="1.0" encoding="UTF-8"?>\n<tv generator-info-name="Mizanora IPTV">\n';
-      for (const [i, ch] of channels.entries()) {
-        const id = ch.epgId || ch.id || String(ch.streamId || i + 1);
-        out += `<channel id="${xml(id)}"><display-name>${xml(ch.name)}</display-name>${ch.logo ? `<icon src="${xml(ch.logo)}"/>` : ""}</channel>\n`;
+      const channels = (await listChannels()).filter((c) => c.status !== "inactive");
+      const epg = await getEpgData();
+      const now = Date.now();
+      const programmes = epg.programmes.filter((p) => Number(p.stop) >= now - 6 * 3600_000 && Number(p.start) <= now + 14 * 86400_000).slice(0, 12000);
+      const declared = new Set();
+      const aliases = new Map();
+      const names = new Map();
+      const sourceChannels = new Map(epg.channels.map((channel) => [String(channel.id), channel]));
+      const normalized = (value) => String(value || "").trim().toLowerCase();
+      for (const [index, channel] of channels.entries()) {
+        const id = String(channel.epgId || channel.id || channel.streamId || index + 1);
+        declared.add(id);
+        for (const alias of [channel.epgId, channel.id, channel.streamId]) if (alias !== undefined && alias !== null && String(alias)) aliases.set(String(alias), id);
+        if (normalized(channel.name) && !names.has(normalized(channel.name))) names.set(normalized(channel.name), id);
       }
+      // XMLTV display-name matching is a fallback only; explicit IDs always win.
+      for (const source of epg.channels) {
+        const mapped = names.get(normalized(source.name));
+        if (mapped && !aliases.has(String(source.id))) aliases.set(String(source.id), mapped);
+      }
+      const mappedProgrammes = programmes.map((programme) => ({ ...programme, channelId: aliases.get(String(programme.channelId)) || String(programme.channelId) }));
+      let out = '<?xml version="1.0" encoding="UTF-8"?>\n<tv generator-info-name="Mizanora IPTV">\n';
+      const emitted = new Set();
+      for (const [index, channel] of channels.entries()) {
+        const id = String(channel.epgId || channel.id || channel.streamId || index + 1);
+        if (emitted.has(id)) continue;
+        emitted.add(id);
+        out += `<channel id="${xml(id)}"><display-name>${xml(channel.name)}</display-name>${channel.logo ? `<icon src="${xml(channel.logo)}"/>` : ""}</channel>\n`;
+      }
+      // Preserve valid source-only declarations instead of emitting orphan programmes.
+      for (const programme of mappedProgrammes) {
+        if (declared.has(programme.channelId)) continue;
+        declared.add(programme.channelId);
+        const source = sourceChannels.get(String(programme.channelId));
+        out += `<channel id="${xml(programme.channelId)}"><display-name>${xml(source?.name || programme.channelId)}</display-name>${source?.icon ? `<icon src="${xml(source.icon)}"/>` : ""}</channel>\n`;
+      }
+      for (const programme of mappedProgrammes) out += programmeXml(programme, xml);
       out += "</tv>";
       return sendText(res, 200, out, "application/xml; charset=utf-8");
     }

@@ -4,6 +4,8 @@
   var script = document.currentScript || (function () { var all = document.querySelectorAll('script[src*="embed.js"]'); return all[all.length - 1]; })();
   var host = script && script.src ? script.src.replace(/\/embed\.js.*$/, "") : location.origin;
   var theme = script && script.getAttribute("data-theme") || "dark";
+  var limit = Math.max(1, Math.min(100, Number(script && script.getAttribute("data-limit")) || 36));
+  var category = String(script && script.getAttribute("data-category") || "").trim().toLowerCase();
   var mount = document.createElement("div");
   mount.setAttribute("data-mizanora-embed", "");
   mount.style.cssText = "font-family:system-ui,Segoe UI,sans-serif;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;";
@@ -21,8 +23,10 @@
     return response.json().then(function (data) { if (!response.ok) throw new Error(data.error || "Embed failed"); return data; });
   }).then(function (data) {
     if (!data.ok || !Array.isArray(data.channels) || !data.channels.length) return message("📺 Mizanora IPTV — channels abhi available nahi.");
+    var channels = data.channels.filter(function (channel) { return !category || String(channel.category || channel.group || "").toLowerCase() === category; });
+    if (!channels.length) return message("📺 Is category mein channels available nahi.");
     mount.textContent = "";
-    data.channels.slice(0, 36).forEach(function (channel) {
+    channels.slice(0, limit).forEach(function (channel) {
       var card = document.createElement("a");
       card.href = host + "/?channel=" + encodeURIComponent(channel.id) + "#channels";
       card.target = "_blank";

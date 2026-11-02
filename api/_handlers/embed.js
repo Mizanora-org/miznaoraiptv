@@ -21,6 +21,7 @@ export default async function embedHandler(req, res) {
         actions: {
           "GET config": "Public plans and endpoints",
           "GET channels": "Live channel metadata",
+          "GET guide&channel=CHANNEL_ID": "Now/next XMLTV guide (public, safe metadata)",
           "GET movies|series&limit=40&offset=0&q=": "Searchable IMDb catalog",
           "GET stream&id=CHANNEL_ID": "Short-lived preview URL (free channels only)",
           "POST order": "{name,email,whatsapp,planId}",
@@ -30,13 +31,26 @@ export default async function embedHandler(req, res) {
         widget: `${base}/embed.js`
       });
     }
-    if (action === "config") return sendJson(res, 200, { ...S.publicConfig(base), embed: true }, "public, max-age=60");
+    if (action === "config") return sendJson(res, 200, { ...S.publicConfig(base), embed: true, version: "5.0.0", experience: await S.getPublicExperience(), links: { resellerPanel: `${base}/reseller`, developers: `${base}/developers` } }, "public, max-age=60");
     if (action === "channels") {
       const list = (await S.listChannels()).filter((c) => c.status !== "inactive").map((c) => ({
         id: c.id, streamId: c.streamId, name: c.name, logo: c.logo,
-        category: c.category, group: c.category, tier: c.tier || "free"
+        category: c.category, group: c.category, tier: c.tier || "free",
+        epgId: c.epgId || "", nowPlaying: c.nowPlaying || ""
       }));
       return sendJson(res, 200, { ok: true, count: list.length, channels: list }, "public, max-age=60");
+    }
+    if (action === "guide") {
+      const channels = (await S.listChannels()).filter((c) => c.status !== "inactive");
+      const channelId = q.channel || q.id || "";
+      const limit = Math.max(1, Math.min(200, Number(q.limit) || 100));
+      // Avoid rendering thousands of unused entries on the default public view.
+      const selected = channelId ? channels : channels.slice(0, limit);
+      const guide = await S.getEpgGuide(selected, { channelId });
+      const total = channelId ? guide.length : channels.length;
+      const page = channelId ? guide.slice(0, limit) : guide;
+      const sources = await S.listEpgSources();
+      return sendJson(res, 200, { ok: true, count: page.length, total, guide: page, sources: sources.length, updatedAt: sources[0]?.updatedAt || "" }, "public, max-age=60");
     }
     if (action === "stream") {
       const channels = await S.listChannels();

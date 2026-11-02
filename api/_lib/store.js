@@ -14,6 +14,8 @@ import { hashApiKey, generateAdminApiKey, generateResellerApiKey } from "./auth.
 import { BRAND, DEFAULT_SETTINGS, DEFAULT_CHANNELS } from "../../data/catalog.js";
 import { DEFAULT_MOVIES, DEFAULT_SERIES } from "../../data/imdb-seed.js";
 import { PANEL, SELF_SERVE, PLANS, getPlan } from "../../data/panel.js";
+import { parseM3U } from "./m3u.js";
+import { parseXmlTv } from "./epg.js";
 
 export { BRAND, PANEL, SELF_SERVE, PLANS, getPlan, DEFAULT_SETTINGS, DEFAULT_CHANNELS };
 
@@ -340,11 +342,43 @@ export async function getSettings() {
   const s = (await rtdbGet("settings/defaults")) || {};
   return { ...DEFAULT_SETTINGS, ...s };
 }
-export async function setSettings(patch) {
+export async function setSettings(patch = {}) {
   const cur = await getSettings();
-  const next = { ...cur, ...patch, updatedAt: nowIso() };
+  const clean = {};
+  const urlFields = new Set(["welcomeVideoUrl", "channelOfflineVideoUrl", "comingSoonVideoUrl", "proUnlockVideoUrl"]);
+  const boolFields = new Set(["welcomeVideoEnabled", "welcomeSkippable", "proUnlockVideoEnabled"]);
+  const textFields = new Set(["proWhatsapp", "proWhatsappIntl", "proBannerTitle", "proBannerSubtitle", "proPriceNote", "siteAnnouncement", "rechargeNote", "resellerContactNote"]);
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (urlFields.has(key)) clean[key] = cleanMediaUrl(value);
+    else if (boolFields.has(key)) clean[key] = value === true || value === "true";
+    else if (textFields.has(key)) clean[key] = String(value ?? "").slice(0, key === "siteAnnouncement" || key.endsWith("Note") ? 500 : 1000);
+  }
+  if (patch.welcomeDurationSec !== undefined) clean.welcomeDurationSec = Math.max(1, Math.min(30, Number(patch.welcomeDurationSec) || 4));
+  const next = { ...cur, ...clean, updatedAt: nowIso() };
   await rtdbSet("settings/defaults", next);
   return next;
+}
+
+export async function getPublicExperience() {
+  const settings = await getSettings();
+  return {
+    intro: {
+      enabled: settings.welcomeVideoEnabled !== false && !!settings.welcomeVideoUrl,
+      url: settings.welcomeVideoUrl || "",
+      durationSec: Math.max(1, Math.min(30, Number(settings.welcomeDurationSec) || 4)),
+      skippable: settings.welcomeSkippable !== false
+    },
+    announcement: settings.siteAnnouncement || "",
+    rechargeNote: settings.rechargeNote || "JazzCash / EasyPaisa / WhatsApp se recharge karein.",
+    resellerContactNote: settings.resellerContactNote || "Reseller account aur credit top-up ke liye support se rabta karein.",
+    pro: {
+      whatsapp: settings.proWhatsapp || WA_NUMBER,
+      whatsappIntl: settings.proWhatsappIntl || WA_LINK.split("/").pop(),
+      title: settings.proBannerTitle || "Unlock Mizanora IPTV PRO VIP",
+      subtitle: settings.proBannerSubtitle || "",
+      priceNote: settings.proPriceNote || ""
+    }
+  };
 }
 export async function recordClientError(req, body = {}) {
   const id = "ERR-" + randomHex(4).toUpperCase();
@@ -561,6 +595,178 @@ export async function deletePlaylist(id) {
   return true;
 }
 
+/* ---------------- M3U channel imports ---------------- */
+export async function importChannels(input = {}) {
+  const parsed = parseM3U(String(input.content || ""), { baseUrl: input.sourceUrl || "", maxChannels: 5000 });
+  const channels = await listChannels();
+  const next = [...channels];
+  let created = 0;
+  let updated = 0;
+  let nextStreamId = Math.max(1000, ...channels.map((c) => Number(c.streamId) || 0)) + 1;
+  const defaultTier = String(input.defaultTier || "free").toLowerCase() === "pro" ? "pro" : "free";
+  const normalizedName = (value) => String(value || "").trim().toLowerCase();
+
+  for (const item of parsed.channels) {
+    let index = next.findIndex((channel) => String(channel.id) === item.id);
+    if (index < 0 && item.epgId) {
+      index = next.findIndex((channel) => channel.source === "m3u-import" && normalizedName(channel.name) === normalizedName(item.name) && String(channel.epgId || "") === item.epgId);
+    }
+    const existing = index >= 0 ? next[index] : {};
+    const patched = channelPatch({
+      ...item,
+      tier: index >= 0 ? existing.tier : defaultTier,
+      status: index >= 0 ? existing.status : "active"
+    }, existing);
+    const channel = {
+      ...patched,
+      id: index >= 0 ? existing.id : item.id,
+      streamId: index >= 0 ? existing.streamId : nextStreamId++,
+      order: index >= 0 ? existing.order : next.length + 1,
+      source: existing.source || "m3u-import",
+      createdAt: existing.createdAt || nowIso()
+    };
+    if (index >= 0) { next[index] = channel; updated++; }
+    else { next.push(channel); created++; }
+  }
+  await rtdbSet("channels", next);
+
+  const sourceKey = String(input.sourceUrl || input.name || parsed.playlistName).slice(0, 1000);
+  const playlistId = "pl_import_" + sha256(sourceKey).slice(0, 12);
+  const playlists = await listPlaylists();
+  const playlistIndex = playlists.findIndex((p) => p.id === playlistId);
+  const previous = playlistIndex >= 0 ? playlists[playlistIndex] : {};
+  const playlist = {
+    ...previous,
+    id: playlistId,
+    name: String(input.name || parsed.playlistName || "Imported M3U").slice(0, 120),
+    url: String(input.sourceUrl || "").slice(0, 2000),
+    type: "m3u-import",
+    channelCount: parsed.channels.length,
+    epgUrls: parsed.epgUrls,
+    updatedAt: nowIso(),
+    createdAt: previous.createdAt || nowIso()
+  };
+  if (playlistIndex >= 0) playlists[playlistIndex] = playlist; else playlists.unshift(playlist);
+  await rtdbSet("playlists", playlists);
+  await pushAudit("channels.imported", { id: playlistId, created, updated, skipped: parsed.skipped });
+  return { created, updated, imported: created + updated, skipped: parsed.skipped, total: next.length, errors: parsed.errors, epgUrls: parsed.epgUrls, playlist };
+}
+
+/* ---------------- XMLTV EPG sources + guide ---------------- */
+const EMPTY_EPG = { sources: [], channels: [], programmes: [], updatedAt: "" };
+export async function getEpgData() {
+  const data = (await rtdbGet("epg")) || {};
+  return {
+    sources: asArray(data.sources),
+    channels: asArray(data.channels),
+    programmes: asArray(data.programmes),
+    updatedAt: data.updatedAt || ""
+  };
+}
+export async function listEpgSources() {
+  const data = await getEpgData();
+  return data.sources.sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+}
+export async function importEpg(input = {}) {
+  const parsed = parseXmlTv(String(input.content || ""));
+  const sourceKey = String(input.sourceUrl || input.name || "upload").slice(0, 1000);
+  const id = String(input.sourceId || "epg_" + sha256(sourceKey).slice(0, 12)).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 48);
+  const current = await getEpgData();
+  const programmes = current.programmes.filter((p) => p.sourceId !== id);
+  const channels = current.channels.filter((c) => c.sourceId !== id);
+  for (const p of parsed.programmes) programmes.push({ ...p, sourceId: id });
+  for (const c of parsed.channels) channels.push({ ...c, sourceId: id });
+  if (programmes.length > 60000) throw fail("Combined EPG data exceeds 60,000 programmes. Remove an old source first.", 413);
+  programmes.sort((a, b) => Number(a.start) - Number(b.start));
+  const previous = current.sources.find((s) => s.id === id) || {};
+  const source = {
+    ...previous, id,
+    name: String(input.name || previous.name || (input.sourceUrl ? new URL(input.sourceUrl).hostname : "Uploaded XMLTV")).slice(0, 120),
+    url: String(input.sourceUrl || previous.url || "").slice(0, 2000),
+    channelCount: parsed.channels.length,
+    programmeCount: parsed.programmes.length,
+    skipped: parsed.skipped,
+    updatedAt: nowIso(), createdAt: previous.createdAt || nowIso()
+  };
+  const sources = [...current.sources.filter((s) => s.id !== id), source];
+  await rtdbSet("epg", { sources, channels, programmes, updatedAt: nowIso() });
+  await pushAudit("epg.imported", { id, channels: parsed.channels.length, programmes: parsed.programmes.length });
+  return { source, channels: parsed.channels.length, programmes: parsed.programmes.length, skipped: parsed.skipped, errors: parsed.errors };
+}
+export async function deleteEpgSource(id) {
+  const current = await getEpgData();
+  if (!current.sources.some((s) => s.id === id)) throw fail("EPG source not found.", 404);
+  const next = {
+    sources: current.sources.filter((s) => s.id !== id),
+    channels: current.channels.filter((c) => c.sourceId !== id),
+    programmes: current.programmes.filter((p) => p.sourceId !== id),
+    updatedAt: nowIso()
+  };
+  await rtdbSet("epg", next);
+  await pushAudit("epg.deleted", { id });
+  return true;
+}
+
+function channelProgrammes(data, channel) {
+  const ids = new Set([channel.epgId, channel.id, String(channel.streamId || "")].filter(Boolean));
+  const normalized = String(channel.name || "").trim().toLowerCase();
+  for (const item of data.channels) {
+    if (normalized && String(item.name || "").trim().toLowerCase() === normalized) ids.add(item.id);
+  }
+  return data.programmes.filter((p) => ids.has(p.channelId));
+}
+function publicProgramme(p) {
+  if (!p) return null;
+  return {
+    id: p.id, channelId: p.channelId, start: Number(p.start), stop: Number(p.stop),
+    title: p.title, subTitle: p.subTitle || "", description: p.description || "",
+    category: p.category || "", icon: p.icon || "", episode: p.episode || "",
+    rating: p.rating || "", isNew: !!p.isNew, isPremiere: !!p.isPremiere
+  };
+}
+function guideEntry(channel, listings, at) {
+  const sorted = [...listings].sort((a, b) => Number(a.start) - Number(b.start));
+  const now = sorted.find((p) => Number(p.start) <= at && Number(p.stop) > at);
+  const upcoming = sorted.filter((p) => Number(p.start) > at);
+  const next = upcoming[0];
+  return {
+    channel: { id: channel.id, streamId: channel.streamId, name: channel.name, logo: channel.logo || "", epgId: channel.epgId || "", category: channel.category || "", nowPlaying: channel.nowPlaying || "" },
+    now: publicProgramme(now), next: publicProgramme(next),
+    upcoming: upcoming.slice(0, 10).map(publicProgramme)
+  };
+}
+export async function getEpgGuide(channels, { at = Date.now(), channelId = "" } = {}) {
+  const data = await getEpgData();
+  const selected = channelId ? channels.filter((c) => [c.id, String(c.streamId), c.epgId].some((id) => String(id || "") === String(channelId))) : channels;
+  const byChannel = new Map();
+  for (const programme of data.programmes) {
+    if (!byChannel.has(programme.channelId)) byChannel.set(programme.channelId, []);
+    byChannel.get(programme.channelId).push(programme);
+  }
+  const nameIds = new Map();
+  for (const item of data.channels) {
+    const name = String(item.name || "").trim().toLowerCase();
+    if (!nameIds.has(name)) nameIds.set(name, new Set());
+    nameIds.get(name).add(item.id);
+  }
+  return selected.map((channel) => {
+    const ids = new Set([channel.epgId, channel.id, String(channel.streamId || "")].filter(Boolean));
+    for (const id of nameIds.get(String(channel.name || "").trim().toLowerCase()) || []) ids.add(id);
+    const listings = [...ids].flatMap((id) => byChannel.get(id) || []);
+    return guideEntry(channel, listings, Number(at));
+  });
+}
+export async function getShortEpg(channel, { at = Date.now(), limit = 10 } = {}) {
+  const data = await getEpgData();
+  const listings = channelProgrammes(data, channel).sort((a, b) => Number(a.start) - Number(b.start));
+  const startIndex = listings.findIndex((p) => Number(p.stop) > at);
+  if (startIndex < 0) return [];
+  return listings.slice(startIndex, startIndex + Math.max(1, Math.min(50, Number(limit) || 10))).map(publicProgramme);
+}
+export async function getXmlTvProgrammes() {
+  return (await getEpgData()).programmes.map(publicProgramme);
+}
+
 /** Resolve a protocol stream reference without ever falling back to an unrelated channel. */
 export async function resolveMedia(kind, reference) {
   const raw = String(reference || "").replace(/^\/+|\/+$/g, "");
@@ -641,6 +847,7 @@ export async function listStalkerClients() {
 export function publicConfig(base) {
   return {
     ok: true,
+    version: "5.0.0",
     brand: BRAND.name,
     tagline: BRAND.tagline,
     siteUrl: base,
@@ -653,7 +860,8 @@ export function publicConfig(base) {
     player: { recommended: PANEL.recommendedPlayer, name: PANEL.recommendedPlayerName },
     endpoints: {
       playerApi: `${base}/player_api.php`, m3u: `${base}/get.php`, epg: `${base}/xmltv.php`,
-      magPortal: `${base}/portal.php`, embed: `${base}/api/embed`, panel: `${base}/api/panel`
+      magPortal: `${base}/portal.php`, embed: `${base}/api/embed`, panel: `${base}/api/panel`,
+      guide: `${base}/api/embed?action=guide`, resellerPanel: `${base}/reseller`, developers: `${base}/developers`
     }
   };
 }

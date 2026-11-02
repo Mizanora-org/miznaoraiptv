@@ -123,8 +123,19 @@ body.is-locked{overflow:hidden}
 .dialog-fields small{font-size:.66rem;line-height:1.4}
 .dialog-error{color:var(--danger);font-size:.78rem;min-height:1.2em;margin-top:12px;white-space:pre-wrap}
 .dialog-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:14px}
+.import-card{background:linear-gradient(135deg,rgba(16,185,129,.09),rgba(245,196,81,.035));border-color:var(--line2)}
+.import-grid,.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+.import-grid label,.settings-grid label{display:flex;flex-direction:column;gap:6px;color:var(--dim);font-size:.74rem}
+.import-grid input,.settings-grid input,.settings-grid textarea,.import-grid select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit;font-size:.82rem;outline:none}
+.settings-grid textarea{resize:vertical;min-height:74px}
+.span-2{grid-column:1/-1}.check{display:flex!important;flex-direction:row!important;align-items:center;gap:8px!important}.check input{width:auto!important;accent-color:var(--primary)}
+.settings-check{justify-content:center}.import-status{min-height:1.3em;margin-top:12px;color:var(--dim);font-size:.78rem;white-space:pre-wrap}.import-status.ok{color:var(--primary2)}.import-status.err{color:var(--danger)}
+.secret-card{border-color:var(--gold)!important}.secret-card pre{white-space:pre-wrap;word-break:break-all;user-select:all}
+section[id^="view"]{animation:view-in .24s ease-out}@keyframes view-in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 @media(max-width:700px){
   main{padding:16px 12px 45px}.topbar{align-items:flex-start}.search{margin-left:0;width:100%;flex-wrap:wrap}.search input{flex:1;min-width:150px}.user-chip{margin-left:auto}
+  .import-grid,.settings-grid{grid-template-columns:1fr}.import-grid label,.settings-grid label{grid-column:1/-1}
   .card{padding:13px}.card h3{flex-wrap:wrap}.card h3 .right{margin-left:0;width:100%;flex-wrap:wrap}.card h3 .right input{flex:1;min-width:140px}
   .dialog-fields{grid-template-columns:1fr}.dialog-fields label{grid-column:1/-1}.app-dialog{width:96vw}#dialogForm{padding:17px}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.kpi{padding:13px}.kpi b{font-size:1.3rem}
