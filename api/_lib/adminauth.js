@@ -21,6 +21,7 @@ import { BRAND } from "../../data/catalog.js";
  * (owner WhatsApp number). Change it from Admin → Security after first login.
  */
 
+// 🔒 Baked in (mizanoranet web API key) — env only overrides:
 const FIREBASE_WEB_API_KEY =
   process.env.FIREBASE_API_KEY || "AIzaSyA4PWELrMHQrRA29EZzfRx1iZkXtJkKh9M";
 

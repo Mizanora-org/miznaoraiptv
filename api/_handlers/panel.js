@@ -11,6 +11,7 @@ import {
   deviceFingerprint,
   generateAdminApiKey,
   generateLicenseKey,
+  generateResellerApiKey,
   hashApiKey,
   hashLicenseKey,
   maskKey,
@@ -49,6 +50,7 @@ import {
   verifyResellerPassword,
   suspendClient,
   topUpCredits,
+  updateClient,
   updateOrder,
   updateReseller
 } from "../_lib/panelstore.js";
@@ -80,7 +82,9 @@ const PUBLIC_ACTIONS = new Set([
   "admin/pin-login",
   "reseller/register",
   "reseller/login-password",
-  "recharge/contact"
+  "recharge/contact",
+  "help",
+  "docs"
 ]);
 
 const ADMIN_ACTIONS = new Set([
@@ -136,7 +140,11 @@ const RESELLER_ACTIONS = new Set([
   "reseller/pricing-set",
   "reseller/payment-record",
   "reseller/ledger",
-  "reseller/finance"
+  "reseller/finance",
+  "reseller/credentials",
+  "reseller/client-update",
+  "reseller/client-delete",
+  "reseller/key-rotate"
 ]);
 
 function publicConfig(req) {
@@ -266,6 +274,72 @@ export default async function handler(req, res) {
 
     if (action === "config" || action === "plans" || action === "pricing") {
       return sendJson(res, 200, publicConfig(req), "public, max-age=120");
+    }
+
+    if (action === "help" || action === "docs") {
+      const base = getRequestBaseUrl(req);
+      return sendJson(res, 200, {
+        ok: true,
+        brand: BRAND.name,
+        base,
+        convention: "GET requests → ?action=NAME in query. POST requests → JSON body {\"action\":\"NAME\", ...}.",
+        auth: {
+          public: "no key needed",
+          resellerKey: "header x-api-key: mzr_… (from reseller/register or reseller/login)",
+          adminKey: "Authorization: Bearer mzk_…  OR  x-api-key: mzk_…  (create via admin/api-key-create)",
+          pinSession: "mzp_… token from admin/pin-login (Owner PIN)",
+          firebaseIdToken: "Authorization: Bearer <firebaseIdToken> — owner email only: " + BRAND.ownerEmail
+        },
+        actions: {
+          public: ["config", "plans", "help", "order", "order-status", "trial", "resolve", "reseller/register", "reseller/login-password", "recharge/contact"],
+          reseller: [
+            "reseller/login {code|email, apiKey|password}",
+            "reseller/me • reseller/stats",
+            "reseller/clients",
+            "reseller/client-create {name, days, planId?, mac?, connectionFee?, collectAmount?, via?}",
+            "reseller/credentials {username} → full Xtream + M3U + EPG + MAG portal + signed link",
+            "reseller/client-update {username, password?, mac?, devices?, email?, whatsapp?, note?}",
+            "reseller/client-renew {username, planId?}  (1 credit)",
+            "reseller/client-suspend {username, suspended?}",
+            "reseller/client-block {username, blocked?}",
+            "reseller/client-delete {username}",
+            "reseller/secure-link {username, file?, kind?}",
+            "reseller/key-rotate → new mzr_… key (old one invalid foran)",
+            "reseller/pricing-set {pricing}",
+            "reseller/payment-record {username, amount, months, via, note?}",
+            "reseller/finance • reseller/ledger"
+          ],
+          admin: [
+            "admin/me", "admin/pin-login {pin}", "admin/pin-set",
+            "admin/xtream-accounts • admin/xtream/create|update|renew|suspend|activate|delete",
+            "admin/stalker/list",
+            "admin/channels • admin/channel/create|update|delete",
+            "admin/clients • admin/client-create|renew|suspend|delete",
+            "admin/resellers • admin/reseller-create|update|reseller-detail • admin/credits-topup",
+            "admin/orders • admin/order-review {id, approve} • admin/payments • admin/trials",
+            "admin/api-keys • admin/api-key-create {label, expiresDays?} • admin/api-key-revoke {hash}",
+            "admin/settings • admin/settings-set {patch}",
+            "admin/analytics • admin/audit • admin/errors",
+            "admin/secure-link {username, file?, kind?}"
+          ],
+          protocols: {
+            xtreamPlayerApi: `${base}/player_api.php?username=U&password=P`,
+            m3uPlus: `${base}/get.php?username=U&password=P&type=m3u_plus&output=m3u8`,
+            epg: `${base}/xmltv.php?username=U&password=P`,
+            live: `${base}/live/U/P/<id>.m3u8`,
+            movie: `${base}/movie/U/P/<id>.mp4`,
+            series: `${base}/series/U/P/<id>/<ep>.mp4`,
+            magPortal: `${base}/portal.php`,
+            signedLink: `${base}/s/<token>`
+          },
+          embedApi: `${base}/api/embed?action=config|channels|movies|series|order|trial|order-status|health  (+ widget ${base}/embed.js — CORS *)`
+        },
+        examples: [
+          `curl -X POST ${base}/api/panel -H "x-api-key: mzr_KEY" -H "Content-Type: application/json" -d '{"action":"reseller/client-create","name":"Ahmed","days":30,"mac":"00:1A:79:AA:BB:CC"}'`,
+          `curl -X POST ${base}/api/panel -H "x-api-key: mzr_KEY" -H "Content-Type: application/json" -d '{"action":"reseller/credentials","username":"mzabc123"}'`,
+          `curl -X POST ${base}/api/panel -H "x-api-key: mzk_KEY" -H "Content-Type: application/json" -d '{"action":"admin/xtream/renew","username":"user1","days":30}'`
+        ]
+      });
     }
 
     if (action === "admin/pin-login" && isPost) {
@@ -727,6 +801,7 @@ export default async function handler(req, res) {
           links: {
             m3u: `${base}/get.php?username=${created.username}&password=${created.password}&type=m3u_plus&output=m3u8`,
             epg: `${base}/xmltv.php?username=${created.username}&password=${created.password}`,
+            playerApi: `${base}/player_api.php?username=${created.username}&password=${created.password}`,
             xtream: { host: base, port: 443, username: created.username, password: created.password }
           }
         });
@@ -779,6 +854,81 @@ export default async function handler(req, res) {
         return sendJson(res, 200, {
           ok: true,
           ...signStreamFor(base, username, body.file || "index.m3u8", body.kind || "live")
+        });
+      }
+
+      if (action === "reseller/credentials") {
+        const target = await getClient(String(body.username || "").trim());
+        if (!target || target.resellerCode !== reseller.code) {
+          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
+        }
+        const u = target.username, pw = target.password;
+        return sendJson(res, 200, {
+          ok: true,
+          client: { ...target, password: undefined },
+          credentials: {
+            serverUrl: base,
+            port: 443,
+            username: u,
+            password: pw,
+            playerApi: `${base}/player_api.php?username=${encodeURIComponent(u)}&password=${encodeURIComponent(pw)}`,
+            m3u: `${base}/get.php?username=${encodeURIComponent(u)}&password=${encodeURIComponent(pw)}&type=m3u_plus&output=m3u8`,
+            epg: `${base}/xmltv.php?username=${encodeURIComponent(u)}&password=${encodeURIComponent(pw)}`,
+            mac: target.mac || undefined,
+            magPortal: target.mac ? `${base}/c/portal.php` : undefined,
+            signedLink: signStreamFor(base, u, "index.m3u8", "live").url
+          }
+        });
+      }
+
+      if (action === "reseller/client-update") {
+        const target = await getClient(String(body.username || "").trim());
+        if (!target || target.resellerCode !== reseller.code) {
+          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
+        }
+        const patch = {};
+        for (const f of ["password", "email", "whatsapp", "note", "displayName"]) {
+          if (body[f] !== undefined) patch[f] = String(body[f]).slice(0, f === "note" ? 300 : 120);
+        }
+        if (body.devices !== undefined) patch.devices = Math.max(1, Number(body.devices) || 1);
+        if (body.mac !== undefined) {
+          const mac = normalizeMac(String(body.mac || ""));
+          if (body.mac && !mac) return sendJson(res, 400, { ok: false, error: "Invalid MAC format." });
+          if (mac) {
+            const all = await listClients();
+            const clash = all.find((c) => c.username !== target.username && String(c.mac || "").toUpperCase() === mac);
+            if (clash) return sendJson(res, 409, { ok: false, error: `MAC already on client ${clash.username}.` });
+          }
+          patch.mac = mac || "";
+        }
+        if (!Object.keys(patch).length) return sendJson(res, 400, { ok: false, error: "Nothing to update." });
+        const updated = await updateClient(target.username, patch);
+        clearPanelCache();
+        await pushAudit("client.updated", { username: target.username, by: reseller.code, fields: Object.keys(patch) });
+        return sendJson(res, 200, { ok: true, client: updated });
+      }
+
+      if (action === "reseller/client-delete") {
+        const target = await getClient(String(body.username || "").trim());
+        if (!target || target.resellerCode !== reseller.code) {
+          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
+        }
+        await rtdbSet(`panel/clients/${target.username}`, null);
+        await rtdbSet(`xtreamAccounts/${target.username}`, null);
+        clearPanelCache();
+        await pushAudit("client.deleted", { username: target.username, by: reseller.code });
+        return sendJson(res, 200, { ok: true, deleted: target.username });
+      }
+
+      if (action === "reseller/key-rotate") {
+        const newKey = generateResellerApiKey();
+        await updateReseller(reseller.code, { apiKey: newKey });
+        clearPanelCache();
+        await pushAudit("reseller.key-rotated", { code: reseller.code });
+        return sendJson(res, 200, {
+          ok: true,
+          apiKey: newKey,
+          note: "Purana mzr_ key foran invalid ho gaya. Naya key ek dafa hi dikhta hai — turant save kar lo."
         });
       }
     }

@@ -22,11 +22,13 @@ import {
 } from "../../data/imdb-seed.js";
 import { getAutoHarvestedImdb } from "./cinemeta-auto.js";
 
+// 🔒 Baked into the repo — no Vercel env needed (env only overrides):
 const DEFAULT_RTDB_URL = (
   process.env.FIREBASE_DATABASE_URL ||
   "https://mizanoranet-default-rtdb.firebaseio.com"
 ).replace(/\/+$/, "");
 
+// 🔒 Baked in (mizanoranet web API key) — env only overrides:
 const FIREBASE_WEB_API_KEY =
   process.env.FIREBASE_API_KEY || "AIzaSyA4PWELrMHQrRA29EZzfRx1iZkXtJkKh9M";
 
