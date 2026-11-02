@@ -1,8 +1,21 @@
-# 📺 Mizanora IPTV — Complete System v5.0.0
+# 📺 Mizanora IPTV — Reseller Suite v5.1.0
+
+![Animated Mizanora IPTV reseller suite banner](docs/assets/reseller-suite.gif)
+
+**Owner control → reseller workspace → client service**
+
+[Quick start](#run-and-verify-locally) · [Reseller API](docs/RESELLER.md) · [Deployment](docs/VERCEL.md) · [Changelog](CHANGELOG.md)
 
 **Live TV, animated welcome intro, M3U imports, XMLTV guides, Xtream Codes, MAG/Stalker, owner admin, reseller workspace and website integrations.** A **Mizanora Projects** product by **Muaaz Iqbal** (Kasur, Punjab, Pakistan).
 
-## What's new in v5
+## What's new in v5.1
+
+- **Owner reseller control:** view individual business reports and suspend/reactivate access from Admin → Resellers.
+- **Reseller insights:** credit and collection totals, client statuses, seven-day expiry list and recent business activity in the dealer panel and API.
+- **Safer integrations:** scoped reports, password-free client lists, protected owner actions and validated credit top-ups.
+- **Website ready:** owner and dealer API examples for a private backend, including use with your own Mizanora website.
+
+## What's included from v5
 
 - **Intro → secure fetch → channel playback:** configurable MP4/HLS welcome video, duration, skip control, retry and stale-request cancellation.
 - **Welcome & Promo Live:** bundled local promo channel and corrected HLS segment paths.
@@ -78,7 +91,7 @@ Open `/reseller` or use **Admin → Resellers → Create**. Dealers can login wi
 
 The dealer panel supports client creation, MAG MACs, credits, one-month renewals, suspension/reactivation, deletion, credential retrieval, payment recording, retail pricing, ledger and immediate API-key rotation. Plan months determine server-side credit cost; client-supplied prices cannot reduce it.
 
-See [docs/RESELLER.md](docs/RESELLER.md) for workflow and API examples. **Never put `mzr_` or `mzk_` keys in public browser code.** Use a backend proxy.
+See [docs/RESELLER.md](docs/RESELLER.md) for workflow, API examples and production limitations. **Never put `mzr_` or `mzk_` keys in public browser code.** Use a backend proxy.
 
 ## Owner/content notes
 
@@ -100,3 +113,23 @@ npm run test:guide
 ```
 
 The suites cover real HTTP flows (imports, EPG, public/admin/reseller, Xtream, signed playback, MAG, validation and CRUD) and jsdom click-throughs against the actual frontend JavaScript. Tests use an isolated local mirror; production Firebase is not required. Real browser playback and live Vercel/Firebase behavior still need deployment-environment verification.
+
+## Playback and channel management
+
+- **Website player:** each channel selection starts the welcome video (8 seconds by default) with the selected channel name and loading indicator, then loads that channel. Retry skips the intro. Browsers may block autoplay, and an intro load error advances to the channel. In **Admin → Settings**, change the intro URL/duration and enable or disable the skip button. Existing saved settings take precedence over the new defaults; set the duration to 8 and enable the intro there if an older installation still uses another value.
+- **Website fallback videos:** a detected playback error shows the configured offline video and retry button. A PRO-only public preview displays the configured unlock/recharge video and trial link. The Movies & Series section can play the coming-soon announcement.
+- **Xtream/M3U:** metadata-only movie and series episodes redirect to the configured coming-soon video; actual licensed URLs continue to play normally. Correctly authenticated expired live URLs redirect to the configured PRO/recharge video, while login remains disabled. Some apps will not request a live URL once login has expired or may not follow redirects.
+- **Admin → Channels:** add, edit (including visibility, EPG ID and access), delete, and move channels up/down. Saved ordering is used by the public channel list and Xtream listing.
+- Configure video URLs under **Admin → Settings**. Use supported formats and reliable HTTPS sources; external videos used in the browser also need CORS. These are playback fallbacks, not upstream health checks or automatic recovery.
+
+**External-player limitation:** the timed welcome intro and detected-offline fallback are implemented in the built-in website player. Xtream/M3U live streams redirect directly to the provider; this serverless application does not stitch an intro into external IPTV apps, transcode streams, or detect upstream outages after redirect. Live playback still depends on the provider and player.
+
+### Rebuild branded videos
+
+The bundled 8-second welcome, offline, recharge and coming-soon cards contain the Mizanora logo and WhatsApp support number. Their audio is a synthesized ambient tone, not narration. The number is rendered into the videos; changing the admin support setting does not change these files. To update the branding or number, edit `scripts/build-brand-videos.sh` and run it with FFmpeg (libx264/AAC), ImageMagick and DejaVu fonts installed:
+
+```bash
+scripts/build-brand-videos.sh
+```
+
+The script regenerates the MP4s and corresponding four HLS segments for each video. Existing custom URLs saved in Admin → Settings still take precedence over these bundled defaults.

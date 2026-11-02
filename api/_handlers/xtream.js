@@ -5,7 +5,7 @@
 import { handleOptions, parseQuery, sendJson, getRequestBaseUrl, corsHeaders } from "../_lib/util.js";
 import { rtdbGet } from "../_lib/rtdb.js";
 import {
-  listChannels, listMovies, listSeries, signStreamFor, getShortEpg, getEpgData
+  listChannels, listMovies, listSeries, signStreamFor, getShortEpg, getEpgData, getSettings
 } from "../_lib/store.js";
 import { programmeXml } from "../_lib/epg.js";
 
@@ -97,7 +97,7 @@ function liveStream(ch, index, categories) {
     is_adult: 0
   };
 }
-function movieStream(movie, index, categories) {
+function movieStream(movie, index, categories, comingSoonUrl = "") {
   const streamId = Number(movie.streamId) || 5001 + index;
   const rating = Number(movie.imdbRating ?? movie.rating ?? 0) || 0;
   return {
@@ -112,7 +112,7 @@ function movieStream(movie, index, categories) {
     added: "0",
     category_id: categoryIdFor(movie, categories, "10", index),
     category_ids: [Number(categoryIdFor(movie, categories, "10", index)) || 0],
-    container_extension: extension(movie.streamUrl),
+    container_extension: extension(movie.streamUrl || comingSoonUrl),
     direct_source: "",
     plot: movie.plot || "",
     cast: movie.cast || "",
@@ -160,6 +160,16 @@ export default async function xtreamHandler(req, res) {
     const p = String(q.password || (ep === "file" ? decodeURIComponent(fileParts[1] || "") : ""));
     const acc = await findAccount(u);
     if (!acc || acc.password !== p || !isLive(acc)) {
+      // Only correctly authenticated, expired (not suspended) live accounts
+      // receive the configured recharge video. Never grant playback access.
+      if (ep === "file" && String(q.kind || "live") === "live" && acc && acc.password === p && String(acc.status || "").toLowerCase() !== "suspended" && acc.expDate && Number(acc.expDate) < nowTs()) {
+        const settings = await getSettings();
+        if (settings.proUnlockVideoEnabled !== false && settings.proUnlockVideoUrl) {
+          const url = new URL(settings.proUnlockVideoUrl, base).href;
+          res.writeHead(302, { Location: url, "Cache-Control": "no-store", ...corsHeaders() });
+          return res.end();
+        }
+      }
       if (ep === "player") return sendJson(res, 200, { user_info: { auth: 0, status: "Disabled", message: "Invalid credentials or subscription expired" } });
       return sendText(res, 401, "Invalid credentials or expired");
     }
@@ -176,11 +186,12 @@ export default async function xtreamHandler(req, res) {
       }
       if (action === "get_vod_categories") return sendJson(res, 200, categoryData(await listMovies(), "10"));
       if (action === "get_vod_streams") {
+        const comingSoonUrl = (await getSettings()).comingSoonVideoUrl;
         const movies = await listMovies();
         const categories = categoryData(movies, "10");
         let list = movies;
         if (q.category_id) list = list.filter((m, i) => categoryIdFor(m, categories, "10", i) === String(q.category_id));
-        return sendJson(res, 200, list.map((m) => movieStream(m, movies.indexOf(m), categories)));
+        return sendJson(res, 200, list.map((m) => movieStream(m, movies.indexOf(m), categories, comingSoonUrl)));
       }
       if (action === "get_series_categories") return sendJson(res, 200, categoryData(await listSeries(), "20"));
       if (action === "get_series") {
@@ -196,7 +207,7 @@ export default async function xtreamHandler(req, res) {
         const index = movies.findIndex((m) => String(m.streamId) === String(q.vod_id) || String(m.id) === String(q.vod_id));
         if (index < 0) return sendJson(res, 404, { error: "VOD not found" });
         const m = movies[index];
-        const data = movieStream(m, index, categories);
+        const data = movieStream(m, index, categories, (await getSettings()).comingSoonVideoUrl);
         return sendJson(res, 200, {
           info: {
             kinopoisk_url: "", tmdb_id: "", name: data.name, o_name: data.name,
@@ -215,6 +226,7 @@ export default async function xtreamHandler(req, res) {
         const all = await listSeries();
         const s = all.find((item) => String(item.seriesId) === String(q.series_id) || String(item.id) === String(q.series_id));
         if (!s) return sendJson(res, 404, { error: "Series not found" });
+        const comingSoonUrl = (await getSettings()).comingSoonVideoUrl;
         const episodes = {};
         const seasonNumbers = new Set();
         for (const ep of asArray(s.episodes)) {
@@ -222,7 +234,7 @@ export default async function xtreamHandler(req, res) {
           seasonNumbers.add(season);
           (episodes[season] ||= []).push({
             id: String(ep.id), episode_num: Number(ep.episode) || 1,
-            title: ep.title || `Episode ${ep.episode}`, container_extension: extension(ep.streamUrl),
+            title: ep.title || `Episode ${ep.episode}`, container_extension: extension(ep.streamUrl || comingSoonUrl),
             info: { plot: ep.plot || "", duration: ep.duration || s.runtime || "", movie_image: s.poster || "", rating: s.imdbRating || "0" },
             custom_sid: "", added: "0", season: Number(season), direct_source: "", stream_available: ep.streamUrl ? 1 : 0
           });
@@ -257,7 +269,7 @@ export default async function xtreamHandler(req, res) {
           max_connections: String(acc.maxConnections || 1), allowed_output_formats: ["m3u8"]
         },
         server_info: {
-          url: server.hostname, xui: true, version: "Mizanora-5.0", revision: 5,
+          url: server.hostname, xui: true, version: "Mizanora-5.1", revision: 5,
           url_without_port: server.hostname, port: serverPort,
           https_port: server.protocol === "https:" ? serverPort : "443", server_protocol: server.protocol.replace(":", ""), rtmp_port: "",
           timezone: "Asia/Karachi", timestamp_now: nowTs(), time_now: new Date().toISOString()
@@ -268,7 +280,8 @@ export default async function xtreamHandler(req, res) {
     if (ep === "get") {
       const channels = (await listChannels()).filter((c) => c.status !== "inactive");
       const includeVod = String(q.type || "").includes("plus");
-      const movies = includeVod ? (await listMovies()).filter((m) => m.streamUrl) : [];
+      const movies = includeVod ? await listMovies() : [];
+      const comingSoonUrl = includeVod ? (await getSettings()).comingSoonVideoUrl : "";
       const series = includeVod ? await listSeries() : [];
       let out = `#EXTM3U x-tvg-url="${m3uAttr(`${base}/xmltv.php?username=${encodeURIComponent(u)}&password=${encodeURIComponent(p)}`)}"\n`;
       for (const [i, ch] of channels.entries()) {
@@ -278,14 +291,14 @@ export default async function xtreamHandler(req, res) {
       }
       for (const [i, movie] of movies.entries()) {
         const id = Number(movie.streamId) || 5001 + i;
-        const ext = extension(movie.streamUrl);
+        const ext = extension(movie.streamUrl || comingSoonUrl);
         out += `#EXTINF:-1 tvg-id="${m3uAttr(movie.id || id)}" tvg-name="${m3uAttr(movie.title)}" tvg-logo="${m3uAttr(movie.poster || "")}" group-title="${m3uAttr(movie.category || "Movies")}",${String(movie.title).replace(/[\r\n]/g, " ")}\n`;
         out += `${base}/movie/${encodeURIComponent(u)}/${encodeURIComponent(p)}/${id}.${ext}\n`;
       }
       for (const s of series) {
-        for (const ep of asArray(s.episodes).filter((item) => item.streamUrl)) {
+        for (const ep of asArray(s.episodes)) {
           const sid = Number(s.seriesId) || s.id;
-          const ext = extension(ep.streamUrl);
+          const ext = extension(ep.streamUrl || comingSoonUrl);
           out += `#EXTINF:-1 tvg-id="${m3uAttr(ep.id)}" tvg-name="${m3uAttr(ep.title)}" tvg-logo="${m3uAttr(s.poster || "")}" group-title="${m3uAttr(s.category || "Series")}",${String(ep.title).replace(/[\r\n]/g, " ")}\n`;
           out += `${base}/series/${encodeURIComponent(u)}/${encodeURIComponent(p)}/${sid}/${ep.id}.${ext}\n`;
         }

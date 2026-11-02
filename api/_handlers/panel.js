@@ -24,17 +24,17 @@ const RESELLER_ACTIONS = new Set([
   "reseller/client-create", "reseller/credentials", "reseller/client-update",
   "reseller/client-renew", "reseller/client-suspend", "reseller/client-block",
   "reseller/client-delete", "reseller/secure-link", "reseller/key-rotate",
-  "reseller/pricing-set", "reseller/payment-record", "reseller/finance", "reseller/ledger"
+  "reseller/pricing-set", "reseller/payment-record", "reseller/finance", "reseller/ledger", "reseller/report", "reseller/activity"
 ]);
 const ADMIN_ACTIONS = new Set([
   "admin/me", "admin/pin-login",
   "admin/xtream-accounts", "admin/xtream/create", "admin/xtream/update", "admin/xtream/renew",
   "admin/xtream/suspend", "admin/xtream/activate", "admin/xtream/delete",
-  "admin/stalker/list", "admin/channels", "admin/channel-create", "admin/channel-update", "admin/channel-delete", "admin/channels/import",
+  "admin/stalker/list", "admin/channels", "admin/channel-create", "admin/channel-update", "admin/channel-delete", "admin/channel-move", "admin/channels/import",
   "admin/epg-sources", "admin/epg-import", "admin/epg-refresh", "admin/epg-delete",
   "admin/playlists", "admin/playlist-save", "admin/playlist-delete", "admin/movie-update", "admin/series-update",
   "admin/clients", "admin/client-create", "admin/client-renew", "admin/client-suspend", "admin/client-delete",
-  "admin/resellers", "admin/reseller-create", "admin/reseller-update", "admin/credits-topup",
+  "admin/resellers", "admin/reseller-create", "admin/reseller-update", "admin/reseller-report", "admin/credits-topup",
   "admin/orders", "admin/order-review", "admin/payments", "admin/trials",
   "admin/api-keys", "admin/api-key-create", "admin/api-key-revoke",
   "admin/settings", "admin/settings-set", "admin/analytics", "admin/audit", "admin/errors",
@@ -169,6 +169,8 @@ export default async function panelHandler(req, res) {
 
     /* ================= RESELLER ================= */
     if (RESELLER_ACTIONS.has(action) || action.startsWith("reseller/")) {
+      const mutating = new Set(["reseller/client-create", "reseller/client-update", "reseller/client-renew", "reseller/client-suspend", "reseller/client-block", "reseller/client-delete", "reseller/key-rotate", "reseller/pricing-set", "reseller/payment-record"]);
+      if (mutating.has(action) && !isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
       const auth = await authorizeReseller(req, body);
       if (!auth.ok) return sendJson(res, auth.status, { ok: false, error: auth.error });
       const R = auth.reseller;
@@ -202,8 +204,10 @@ export default async function panelHandler(req, res) {
       }
       if (action === "reseller/clients") {
         const clients = await S.listClients({ resellerCode: R.code });
-        return sendJson(res, 200, { ok: true, count: clients.length, clients });
+        return sendJson(res, 200, { ok: true, count: clients.length, clients: clients.map(({ password, ...client }) => client) });
       }
+      if (action === "reseller/report") return sendJson(res, 200, { ok: true, report: await S.resellerReport(R.code) });
+      if (action === "reseller/activity") return sendJson(res, 200, { ok: true, activity: await S.resellerActivity(R.code) });
       if (action === "reseller/client-create") {
         let plan = S.getPlan(body.planId) || S.PLANS.find((p) => p.id === "monthly");
         if (plan.id === "trial-1d") plan = S.PLANS.find((p) => p.id === "monthly");
@@ -219,7 +223,7 @@ export default async function panelHandler(req, res) {
           const all = await S.listClients();
           if (all.some((c) => c.mac && c.mac.toUpperCase() === mac)) return sendJson(res, 409, { ok: false, error: "Ye MAC pehle se registered hai." });
         }
-        const created = await S.createClient({ ...body, planId: plan.id, days: plan.days, mac, resellerCode: R.code, source: mac ? "reseller-mac" : "reseller" });
+        const created = await S.createClient({ ...body, planId: plan.id, days: plan.days, startTs: Math.floor(Date.now() / 1000), mac, resellerCode: R.code, source: mac ? "reseller-mac" : "reseller" });
         await S.updateReseller(R.code, { credits: Number(R.credits) - creditCost, creditsUsed: Number(R.creditsUsed || 0) + creditCost });
         const pricing = R.pricing || {};
         const collectAmount = Math.max(0, Number(body.collectAmount) || 0);
@@ -272,6 +276,7 @@ export default async function panelHandler(req, res) {
         }
         if (!Object.keys(patch).length) return sendJson(res, 400, { ok: false, error: "Nothing to update." });
         const updated = await S.updateClient(t.username, patch);
+        await S.pushAudit("client.updated", { resellerCode: R.code, username: t.username });
         S.clearPanelCache();
         return sendJson(res, 200, { ok: true, client: updated });
       }
@@ -290,6 +295,7 @@ export default async function panelHandler(req, res) {
         const t = await owned(body.username);
         if (!t) return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
         const updated = await S.suspendClient(t.username, body.suspended !== false && body.blocked !== false);
+        await S.pushAudit(updated.status === "suspended" ? "client.suspended" : "client.activated", { resellerCode: R.code, username: t.username });
         return sendJson(res, 200, { ok: true, client: updated });
       }
       if (action === "reseller/client-delete") {
@@ -310,6 +316,7 @@ export default async function panelHandler(req, res) {
         const { hashApiKey } = await import("../_lib/auth.js");
         const newKey = generateResellerApiKey();
         await S.updateReseller(R.code, { apiKeyHash: hashApiKey(newKey) });
+        await S.pushAudit("reseller.key_rotated", { resellerCode: R.code });
         S.clearPanelCache();
         return sendJson(res, 200, { ok: true, apiKey: newKey, note: "Purana mzr_ key foran invalid. Naya key ek dafa dikhta hai — save kar lo." });
       }
@@ -321,6 +328,7 @@ export default async function panelHandler(req, res) {
           if (supplied[key] !== undefined) pricing[key] = Math.max(0, Math.min(1_000_000, Number(supplied[key]) || 0));
         }
         await S.updateReseller(R.code, { pricing });
+        await S.pushAudit("reseller.pricing_updated", { resellerCode: R.code });
         return sendJson(res, 200, { ok: true, pricing: (await S.getResellerByCode(R.code)).pricing });
       }
       if (action === "reseller/payment-record") {
@@ -423,6 +431,10 @@ export default async function panelHandler(req, res) {
       }
       if (action === "admin/channel-create") return sendJson(res, 201, { ok: true, channel: await S.createChannel(body) });
       if (action === "admin/channel-update") return sendJson(res, 200, { ok: true, channel: await S.updateChannel(body.id, body.patch || body) });
+      if (action === "admin/channel-move") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        return sendJson(res, 200, { ok: true, channels: await S.moveChannel(body.id, Number(body.position)) });
+      }
       if (action === "admin/channel-delete") { await S.deleteChannel(body.id); return sendJson(res, 200, { ok: true, deleted: body.id }); }
       if (action === "admin/playlists") return sendJson(res, 200, { ok: true, playlists: await S.listPlaylists() });
       if (action === "admin/playlist-save") return sendJson(res, 200, { ok: true, playlist: await S.savePlaylist(body) });
@@ -442,14 +454,32 @@ export default async function panelHandler(req, res) {
       if (action === "admin/client-delete") { await S.deleteClient(body.username); return sendJson(res, 200, { ok: true }); }
       if (action === "admin/resellers") return sendJson(res, 200, { ok: true, resellers: await S.listResellers() });
       if (action === "admin/reseller-create") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
         const r = await S.createReseller(body);
         return sendJson(res, 201, { ok: true, reseller: { ...S.resellerPublic(r), apiKey: r.apiKey, code: r.code } });
       }
+      if (action === "admin/reseller-report") {
+        const report = await S.resellerReport(String(body.code || q.code || "").toUpperCase());
+        return report ? sendJson(res, 200, { ok: true, report }) : sendJson(res, 404, { ok: false, error: "Reseller not found" });
+      }
       if (action === "admin/reseller-update") {
-        const r = await S.updateReseller(String(body.code || "").toUpperCase(), body.patch || body);
-        return r ? sendJson(res, 200, { ok: true, reseller: S.resellerPublic(r) }) : sendJson(res, 404, { ok: false, error: "Not found" });
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const code = String(body.code || "").toUpperCase();
+        const supplied = body.patch || body;
+        const patch = {};
+        for (const field of ["name", "email", "whatsapp"]) if (supplied[field] !== undefined) patch[field] = String(supplied[field]).trim().slice(0, field === "email" ? 120 : field === "name" ? 80 : 30);
+        if (supplied.status !== undefined) {
+          if (!["active", "suspended"].includes(supplied.status)) return sendJson(res, 400, { ok: false, error: "Status must be active or suspended" });
+          patch.status = supplied.status;
+        }
+        if (!Object.keys(patch).length) return sendJson(res, 400, { ok: false, error: "Nothing to update" });
+        const r = await S.updateReseller(code, patch);
+        if (!r) return sendJson(res, 404, { ok: false, error: "Not found" });
+        await S.pushAudit("reseller.updated", { resellerCode: code, fields: Object.keys(patch), ...(patch.status ? { status: patch.status } : {}) });
+        return sendJson(res, 200, { ok: true, reseller: S.resellerPublic(r) });
       }
       if (action === "admin/credits-topup") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
         const r = await S.topUpCredits(String(body.code || "").toUpperCase(), Number(body.credits || 0));
         return r ? sendJson(res, 200, { ok: true, credits: r.credits }) : sendJson(res, 404, { ok: false, error: "Reseller not found" });
       }
@@ -516,7 +546,7 @@ export default async function panelHandler(req, res) {
 function helpDoc(base) {
   return {
     ok: true,
-    version: "5.0.0",
+    version: "5.1.0",
     brand: "Mizanora IPTV",
     base,
     links: { site: `${base}/`, resellerPanel: `${base}/reseller`, developers: `${base}/developers` },
@@ -528,8 +558,8 @@ function helpDoc(base) {
     },
     actions: {
       public: ["config", "plans", "help", "order", "order-status", "trial", "resolve {username,password}", "track {sessionId,event,route}", "reseller/register", "reseller/login-password", "recharge/contact"],
-      reseller: ["reseller/login {code,password}", "reseller/me|stats", "reseller/clients", "reseller/client-create {name,planId?,mac?,collectAmount?,via?} — plan months = credit cost", "reseller/credentials {username}", "reseller/client-update {username,…}", "reseller/client-renew {username,planId?} — plan months = credit cost", "reseller/client-suspend|client-block {username}", "reseller/client-delete {username}", "reseller/secure-link {username,file?,kind?}", "reseller/key-rotate", "reseller/pricing-set {pricing}", "reseller/payment-record {username,amount,months,via} — one credit per extension month", "reseller/finance", "reseller/ledger"],
-      admin: ["admin/me", "admin/pin-login {pin}", "admin/xtream-accounts", "admin/xtream/create|update|renew|suspend|activate|delete {username,…}", "admin/stalker/list", "admin/channels", "admin/channel-create|channel-update|channel-delete", "admin/channels/import {url|content,name?,defaultTier?,importEpg?}", "admin/epg-sources|epg-import|epg-refresh|epg-delete", "admin/playlists", "admin/playlist-save|playlist-delete", "admin/movie-update|series-update", "admin/clients", "admin/client-create|renew|suspend|delete", "admin/resellers", "admin/reseller-create|reseller-update", "admin/credits-topup {code,credits}", "admin/orders", "admin/order-review {id,approve}", "admin/payments", "admin/trials", "admin/api-keys", "admin/api-key-create {label,expiresDays?}", "admin/api-key-revoke {id|hash}", "admin/settings|settings-set", "admin/analytics", "admin/audit", "admin/errors", "admin/secure-link {username}"]
+      reseller: ["reseller/login {code,password}", "reseller/me|stats", "reseller/clients", "reseller/client-create {name,planId?,mac?,collectAmount?,via?} — plan months = credit cost", "reseller/credentials {username}", "reseller/client-update {username,…}", "reseller/client-renew {username,planId?} — plan months = credit cost", "reseller/client-suspend|client-block {username}", "reseller/client-delete {username}", "reseller/secure-link {username,file?,kind?}", "reseller/key-rotate", "reseller/pricing-set {pricing}", "reseller/payment-record {username,amount,months,via} — one credit per extension month", "reseller/finance", "reseller/ledger", "reseller/report", "reseller/activity"],
+      admin: ["admin/me", "admin/pin-login {pin}", "admin/xtream-accounts", "admin/xtream/create|update|renew|suspend|activate|delete {username,…}", "admin/stalker/list", "admin/channels", "admin/channel-create|channel-update|channel-delete", "admin/channel-move {id,position}", "admin/channels/import {url|content,name?,defaultTier?,importEpg?}", "admin/epg-sources|epg-import|epg-refresh|epg-delete", "admin/playlists", "admin/playlist-save|playlist-delete", "admin/movie-update|series-update", "admin/clients", "admin/client-create|renew|suspend|delete", "admin/resellers", "admin/reseller-report {code}", "admin/reseller-create|reseller-update", "admin/credits-topup {code,credits}", "admin/orders", "admin/order-review {id,approve}", "admin/payments", "admin/trials", "admin/api-keys", "admin/api-key-create {label,expiresDays?}", "admin/api-key-revoke {id|hash}", "admin/settings|settings-set", "admin/analytics", "admin/audit", "admin/errors", "admin/secure-link {username}"]
     },
     protocols: {
       xtreamPlayerApi: `${base}/player_api.php?username=U&password=P`,

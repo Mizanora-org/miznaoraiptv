@@ -30,8 +30,8 @@ export const BRAND = {
 export const DEFAULT_SETTINGS = {
   welcomeVideoUrl: "/media/welcome/video.mp4",
   welcomeVideoEnabled: true,
-  welcomeDurationSec: 4,
-  welcomeSkippable: true,
+  welcomeDurationSec: 8,
+  welcomeSkippable: false,
   channelOfflineVideoUrl: "/media/channel-offline/index.m3u8",
   comingSoonVideoUrl: "/media/coming-soon/index.m3u8",
   proUnlockVideoUrl: "/media/pro-unlock/index.m3u8",

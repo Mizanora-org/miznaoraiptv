@@ -107,6 +107,7 @@ window.fetch = async (url, options = {}) => {
   if (action === "admin/channel-update") {
     const channel = db.channels.find((c) => c.id === body.id); Object.assign(channel, body.patch); return J({ ok: true, channel });
   }
+  if (action === "admin/channel-move") { const i = db.channels.findIndex((c) => c.id === body.id); const [item] = db.channels.splice(i, 1); db.channels.splice(body.position - 1, 0, item); return J({ ok: true, channels: db.channels }); }
   if (action === "admin/channel-delete") { db.channels = db.channels.filter((c) => c.id !== body.id); return J({ ok: true }); }
   if (action === "admin/playlists") return J({ ok: true, playlists: db.playlists });
   if (action === "admin/playlist-save") {
@@ -138,6 +139,8 @@ window.fetch = async (url, options = {}) => {
     const movie = db.movies.find((m) => m.id === body.id); movie.streamAvailable = !!body.patch.streamUrl; return J({ ok: true, movie });
   }
   if (action === "admin/resellers") return J({ ok: true, resellers: db.resellers });
+  if (action === "admin/reseller-report") return J({ ok: true, report: { reseller: { code: new URL(String(url), "http://localhost").searchParams.get("code") }, stats: { total: 2, active: 1, expiringSoon: 1 }, finance: { collectedTotal: 500, creditsUsed: 2 }, activity: [{ at: "2026-11-02", action: "client.created", detail: { username: "demo" } }] } });
+  if (action === "admin/reseller-update") { Object.assign(db.resellers.find((r) => r.code === body.code), body.patch); return J({ ok: true }); }
   if (action === "admin/credits-topup") { const reseller = db.resellers.find((r) => r.code === body.code); reseller.credits += Number(body.credits); return J({ ok: true, credits: reseller.credits }); }
   if (action === "admin/orders") return J({ ok: true, orders: db.orders });
   if (action === "admin/order-review") {
@@ -194,6 +197,8 @@ check("quick Add Channel opens functional dialog", $("appDialog").hasAttribute("
 await submitDialog({ name: "DOM Channel", url: "/media/demo-live/index.m3u8", category: "Testing", tier: "free" });
 check("channel create updates API state and table", db.channels.some((c) => c.id === "ch_dom") && $("chBody").textContent.includes("DOM Channel"));
 await clickTab("channels");
+document.querySelector("[data-ch-move='ch_dom'][data-direction='-1']").click(); await sleep();
+check("channel move control persists order", db.channels[0].id === "ch_dom" && $("chBody").querySelector("tr b").textContent === "DOM Channel");
 document.querySelector("[data-ch-edit='ch_dom']").click(); await sleep(30);
 await submitDialog({ name: "DOM Channel Edited", url: "/media/demo-live/index.m3u8", category: "Testing", tier: "pro" });
 check("channel edit persists", db.channels.find((c) => c.id === "ch_dom")?.name === "DOM Channel Edited" && $("chBody").textContent.includes("PRO"));
@@ -251,6 +256,12 @@ check("reseller search filters locally without refetch", $("rsBody").textContent
 $("rsSearch").value = ""; $("rsSearch").dispatchEvent(new window.Event("input", { bubbles: true }));
 document.querySelector("[data-rs-topup='ALPHA']").click(); await submitDialog({ credits: "15" });
 check("credit top-up form updates reseller", db.resellers.find((r) => r.code === "ALPHA")?.credits === 18);
+document.querySelector("[data-rs-report='ALPHA']").click(); await sleep();
+check("owner can view reseller activity report", !$("rsReport").hidden && $("rsReport").textContent.includes("client.created") && $("rsReport").textContent.includes("500"));
+document.querySelector("[data-rs-toggle='ALPHA']").click(); await sleep();
+check("owner can suspend a reseller", db.resellers.find((r) => r.code === "ALPHA").status === "suspended" && $("rsBody").textContent.includes("Activate"));
+document.querySelector("[data-rs-toggle='ALPHA']").click(); await sleep();
+check("owner can reactivate a reseller", db.resellers.find((r) => r.code === "ALPHA").status === "active");
 
 await clickTab("settings"); $("stTicker").value = "DOM announcement"; $("stSave").click(); await sleep();
 check("settings save sends actual patch", db.settings.siteAnnouncement === "DOM announcement");

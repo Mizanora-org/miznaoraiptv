@@ -25,6 +25,9 @@ window.HTMLElement.prototype.scrollIntoView = function () {};
 window.HTMLMediaElement.prototype.play = function () { return Promise.resolve(); };
 window.HTMLMediaElement.prototype.pause = function () {};
 window.HTMLMediaElement.prototype.load = function () {};
+const originalTimeout = window.setTimeout.bind(window);
+let speedUpIntro = false;
+window.setTimeout = (fn, ms, ...args) => originalTimeout(fn, speedUpIntro && ms === 8000 ? 80 : ms, ...args);
 Object.defineProperty(window.navigator, "sendBeacon", { value: () => true, configurable: true });
 window.addEventListener("error", (e) => errors.push(e.message));
 window.addEventListener("unhandledrejection", (e) => errors.push(String(e.reason?.message || e.reason)));
@@ -50,7 +53,7 @@ window.fetch = async (url, options = {}) => {
   const raw = String(url);
   const parsed = new URL(raw, "http://localhost:3000");
   const J = (data, status = 200) => new window.Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
-  if (parsed.pathname === "/api/embed" && parsed.searchParams.get("action") === "config") return J({ ok: true, brand: "Mizanora IPTV", plans: [{ id: "monthly", name: "1 Month", price: 200 }], links: { resellerPanel: "/reseller", developers: "/developers" }, experience: { intro: { enabled: true, url: "/media/welcome/video.mp4", durationSec: 5, skippable: true } } });
+  if (parsed.pathname === "/api/embed" && parsed.searchParams.get("action") === "config") return J({ ok: true, brand: "Mizanora IPTV", plans: [{ id: "monthly", name: "1 Month", price: 200 }], links: { resellerPanel: "/reseller", developers: "/developers" }, experience: { intro: { enabled: true, url: "/media/welcome/video.mp4", durationSec: 8, skippable: true } } });
   if (parsed.pathname === "/api/embed" && parsed.searchParams.get("action") === "guide") return J({ ok: true, guide: [{ channel: channels[0], now: { title: "Morning News", start: Date.now() - 60000, stop: Date.now() + 60000 }, next: { title: "Next Show", start: Date.now() + 60000 } }] });
   if (parsed.pathname === "/api/embed" && parsed.searchParams.get("action") === "channels") return J({ ok: true, count: channels.length, channels });
   if (parsed.pathname === "/api/embed" && parsed.searchParams.get("action") === "stream") {
@@ -82,11 +85,15 @@ check("public now/next guide renders imported-style programme data", $("guideGri
 
 const requestsBeforeIntro = streamRequests;
 document.querySelector("[data-channel='ch_free']").click(); await sleep(30);
-check("intro gates secure stream fetching", $("playerDialog").hasAttribute("open") && !$("introOverlay").hidden && $("introOverlay").style.getPropertyValue("--intro-duration") === "5s" && streamRequests === requestsBeforeIntro && latestHls === null);
+check("intro gates secure stream fetching", $("playerDialog").hasAttribute("open") && !$("introOverlay").hidden && $("introOverlay").style.getPropertyValue("--intro-duration") === "8s" && $("introChannel").textContent === "Free Demo TV" && streamRequests === requestsBeforeIntro && latestHls === null);
 $("playerSkip").click(); await sleep();
 check("skipping intro attaches signed HLS", latestHls?.url.includes("/s/") && latestHls?.video === $("liveVideo") && streamRequests === requestsBeforeIntro + 1);
-latestHls.handlers.error(null, { fatal: true });
-check("fatal stream error is visible with retry", $("playerStatus").classList.contains("err") && !$("playerRetry").hidden);
+const failedLiveHls = latestHls;
+failedLiveHls.handlers.error(null, { fatal: true });
+check("fatal stream error plays offline video with retry", $("playerStatus").classList.contains("err") && !$("playerRetry").hidden && latestHls?.url.includes("channel-offline"));
+const fallbackHls = latestHls;
+failedLiveHls.handlers.error(null, { fatal: true }); failedLiveHls.handlers.manifest();
+check("stale live callbacks cannot replace offline fallback", latestHls === fallbackHls && $("playerStatus").textContent.includes("offline"));
 const previousHls = latestHls;
 $("playerRetry").click(); await sleep();
 check("retry skips repeated intro and creates a fresh player", $("introOverlay").hidden && latestHls !== previousHls && !latestHls.destroyed);
@@ -104,7 +111,7 @@ $("playerClose").click(); $("liveVideo").dispatchEvent(new window.Event("ended")
 check("closing during intro cancels later playback", streamRequests === requestsBeforeIntroClose && !$("playerDialog").hasAttribute("open") && !$("liveVideo").getAttribute("src"));
 
 document.querySelector("[data-channel='ch_pro']").click(); await sleep(30); $("playerSkip").click(); await sleep();
-check("PRO channel shows trial gate instead of fake playback", !$("playerPro").hidden && $("liveVideo").hidden && $("playerStatus").textContent.includes("PRO"));
+check("PRO channel shows trial gate and recharge video", !$("playerPro").hidden && !$("liveVideo").hidden && latestHls?.url.includes("pro-unlock") && $("playerStatus").textContent.includes("PRO"));
 $("playerClose").click();
 
 let releaseSlowStream;
@@ -113,6 +120,18 @@ const hlsBeforeCancelledRequest = latestHls;
 document.querySelector("[data-channel='ch_free']").click(); await sleep(30); $("playerSkip").click(); await sleep(30);
 $("playerClose").click(); streamGate = null; releaseSlowStream(); await sleep();
 check("closing during delayed secure fetch prevents late background playback", latestHls === hlsBeforeCancelledRequest && !$("playerDialog").hasAttribute("open"));
+
+speedUpIntro = true;
+const beforeTimedIntro = streamRequests;
+document.querySelector("[data-channel='ch_free']").click(); await sleep(30);
+$("liveVideo").dispatchEvent(new window.Event("ended")); await sleep(20);
+check("short intro video ending does not skip the timed intro", streamRequests === beforeTimedIntro && !$("introOverlay").hidden);
+await sleep(100);
+check("eight-second intro transitions automatically to the selected channel", streamRequests === beforeTimedIntro + 1 && latestHls?.url.includes("/s/") && $("introOverlay").hidden);
+$("playerClose").click(); speedUpIntro = false;
+$("cinemaPreview").click(); await sleep(30);
+check("cinema preview plays coming-soon video", $("playerDialog").hasAttribute("open") && latestHls?.url.includes("coming-soon") && $("playerTitle").textContent.includes("Movies"));
+$("playerClose").click();
 
 $("trialEmail").value = "new@test.com";
 $("trialWa").value = "03000000000";

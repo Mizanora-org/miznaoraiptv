@@ -50,6 +50,7 @@ window.fetch = async (url, options = {}) => {
     return J({ ok: true, reseller: { code: state.code, name: state.name, status: "active", credits: state.credits, pricing: state.pricing }, stats: { active, expired: 0, suspended: state.clients.length - active }, finance: { credits: state.credits, collectedTotal: state.payments.reduce((sum, p) => sum + p.amount, 0) }, clients: state.clients.map(publicClient) });
   }
   if (action === "reseller/ledger") return J({ ok: true, payments: state.payments });
+  if (action === "reseller/report") return J({ ok: true, report: { expiringClients: [{ username: "due_soon", daysLeft: 3, expDate: 1999999999 }], activity: [{ action: "client.created", at: "2026-11-02T10:00:00Z", detail: { username: "existing" } }] } });
   if (action === "reseller/client-create") {
     if (state.credits < 1) return J({ ok: false, error: "Insufficient credits" }, 402);
     state.credits -= 1;
@@ -87,6 +88,7 @@ check("invalid dealer password stays locked with visible error", $("resellerApp"
 $("dealerPassword").value = "dealerpass";
 await submit("resellerLoginForm");
 check("code/password login loads dashboard and clients", !$("resellerApp").hidden && $("dealerName").textContent === "DOM Dealer" && $("dealerClients").textContent.includes("existing"));
+check("expiring clients and business activity render on dashboard", $("dealerExpiring").textContent.includes("due_soon") && $("dealerActivity").textContent.includes("client.created"));
 check("password authentication is sent in request body", state.lastRequest.body.code === "DOMDEALER" && state.lastRequest.body.password === "dealerpass" && !state.lastRequest.headers["x-api-key"]);
 
 $("clientName").value = "New DOM Client"; $("clientWhatsapp").value = "03000000000"; $("clientPlan").value = "monthly"; $("clientAmount").value = "250";
@@ -122,7 +124,7 @@ check("post-rotation requests authenticate with x-api-key", state.lastRequest.he
 document.querySelector("[data-dealer-del='dom_client']").click(); await sleep(220);
 check("dealer can delete only the selected client from workspace", !state.clients.some((c) => c.username === "dom_client") && state.clients.some((c) => c.username === "existing"));
 $("dealerLogout").click();
-check("logout removes session credentials and relocks panel", !$("resellerAuth").hidden && $("resellerApp").hidden && !window.sessionStorage.getItem("mz_reseller_auth"));
+check("logout removes session credentials and relocks panel", !$("resellerAuth").hidden && $("resellerApp").hidden && !window.sessionStorage.getItem("mz_reseller_auth") && $("credentialOut").hidden && !$("credentialOut").textContent.includes("mzr_rotated_dom"));
 
 $("regName").value = "Registered Dealer"; $("regEmail").value = "new@dealer.test"; $("regWhatsapp").value = "03001112222"; $("regPassword").value = "newpass";
 await submit("resellerRegisterForm");

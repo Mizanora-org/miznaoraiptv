@@ -1,5 +1,14 @@
 # Changelog
 
+## 5.1.0 — 2026-11-02
+
+- Add reseller business reports, activity history and upcoming-expiry dashboard.
+- Give owner reseller report, suspension and reactivation controls.
+- Scope reports per reseller, exclude passwords from client lists and validate top-ups.
+- Add integration guidance for a separate website backend and animated README banner.
+- Prevent client-supplied start dates from overriding reseller plan dates.
+
+
 ## 5.0.0 — 2026-11-02
 
 ### Added

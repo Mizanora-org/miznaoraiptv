@@ -37,6 +37,10 @@
     if (button) { button.disabled = value; button.dataset.original ||= button.textContent; button.textContent = value ? "Please wait…" : button.dataset.original; }
   }
   function showAuth(message = "") {
+    STATE.credentials = "";
+    STATE.clients = [];
+    STATE.payments = [];
+    if ($("credentialOut")) { $("credentialOut").hidden = true; $("credentialOut").replaceChildren(); }
     if ($("resellerAuth")) $("resellerAuth").hidden = false;
     if ($("resellerApp")) $("resellerApp").hidden = true;
     if ($("dealerLogout")) $("dealerLogout").hidden = true;
@@ -101,9 +105,12 @@
   }
   async function loadDashboard() {
     setText("dealerNotice", "Refreshing dealer data…");
-    const [dashboard, ledger] = await Promise.all([api("reseller/me"), api("reseller/ledger")]);
+    const [dashboard, ledger, reportData] = await Promise.all([api("reseller/me"), api("reseller/ledger"), api("reseller/report")]);
     renderDashboard(dashboard);
     STATE.payments = ledger.payments || [];
+    const report = reportData.report || {};
+    if ($("dealerExpiring")) $("dealerExpiring").innerHTML = (report.expiringClients || []).map((c) => `<tr><td>${esc(c.username)}</td><td>${Number(c.daysLeft || 0)}</td><td>${expiryText(c)}</td></tr>`).join("") || '<tr><td colspan="3" class="empty">No clients expiring in the next 7 days.</td></tr>';
+    if ($("dealerActivity")) $("dealerActivity").innerHTML = (report.activity || []).slice(0, 20).map((event) => `<tr><td>${esc(event.action)}</td><td>${esc(event.detail?.username || (event.detail?.credits ? `+${event.detail.credits} credits` : "—"))}</td><td>${esc(String(event.at || "").replace("T", " ").slice(0, 16))}</td></tr>`).join("") || '<tr><td colspan="3" class="empty">No activity recorded yet.</td></tr>';
     if ($("dealerLedger")) $("dealerLedger").innerHTML = STATE.payments.slice(0, 20).map((payment) => `<tr><td>${esc(payment.username)}</td><td>Rs ${Number(payment.amount || 0)}</td><td>${Number(payment.months || 0)}</td><td>${esc(String(payment.at || "").slice(0, 10))}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">No payments recorded yet.</td></tr>';
     setText("dealerNotice", `Last refreshed ${new Date().toLocaleTimeString()}`);
     showApp();

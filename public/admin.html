@@ -6,7 +6,7 @@
 <title>🛡️ Mizanora IPTV — Admin Panel</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" href="/assets/css/admin.css?v=5.0.0">
+<link rel="stylesheet" href="/assets/css/admin.css?v=5.1.0">
 </head>
 <body data-bw-app="admin">
 
@@ -154,7 +154,7 @@
       <div class="card"><h3>🎞️ Welcome intro &amp; playback</h3>
         <div class="settings-grid">
           <label class="span-2">Welcome intro video URL<input id="stWelcome" placeholder="/media/welcome/video.mp4"></label>
-          <label>Intro duration (seconds)<input id="stWelcomeDuration" type="number" min="1" max="30" value="4"></label>
+          <label>Intro duration (seconds)<input id="stWelcomeDuration" type="number" min="1" max="30" value="8"></label>
           <label class="check settings-check"><input id="stWelcomeEnabled" type="checkbox"> Play intro before channel fetch</label>
           <label class="check settings-check"><input id="stWelcomeSkippable" type="checkbox"> Show Skip intro button</label>
           <label class="span-2">Offline fallback video URL<input id="stOffline" placeholder="Offline video URL"></label>
@@ -177,7 +177,8 @@
     <section id="viewResellers" hidden>
       <div class="card"><h3>🏪 Resellers <span class="right"><input id="rsSearch" type="search" placeholder="Search resellers…" aria-label="Search resellers"><a class="btn btn-ghost btn-sm" href="/reseller" target="_blank" rel="noopener">↗ Dealer panel</a><button class="btn btn-primary btn-sm" id="rsAddBtn">＋ Create</button></span></h3>
         <div id="resellerNewCard" class="card secret-card" hidden><b>New reseller credentials — copy API key now:</b><pre id="resellerNewValue" class="mono"></pre><button class="btn btn-ghost btn-sm" id="resellerCopyBtn" type="button">📋 Copy</button></div>
-        <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Credits</th><th>Status</th><th>Actions</th></tr></thead><tbody id="rsBody"></tbody></table></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Credits</th><th>Status</th><th>Actions</th></tr></thead><tbody id="rsBody"></tbody></table></div>
+        <div id="rsReport" class="card" hidden aria-live="polite"></div></div>
     </section>
 
     <section id="viewOrders" hidden>
@@ -208,6 +209,6 @@
   </form>
 </dialog>
 <div id="toasts" aria-live="polite"></div>
-<script type="module" src="/assets/js/admin.js?v=5.0.0"></script>
+<script type="module" src="/assets/js/admin.js?v=5.1.1"></script>
 </body>
 </html>

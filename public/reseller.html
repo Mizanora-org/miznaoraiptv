@@ -7,8 +7,8 @@
 <meta name="description" content="Mizanora IPTV reseller dashboard for credits, clients, renewals, payments and API integration.">
 <meta name="robots" content="noindex,nofollow">
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" href="/assets/css/site.css?v=5.0.0">
-<link rel="stylesheet" href="/assets/css/reseller.css?v=5.0.0">
+<link rel="stylesheet" href="/assets/css/site.css?v=5.1.0">
+<link rel="stylesheet" href="/assets/css/reseller.css?v=5.1.0">
 </head>
 <body class="dealer-body">
 <header><div class="wrap nav">
@@ -70,6 +70,10 @@
 
     <div class="panel-card"><div class="section-title"><h2>👥 My clients</h2><input id="dealerClientSearch" type="search" placeholder="Search clients…" aria-label="Search clients"></div><div class="table-wrap"><table><thead><tr><th>User</th><th>Plan</th><th>Status</th><th>Days left</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="dealerClients"></tbody></table></div></div>
     <div class="dealer-grid">
+      <div class="panel-card"><h2>⏳ Expiring in 7 days</h2><p>Active clients approaching expiry. Refresh to see the latest data.</p><div class="table-wrap"><table><thead><tr><th>Client</th><th>Days left</th><th>Expiry</th></tr></thead><tbody id="dealerExpiring"></tbody></table></div></div>
+      <div class="panel-card"><h2>📈 Business activity</h2><p>Recent account, client, payment and credit changes. This is not viewer tracking.</p><div class="table-wrap"><table><thead><tr><th>Event</th><th>Client / credits</th><th>Date</th></tr></thead><tbody id="dealerActivity"></tbody></table></div></div>
+    </div>
+    <div class="dealer-grid">
       <form class="panel-card" id="paymentForm"><h2>🧾 Record payment / extension</h2><p>Each extension month consumes one credit.</p><div class="field-grid"><label class="span-2">Client username<input id="paymentUsername" required></label><label>Amount PKR<input id="paymentAmount" type="number" min="0" required></label><label>Extension months<input id="paymentMonths" type="number" min="0" max="120" value="0"></label><label>Method<select id="paymentVia"><option>cash</option><option>JazzCash</option><option>EasyPaisa</option><option>bank</option></select></label></div><button class="btn btn-gold" type="submit">Record payment</button></form>
       <div class="panel-card"><h2>📚 Recent ledger</h2><div class="table-wrap"><table><thead><tr><th>Client</th><th>Amount</th><th>Months</th><th>Date</th></tr></thead><tbody id="dealerLedger"></tbody></table></div></div>
     </div>
@@ -77,5 +81,5 @@
 </main>
 <footer><div class="wrap"><p>Mizanora IPTV Reseller Suite · <a href="/">Main site</a> · <a href="/developers">Developer guide</a> · WhatsApp 0306-2015326</p></div></footer>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script src="/assets/js/reseller.js?v=5.0.0" defer></script>
+<script src="/assets/js/reseller.js?v=5.1.0" defer></script>
 </body></html>
