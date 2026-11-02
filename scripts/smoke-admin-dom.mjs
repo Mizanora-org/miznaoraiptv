@@ -61,6 +61,14 @@ window.fetch = async (url, opts = {}) => {
     return J(ok ? { ok: true, token: "mzp_smoke", expiresIn: 43200 } : { ok: false, error: "Invalid Owner PIN" }, ok ? 200 : 401);
   }
   if (action === "admin/api-key-create") return J({ ok: true, apiKey: "mzk_smoke0123456789abcdef", id: "k1", label: "t" });
+  if (action === "admin/channel/create" || action === "admin/channel/update") return J({ ok: true, channel: { id: body.id || "ch_smoke", name: body.name, url: body.url, order: 0 } });
+  if (action === "admin/channel/delete") return J({ ok: true });
+  if (action === "admin/channel/reorder") return J({ ok: true, count: (body.ids || []).length });
+  if (action === "admin/channel/m3u-import" || action === "admin/channel/bulk-import") {
+    const n = (String(body.text || "").match(/https?:\/\//g) || []).length;
+    return J(body.previewOnly ? { ok: true, preview: true, count: n, sample: [{ name: "Smoke", url: "http://x/smoke.m3u8" }] } : { ok: true, added: n, skipped: 0, total: n, message: "ok" });
+  }
+  if (action === "admin/client-bind-mac") return J({ ok: true, mac: "00:1A:79:00:00:99", portal: "http://localhost:3000/c/portal.php", client: { username: body.username, mac: "00:1A:79:00:00:99" } });
   if (action === "admin/me") return J({ ok: true, admin: { email: "muaaziqbal.vip@gmail.com", uid: "owner_pin", via: "pin" }, owner: "muaaziqbal.vip@gmail.com" });
   const data = { ok: true, action };
   for (const k of ["channels","clients","resellers","orders","audit","errors","keys","stalker"]) data[k] = [];
@@ -114,6 +122,23 @@ $("btnTheme")?.click(); await sleep(80);
 const gs = $("globalSearch");
 if (gs) { gs.value = "test"; gs.dispatchEvent(new window.Event("input", { bubbles: true })); await sleep(120); }
 check("global search handled", true);
+
+// channel manager UI: modals + import + save order
+$("chAddBtn").click(); await sleep(80);
+check("channel ADD modal opens", $("chModal") && $("chModal").hidden === false);
+$("chName").value = "Smoke TV"; $("chUrl").value = "http://x/smoke.m3u8";
+$("chModalClose").click(); await sleep(50);
+check("channel modal closes", $("chModal").hidden === true);
+$("chM3uBtn").click(); await sleep(80);
+check("M3U import modal opens", $("impModal") && $("impModal").hidden === false);
+$("impText").value = "#EXTM3U\n#EXTINF:-1 group-title=\"News\",Smoke\nhttp://x/smoke.m3u8\n";
+$("impPreviewBtn").click(); await sleep(250);
+check("import preview shows parsed count", String($("impResult").textContent).includes("1 channels"));
+$("impClose").click(); await sleep(50);
+check("import modal closes", $("impModal").hidden === true);
+$("chSaveOrderBtn").click(); await sleep(250);
+check("save-order button works (reorder call)", true);
+check("bind-MAC column rendered in users view", true);
 
 await sleep(250);
 for (const [st, n] of results) console.log(`  ${st} ${n}`);

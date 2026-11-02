@@ -65,6 +65,17 @@ export async function getClient(username) {
   const c = await readNode(`clients/${String(username || "").toLowerCase()}`);
   return normalizeClient(c);
 }
+export function generateMac() {
+  // locally-administered MAC in the MAG-friendly 00:1A:79 range
+  return "00:1A:79:" + [0, 0, 0].map(() => randomHex(1).toUpperCase().padStart(2, "0")).join(":");
+}
+export async function ensureClientMac(client) {
+  if (client.mac) return client.mac;
+  const mac = generateMac();
+  await updateClient(client.username, { mac });
+  await stalkerHandshake(mac); // pre-register portal session
+  return mac;
+}
 export async function createClient(input = {}) {
   const plan = getPlan(input.planId) || PLANS.find((p) => p.id === "monthly") || PLANS[1];
   const username = (String(input.username || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "") || "mz" + randomHex(3)).slice(0, 24);
@@ -87,7 +98,14 @@ export async function createClient(input = {}) {
   };
   await writeNode(`clients/${username}`, client);
   await mirrorXtream(client);
-  await pushAudit("client.created", { username, planId: plan.id, resellerCode: client.resellerCode });
+  // har user ko Xtream + Stalker dono: auto MAC bind (unless explicitly disabled)
+  if (input.autoMac !== false && !client.mac) {
+    client.mac = generateMac();
+    await writeNode(`clients/${username}`, client);
+    await mirrorXtream(client);
+    await stalkerHandshake(client.mac);
+  }
+  await pushAudit("client.created", { username, planId: plan.id, resellerCode: client.resellerCode, mac: client.mac });
   return client;
 }
 export async function mirrorXtream(c) {
@@ -377,6 +395,15 @@ export async function listChannels() {
   if (!arr.length) return DEFAULT_CHANNELS;
   return arr;
 }
+/** Stored channels (sorted), seeding the default catalog on first run. */
+export async function getChannels() {
+  let raw = await listChannelsRaw();
+  if (!raw.length) {
+    await saveChannels(DEFAULT_CHANNELS.map((c, i) => ({ ...c, id: c.id || "ch" + randomHex(4), order: i })));
+    raw = await listChannelsRaw();
+  }
+  return raw.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
 
 /* ---------------- signed stream links ---------------- */
 const STREAM_SECRET = process.env.MZ_STREAM_SECRET || "mizanora-iptv-stream-v3";
@@ -410,6 +437,108 @@ export async function stalkerProfile(mac, token) {
 export async function listStalkerClients() {
   const clients = await listClients();
   return clients.filter((c) => c.mac).map((c) => ({ username: c.username, mac: c.mac, status: c.status, expired: c.expired, expDate: c.expDate, resellerCode: c.resellerCode }));
+}
+
+/* ---------------- channel manager (CRUD / sort / bulk / M3U) ---------------- */
+export function parseM3u(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  const out = [];
+  let cur = {};
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) continue;
+    if (t.startsWith("#EXTINF:")) {
+      const m = t.match(/tvg-logo="([^"]*)"/) || t.match(/tvg-logo='([^']*)'/) || t.match(/tvg-logo=([^,\s]+)/);
+      const g = t.match(/group-title="([^"]*)"/) || t.match(/group-title='([^']*)'/) || t.match(/group-title=([^,\s]+)/);
+      const name = t.includes(",") ? t.slice(t.lastIndexOf(",") + 1).trim() : "";
+      cur = { name, logo: m ? m[1] : "", group: g ? g[1] : "Imported" };
+    } else if (t.startsWith("#")) {
+      continue;
+    } else if (cur.name || cur.url === undefined) {
+      if (cur.name !== undefined) { cur.url = t; }
+      out.push(cur); cur = {};
+    }
+  }
+  return out.filter((c) => c.url && /^https?:\/\//.test(c.url)).map((c, i) => ({
+    id: "ch" + randomHex(4), name: c.name || "Channel " + (i + 1), url: c.url,
+    logo: c.logo || "", category: c.group || "Imported", tier: "pro", order: i, source: "m3u"
+  }));
+}
+export function parseBulkLines(text) {
+  // formats: JSON array  OR  lines "name | url | logo | group | tier"
+  const t = String(text || "").trim();
+  if (t.startsWith("[")) {
+    try {
+      const arr = JSON.parse(t);
+      return arr.filter((c) => c && c.url).map((c, i) => ({ id: "ch" + randomHex(4), name: String(c.name || "Channel " + (i + 1)).slice(0, 120), url: String(c.url).slice(0, 500), logo: String(c.logo || "").slice(0, 500), category: String(c.category || c.group || "Bulk").slice(0, 60), tier: c.tier === "free" ? "free" : "pro", order: i, source: "bulk" }));
+    } catch { return []; }
+  }
+  return t.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l, i) => {
+    const parts = l.split("|").map((x) => x.trim());
+    return { id: "ch" + randomHex(4), name: (parts[0] || "Channel " + (i + 1)).slice(0, 120), url: (parts[1] || "").slice(0, 500), logo: (parts[2] || "").slice(0, 500), category: (parts[3] || "Bulk").slice(0, 60), tier: parts[4] === "free" ? "free" : "pro", order: i, source: "bulk" };
+  }).filter((c) => /^https?:\/\//.test(c.url));
+}
+export async function listChannelsRaw() {
+  const ch = (await rtdbGet("channels")) || {};
+  return Array.isArray(ch) ? ch : Object.values(ch || {});
+}
+export async function saveChannels(list) {
+  const obj = {};
+  list.forEach((c, i) => { obj[c.id || "ch" + i] = { ...c, order: i }; });
+  await rtdbSet("channels", obj);
+  return obj;
+}
+export async function upsertChannel(input = {}) {
+  const id = String(input.id || "ch" + randomHex(4));
+  const all = await listChannelsRaw();
+  const existing = all.find((c) => c.id === id) || {};
+  const ch = {
+    ...existing, ...input, id,
+    name: String(input.name ?? existing.name ?? "").slice(0, 120),
+    url: String(input.url ?? existing.url ?? "").slice(0, 500),
+    logo: String(input.logo ?? existing.logo ?? "").slice(0, 500),
+    category: String(input.category ?? existing.category ?? "General").slice(0, 60),
+    tier: input.tier === "free" ? "free" : "pro",
+    previewVideoUrl: String(input.previewVideoUrl ?? existing.previewVideoUrl ?? "").slice(0, 500),
+    order: Number(input.order ?? existing.order ?? all.length)
+  };
+  if (!/^https?:\/\//.test(ch.url)) throw new Error("Channel URL must start with http(s)://");
+  const obj = {};
+  (await listChannelsRaw()).forEach((c) => { obj[c.id] = c; });
+  obj[id] = ch;
+  await rtdbSet("channels", obj);
+  await pushAudit("channel.upsert", { id, name: ch.name });
+  return ch;
+}
+export async function deleteChannel(id) {
+  const obj = {};
+  (await listChannelsRaw()).forEach((c) => { if (c.id !== id) obj[c.id] = c; });
+  await rtdbSet("channels", obj);
+  await pushAudit("channel.delete", { id });
+  return true;
+}
+export async function reorderChannels(ids) {
+  const all = await listChannelsRaw();
+  const byId = new Map(all.map((c) => [c.id, c]));
+  const ordered = (ids || []).map((id) => byId.get(id)).filter(Boolean);
+  for (const c of all) if (!ordered.find((o) => o.id === c.id)) ordered.push(c);
+  await saveChannels(ordered);
+  await pushAudit("channel.reorder", { count: ordered.length });
+  return ordered.length;
+}
+export async function importChannels(parsed, { replace = false } = {}) {
+  const all = replace ? [] : await listChannelsRaw();
+  const have = new Set(all.map((c) => c.url));
+  let added = 0, skipped = 0;
+  for (const c of parsed) {
+    if (have.has(c.url)) { skipped++; continue; }
+    all.push({ ...c, order: all.length });
+    have.add(c.url);
+    added++;
+  }
+  await saveChannels(all);
+  await pushAudit("channel.import", { added, skipped, replace });
+  return { added, skipped, total: all.length, sample: parsed.slice(0, 5).map((c) => c.name) };
 }
 
 export function publicConfig(base) {

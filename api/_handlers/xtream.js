@@ -5,7 +5,7 @@
  */
 import { handleOptions, parseQuery, sendJson, getRequestBaseUrl, verifyPayload, normalizeMac } from "../_lib/util.js";
 import { rtdbGet } from "../_lib/rtdb.js";
-import { signStreamFor } from "../_lib/store.js";
+import { signStreamFor, getChannels } from "../_lib/store.js";
 
 async function findAccount(username) {
   const u = String(username || "").toLowerCase();
@@ -39,7 +39,7 @@ export default async function xtreamHandler(req, res) {
     if (!isLive(acc)) {
       return sendJson(res, 200, { user_info: { auth: 0, status: "Expired", message: "Subscription expired — recharge WhatsApp 0306-2015326" } });
     }
-    const channels = await rtdbGet("channels");
+    const channels = await getChannels();
     const cats = {};
     for (const ch of Object.values(channels || {})) {
       const cat = ch.category || "General";
@@ -72,7 +72,7 @@ export default async function xtreamHandler(req, res) {
       res.writeHead(401, { "Content-Type": "text/plain" });
       return res.end("Invalid credentials or expired");
     }
-    const channels = Object.values((await rtdbGet("channels")) || {});
+    const channels = await getChannels();
     const type = String(q.type || "m3u");
     let out = "#EXTM3U\n";
     for (const [i, ch] of channels.entries()) {
@@ -91,7 +91,7 @@ export default async function xtreamHandler(req, res) {
       res.writeHead(401, { "Content-Type": "text/plain" });
       return res.end("Invalid credentials");
     }
-    const channels = Object.values((await rtdbGet("channels")) || {});
+    const channels = await getChannels();
     let out = '<?xml version="1.0" encoding="UTF-8"?>\n<tv generator-info-name="Mizanora IPTV">\n';
     for (const [i, ch] of channels.entries()) {
       const id = ch.id || String(i + 1);

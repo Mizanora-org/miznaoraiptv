@@ -82,8 +82,17 @@
     </section>
 
     <section id="viewChannels" hidden>
-      <div class="card"><h3>📺 Channels <span class="right"><input id="chSearch" placeholder="search…"><button class="btn btn-primary btn-sm" id="chAddBtn">＋ Add</button></span></h3>
-        <table><thead><tr><th>#</th><th>Logo</th><th>Name</th><th>Group</th><th>URL</th></tr></thead><tbody id="chBody"></tbody></table></div>
+      <div class="card"><h3>📺 Channel Manager
+        <span class="right">
+          <input id="chSearch" placeholder="🔍 search…">
+          <button class="btn btn-ghost btn-sm" id="chBulkBtn">📥 Bulk import</button>
+          <button class="btn btn-ghost btn-sm" id="chM3uBtn">🎵 M3U import</button>
+          <button class="btn btn-ghost btn-sm" id="chSaveOrderBtn" title="Drag rows, phir save">💾 Save order</button>
+          <button class="btn btn-primary btn-sm" id="chAddBtn">＋ Add channel</button>
+        </span></h3>
+        <table><thead><tr><th></th><th>#</th><th>Logo</th><th>Name</th><th>Group</th><th>Tier</th><th>Preview video</th><th>URL</th><th>Actions</th></tr></thead><tbody id="chBody"></tbody></table>
+        <p style="color:var(--dim);font-size:.72rem;margin:8px 0 0">Tip: rows ko drag karke order badlo → 💾 Save order. M3U paste karo → parse → import.</p>
+      </div>
     </section>
 
     <section id="viewPlaylists" hidden>
@@ -118,7 +127,7 @@
 
     <section id="viewUsers" hidden>
       <div class="card"><h3>👤 Panel clients <span class="right"><input id="usSearch" placeholder="search…"></span></h3>
-        <table><thead><tr><th>User</th><th>WhatsApp</th><th>Reseller</th><th>Status</th><th>Days left</th></tr></thead><tbody id="usBody"></tbody></table></div>
+        <table><thead><tr><th>User</th><th>WhatsApp</th><th>MAC / Stalker</th><th>Reseller</th><th>Status</th><th>Days left</th><th></th></tr></thead><tbody id="usBody"></tbody></table></div>
     </section>
 
     <section id="viewSettings" hidden>
@@ -148,7 +157,7 @@
     <section id="viewStalker" hidden>
       <div class="card"><h3>🛰️ Stalker / MAG clients <span class="right"><button class="btn btn-ghost btn-sm" id="stRefreshBtn">🔄 Refresh</button></span></h3>
         <table><thead><tr><th>MAC</th><th>User</th><th>Status</th><th>Expiry</th></tr></thead><tbody id="stBody"></tbody></table>
-        <p style="color:var(--dim);font-size:.76rem;margin:10px 0 0">MAG box: Portal <code id="portalUrl"></code> + MAC</p></div>
+        <p style="color:var(--dim);font-size:.76rem;margin:10px 0 0">MAG box: Portal <code id="portalUrl"></code> + MAC &nbsp; <button class="btn btn-ghost btn-sm" id="copyPortalBtn">📋 Copy</button></p></div>
     </section>
 
     <section id="viewApiKeys" hidden>
@@ -157,6 +166,43 @@
         <table><thead><tr><th>Label</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody id="keyBody"></tbody></table></div>
     </section>
   </main>
+</div>
+
+<!-- ══════ Channel edit modal ══════ -->
+<div class="modal" id="chModal" hidden>
+  <div class="modal-card">
+    <h3 id="chModalTitle">＋ Add channel</h3>
+    <input type="hidden" id="chId">
+    <label>Name</label><input id="chName" placeholder="Geo News HD">
+    <label>Stream URL</label><input id="chUrl" placeholder="https://…/index.m3u8">
+    <label>Logo URL</label><input id="chLogo" placeholder="https://…/logo.png">
+    <label>Group / Category</label><input id="chGroup" placeholder="News">
+    <label>Tier</label><select id="chTier"><option value="pro">👑 PRO</option><option value="free">🆓 Free</option></select>
+    <label>Animation / preview video URL</label><input id="chPreview" placeholder="/media/…/preview.mp4 (hover par chalegi)">
+    <label>Order</label><input id="chOrder" type="number" placeholder="0">
+    <div class="row" style="margin-top:14px;justify-content:flex-end">
+      <button class="btn btn-ghost" id="chModalClose">Cancel</button>
+      <button class="btn btn-primary" id="chModalSave">💾 Save channel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ Import modal (Bulk / M3U) ══════ -->
+<div class="modal" id="impModal" hidden>
+  <div class="modal-card" style="width:min(680px,94vw)">
+    <h3 id="impTitle">📥 Import channels</h3>
+    <label>Format</label>
+    <select id="impMode"><option value="m3u">🎵 M3U playlist (paste)</option><option value="bulk">📥 Bulk lines: name | url | logo | group | tier</option><option value="json">🧾 JSON array</option></select>
+    <label>Data</label>
+    <textarea id="impText" rows="10" placeholder="#EXTM3U&#10;#EXTINF:-1 tvg-logo=&quot;logo.png&quot; group-title=&quot;News&quot;,Geo News&#10;https://server/get.php…"></textarea>
+    <label class="row" style="gap:6px;font-size:.78rem;color:var(--dim)"><input type="checkbox" id="impReplace"> Replace ALL existing channels (danger)</label>
+    <div class="row" style="margin-top:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" id="impPreviewBtn">👁 Preview parse</button>
+      <button class="btn btn-ghost" id="impClose">Cancel</button>
+      <button class="btn btn-gold" id="impGoBtn">🚀 Import now</button>
+    </div>
+    <div id="impResult" class="mono" style="margin-top:10px;font-size:.74rem;max-height:140px;overflow:auto;color:var(--dim)"></div>
+  </div>
 </div>
 
 <div id="toasts"></div>

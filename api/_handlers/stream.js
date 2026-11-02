@@ -2,7 +2,7 @@
  * Mizanora IPTV — signed stream links /s/<token> (HMAC-SHA256, TTL 900s), fresh rebuild.
  */
 import { handleOptions, parseQuery, sendJson, getRequestBaseUrl, verifyPayload } from "../_lib/util.js";
-import { rtdbGet } from "../_lib/rtdb.js";
+import { getChannels } from "../_lib/store.js";
 
 const STREAM_SECRET = process.env.MZ_STREAM_SECRET || "mizanora-iptv-stream-v3";
 
@@ -18,8 +18,7 @@ export default async function streamHandler(req, res) {
     }
     // serve a tiny playlist pointing at the real channel stream
     const chId = String(payload.f || "").replace(/\.m3u8$/, "");
-    const channels = (await rtdbGet("channels")) || {};
-    const arr = Array.isArray(channels) ? channels : Object.values(channels);
+    const arr = await getChannels();
     const ch = arr.find((c) => String(c.id) === chId) || arr[0];
     const url = ch?.url || "/media/coming-soon/index.m3u8";
     const body = `#EXTM3U\n#EXTINF:-1,${ch?.name || "Mizanora IPTV"},\n${url.startsWith("http") ? url : base + url}\n`;

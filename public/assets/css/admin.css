@@ -99,3 +99,21 @@ tr:hover td{background:rgba(52,211,153,.05)}
 .toast.err{border-color:var(--danger);color:#fecaca}
 @keyframes tin{from{transform:translateY(12px);opacity:0}}
 .hidden{display:none!important}
+
+/* ---------- modals / channel manager (upgrade) ---------- */
+.modal{position:fixed;inset:0;z-index:150;background:rgba(2,10,6,.7);backdrop-filter:blur(6px);display:grid;place-items:center}
+.modal[hidden]{display:none}
+.modal-card{width:min(480px,94vw);background:var(--panel2);border:1px solid var(--line2);border-radius:20px;padding:22px;box-shadow:var(--sh);max-height:90vh;overflow:auto}
+.modal-card h3{margin:0 0 12px}
+.modal-card label{display:block;font-size:.7rem;color:var(--dim);margin:10px 0 4px}
+.modal-card input,.modal-card select,.modal-card textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(3,14,9,.7);color:var(--text);font-size:.84rem;outline:none;font-family:inherit}
+[data-theme="light"] .modal-card input,[data-theme="light"] .modal-card select,[data-theme="light"] .modal-card textarea{background:#fff}
+.modal-card input:focus,.modal-card select:focus,.modal-card textarea:focus{border-color:var(--primary)}
+.drag-handle{cursor:grab;user-select:none;color:var(--dim);text-align:center}
+tr.dragging{opacity:.4}
+tr.drag-over td{background:rgba(245,196,81,.12)}
+.ch-preview{position:relative}
+.ch-preview video{display:none;position:absolute;bottom:110%;left:0;width:220px;border-radius:10px;border:1px solid var(--gold);z-index:5;box-shadow:var(--sh)}
+.ch-preview:hover video{display:block}
+.badge.free{background:rgba(52,211,153,.15);color:var(--ok)}
+.badge.pro{background:rgba(245,196,81,.18);color:var(--gold2)}

@@ -161,6 +161,44 @@ check("new mzr_ works", r.status === 200 && r.body.ok);
 r = await post("/api/panel", { action: "reseller/client-delete", username: CU }, { "x-api-key": NEWK });
 check("reseller client-delete", r.status === 200 && r.body.ok);
 
+// ---- channel manager: CRUD + sort + bulk + M3U import ----
+const UQ = String(Date.now()).slice(-8); // unique per run (mirror persists between runs)
+r = await post("/api/panel", { action: "admin/channel/create", name: "Test Sports HD", url: `http://x/live/1-${UQ}.m3u8`, logo: "http://x/l.png", category: "Sports", tier: "pro", previewVideoUrl: "/media/coming-soon/index.m3u8" }, ph);
+check("channel create (with preview video)", r.status === 200 && r.body.ok && r.body.channel.id && r.body.channel.previewVideoUrl);
+const CH1 = r.body.channel.id;
+r = await post("/api/panel", { action: "admin/channel/update", id: CH1, name: "Test Sports 4K", tier: "pro" }, ph);
+check("channel update/edit", r.status === 200 && r.body.channel.name === "Test Sports 4K");
+r = await post("/api/panel", { action: "admin/channel/m3u-import", text: `#EXTM3U\n#EXTINF:-1 tvg-logo="http://x/a.png" group-title="News",Geo Test ${UQ}\nhttp://x/news/1-${UQ}.m3u8\n#EXTINF:-1 group-title="Sports",ARY Test ${UQ}\nhttp://x/sp/1-${UQ}.m3u8\n`, previewOnly: true }, ph);
+check("M3U import preview parses 2 channels", r.status === 200 && r.body.preview && r.body.count === 2);
+r = await post("/api/panel", { action: "admin/channel/m3u-import", text: `#EXTM3U\n#EXTINF:-1 group-title="News",Geo Test ${UQ}\nhttp://x/news/1-${UQ}.m3u8\n#EXTINF:-1 group-title="Sports",ARY Test ${UQ}\nhttp://x/sp/1-${UQ}.m3u8\n` }, ph);
+check("M3U import adds channels", r.status === 200 && r.body.ok && r.body.added >= 2);
+r = await post("/api/panel", { action: "admin/channel/bulk-import", text: `Express News ${UQ} | http://x/b1-${UQ}.m3u8 | http://x/b1.png | News | pro\nDunya News ${UQ} | http://x/b2-${UQ}.m3u8 || News | free` }, ph);
+check("bulk import (name|url|logo|group|tier)", r.status === 200 && r.body.ok && r.body.added === 2);
+r = await get("/api/panel?action=admin/channels", { headers: ph });
+const chIds = r.body.channels.map((c) => c.id);
+check("channel list sorted + has new channels", chIds.includes(CH1));
+const rev = [...chIds].reverse();
+r = await post("/api/panel", { action: "admin/channel/reorder", ids: rev }, ph);
+check("channel reorder/sort", r.status === 200 && r.body.ok);
+r = await get("/api/panel?action=admin/channels", { headers: ph });
+check("order persisted (first = last of old)", r.body.channels[0].id === rev[0]);
+r = await post("/api/panel", { action: "admin/channel/delete", id: CH1 }, ph);
+check("channel delete", r.status === 200 && r.body.ok);
+
+// ---- every user gets Xtream + Stalker: auto MAC + bind-mac ----
+r = await post("/api/panel", { action: "admin/xtream/create", name: "AutoMac User", days: 30 }, ph);
+check("xtream create auto-binds MAC (Xtream+Stalker)", r.status === 200 && r.body.client.mac && r.body.stalker?.portal);
+const AU = r.body.client.username, AMAC = r.body.client.mac;
+r = await get(`/portal.php?action=handshake&mac=${AMAC}`);
+check("stalker handshake for auto-MAC → active + username", r.status === 200 && r.body.js.user.status === "active" && r.body.js.user.username === AU);
+const AT = r.body.js.token;
+r = await get(`/stalker_portal/server/load.php?mac=${AMAC}&token=${AT}`);
+check("stalker load.php returns full Xtream+portal creds", r.status === 200 && r.body.js.user.password && r.body.js.server.player_api.includes("player_api.php"));
+r = await post("/api/panel", { action: "admin/client-bind-mac", username: AU }, ph);
+check("bind-mac rebind/regenerate works", r.status === 200 && r.body.mac);
+r = await post("/api/panel", { action: "admin/xtream/delete", username: AU }, ph);
+check("cleanup auto-mac user", r.status === 200);
+
 server.close();
 console.log(`\n${failed ? "❌" : "✅"} ${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

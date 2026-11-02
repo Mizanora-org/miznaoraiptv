@@ -23,7 +23,13 @@
       d.channels.slice(0, 24).forEach((c) => {
         const el = document.createElement("div");
         el.className = "ch";
-        el.innerHTML = (c.logo ? `<img src="${esc(c.logo)}" alt="">` : "📺") + `<span>${esc(c.name)}</span><em>${esc(c.group || "")}</em>`;
+        el.style.position = "relative";
+        el.innerHTML = (c.logo ? `<img src="${esc(c.logo)}" alt="">` : "📺") + `<span>${esc(c.name)}</span><em>${esc(c.group || "")}</em>` +
+          (c.previewVideo ? `<video muted loop playsinline preload="none" src="${esc(c.previewVideo)}" style="display:none;position:absolute;bottom:110%;left:0;width:230px;border-radius:10px;border:1px solid var(--gold);z-index:9;box-shadow:var(--shadow)"></video>` : "");
+        if (c.previewVideo) {
+          el.addEventListener("mouseenter", () => { const v = el.querySelector("video"); if (v) { v.style.display = "block"; v.play().catch(() => {}); } });
+          el.addEventListener("mouseleave", () => { const v = el.querySelector("video"); if (v) { v.pause(); v.style.display = "none"; } });
+        }
         grid.appendChild(el);
       });
     })
