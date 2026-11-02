@@ -1,1603 +1,433 @@
-import {
-  getRequestBaseUrl,
-  handleOptions,
-  parseBody,
-  parseQuery,
-  sendJson
-} from "../_lib/origin.js";
-import { checkRateLimit, getClientIp } from "../_lib/security.js";
-import { authenticateAdmin, getClientToken, setOwnerPin, verifyOwnerPin } from "../_lib/adminauth.js";
-import {
-  deviceFingerprint,
-  generateAdminApiKey,
-  generateLicenseKey,
-  generateResellerApiKey,
-  hashApiKey,
-  hashLicenseKey,
-  maskKey,
-  normalizeMac,
-  signPlayRequest,
-  verifyPlayToken
-} from "../_lib/licenses.js";
-import {
-  claimTrial,
-  clearPanelCache,
-  createClient,
-  createOrder,
-  createReseller,
-  getAnalytics,
-  getClient,
-  getOrder,
-  getResellerByApiKey,
-  getResellerByEmail,
-  getResellerByCode,
-  listAudit,
-  listClients,
-  listOrders,
-  listResellers,
-  listTrials,
-  normalizeClient,
-  normalizePricing,
-  renewClient,
-  recordClientPayment,
-  resellerFinance,
-  rechargeContactFor,
-  selfRegisterReseller,
-  setResellerPassword,
-  setResellerPricing,
-  listPayments,
-  pushAudit,
-  verifyResellerPassword,
-  suspendClient,
-  topUpCredits,
-  updateClient,
-  updateOrder,
-  updateReseller
-} from "../_lib/panelstore.js";
-import { getChannels, getPlaylistById, getMovies, getSeries, rtdbGet, rtdbSet } from "../_lib/rtdb.js";
-import { PLANS, PANEL, PAYMENT, FEATURE_MATRIX, RESELLER_TIERS, SELF_SERVE, KEYWORDS, priceForPlan } from "../../data/panel.js";
-import { BRAND, DEFAULT_SETTINGS } from "../../data/catalog.js";
-import { getAnalyticsDashboardSnapshot, listClientErrors } from "../_lib/tracker.js";
-
 /**
- * Mizanora IPTV — Unified IPTV Panel API
- * ------------------------------------------------------------------
- * Public:      config, plans, order/create, order/status, trial, resolve
- * Reseller:    login, clients, client/create, client/renew, links, stats
- * Admin:       analytics, orders, order/review, resellers, reseller/create,
- *              credits/topup, clients, client/create|renew|suspend, audit, me
+ * Mizanora IPTV — Panel API handler (fresh rebuild)
+ *   /api/panel?action=… (GET)   /api/panel  POST {"action":…}
+ * Sections: public • reseller (mzr_) • admin (owner Google token / mzp_ PIN / mzk_ key)
  */
+import { handleOptions, parseBody, parseQuery, sendJson, getRequestBaseUrl, checkRateLimit, normalizeMac, isValidEmail, WA_LINK, WA_NUMBER, OWNER_EMAIL } from "../_lib/util.js";
+import { authenticateAdmin, authorizeReseller, createPinSession, verifyBootstrapPin } from "../_lib/auth.js";
+import * as S from "../_lib/store.js";
 
 const PUBLIC_ACTIONS = new Set([
-  "config",
-  "plans",
-  "pricing",
-  "resolve",
-  "order",
-  "order-status",
-  "status",
-  "trial",
-  "health",
-  "ping",
-  "admin/pin-login",
-  "reseller/register",
-  "reseller/login-password",
-  "recharge/contact",
-  "help",
-  "docs"
+  "config", "plans", "help", "order", "order-status", "trial", "resolve",
+  "reseller/register", "reseller/login-password", "recharge/contact"
 ]);
-
-const ADMIN_ACTIONS = new Set([
-  "admin/analytics",
-  "admin/orders",
-  "admin/order-review",
-  "admin/resellers",
-  "admin/reseller-create",
-  "admin/reseller-update",
-  "admin/credits-topup",
-  "admin/clients",
-  "admin/client-create",
-  "admin/client-renew",
-  "admin/client-suspend",
-  "admin/audit",
-  "admin/me",
-  "admin/secure-link",
-  "admin/keys",
-  "admin/pin-set",
-  "admin/trials",
-  "admin/payments",
-  "admin/reseller-detail",
-  "admin/errors",
-  "admin/channels",
-  "admin/playlists",
-  "admin/xtream-accounts",
-  "admin/xtream/create",
-  "admin/xtream/update",
-  "admin/xtream/renew",
-  "admin/xtream/suspend",
-  "admin/xtream/activate",
-  "admin/xtream/delete",
-  "admin/stalker/list",
-  "admin/client-delete",
-  "admin/api-keys",
-  "admin/api-key-create",
-  "admin/api-key-revoke",
-  "admin/settings",
-  "admin/settings-set",
-  "admin/catalog"
-]);
-
 const RESELLER_ACTIONS = new Set([
-  "reseller/login",
-  "reseller/stats",
-  "reseller/clients",
-  "reseller/client-create",
-  "reseller/client-renew",
-  "reseller/client-suspend",
-  "reseller/client-block",
-  "reseller/secure-link",
-  "reseller/me",
-  "reseller/pricing-set",
-  "reseller/payment-record",
-  "reseller/ledger",
-  "reseller/finance",
-  "reseller/credentials",
-  "reseller/client-update",
-  "reseller/client-delete",
-  "reseller/key-rotate"
+  "reseller/login", "reseller/me", "reseller/stats", "reseller/clients",
+  "reseller/client-create", "reseller/credentials", "reseller/client-update",
+  "reseller/client-renew", "reseller/client-suspend", "reseller/client-block",
+  "reseller/client-delete", "reseller/secure-link", "reseller/key-rotate",
+  "reseller/pricing-set", "reseller/payment-record", "reseller/finance", "reseller/ledger"
+]);
+const ADMIN_ACTIONS = new Set([
+  "admin/me", "admin/pin-login", "admin/pin-set",
+  "admin/xtream-accounts", "admin/xtream/create", "admin/xtream/update", "admin/xtream/renew",
+  "admin/xtream/suspend", "admin/xtream/activate", "admin/xtream/delete",
+  "admin/stalker/list", "admin/channels", "admin/clients",
+  "admin/client-create", "admin/client-renew", "admin/client-suspend", "admin/client-delete",
+  "admin/resellers", "admin/reseller-create", "admin/reseller-update", "admin/credits-topup",
+  "admin/orders", "admin/order-review", "admin/payments", "admin/trials",
+  "admin/api-keys", "admin/api-key-create", "admin/api-key-revoke",
+  "admin/settings", "admin/settings-set", "admin/analytics", "admin/audit", "admin/errors",
+  "admin/secure-link"
 ]);
 
-function publicConfig(req) {
-  const base = getRequestBaseUrl(req);
-  return {
-    ok: true,
-    brand: BRAND.name,
-    founder: BRAND.founder,
-    parent: BRAND.parentProject,
-    baseUrl: base,
-    currency: PANEL.currency,
-    panelVersion: PANEL.version,
-    trialDays: PANEL.trialDays,
-    resellerPerUserMonthly: PANEL.resellerPerUserMonthly,
-    directPerUserMonthly: PANEL.directPerUserMonthly,
-    minResellerCredits: PANEL.minResellerCredits,
-    support: {
-      phone: PANEL.supportPhoneDisplay,
-      whatsapp: PANEL.supportWhatsapp,
-      email: PANEL.ownerEmail
-    },
-    recommendedPlayer: { name: PANEL.recommendedPlayerName, url: PANEL.recommendedPlayer },
-    plans: PLANS,
-    resellerTiers: RESELLER_TIERS,
-    payment: PAYMENT,
-    featureMatrix: FEATURE_MATRIX,
-    xtream: {
-      serverUrl: base,
-      port: 443,
-      playerApi: `${base}/player_api.php`,
-      m3uPlus: `${base}/get.php?username=USER&password=PASS&type=m3u_plus&output=m3u8`,
-      epg: `${base}/xmltv.php?username=USER&password=PASS`
-    }
-  };
-}
-
-async function resolveIdentity(req, action, body) {
-  if (ADMIN_ACTIONS.has(action)) {
-    const admin = await authenticateAdmin(req);
-    return { role: "admin", admin };
-  }
-  if (RESELLER_ACTIONS.has(action)) {
-    return { role: "reseller", admin: null };
-  }
-  return { role: "public", admin: null };
-}
-
-async function authorizeReseller(req, body) {
-  const apiKey = String(req?.headers?.["x-api-key"] || body.apiKey || "").trim();
-  const code = String(body.resellerCode || body.code || "").trim().toUpperCase();
-  const licenseKey = String(body.licenseKey || "").trim();
-
-  let reseller = null;
-  if (apiKey) reseller = await getResellerByApiKey(apiKey);
-  if (!reseller && code) reseller = await getResellerByCode(code);
-  if (reseller && licenseKey && hashLicenseKey(licenseKey) !== reseller.licenseHash) {
-    return { ok: false, status: 401, error: "License key does not match this dealer code." };
-  }
-  if (!reseller) {
-    return { ok: false, status: 401, error: "Dealer not found. Check your dealer code + API key." };
-  }
-  if (reseller.status !== "active") {
-    return { ok: false, status: 403, error: "Dealer account suspended. Contact 0306-2015326." };
-  }
-  return { ok: true, reseller };
-}
-
-/** Public-safe reseller view (never leaks password hash / license hash). */
-function resellerPublic(reseller) {
-  if (!reseller) return null;
-  return {
-    code: reseller.code,
-    name: reseller.name,
-    email: reseller.email,
-    whatsapp: reseller.whatsapp,
-    city: reseller.city || "",
-    brandName: reseller.brandName || "",
-    tier: reseller.tier,
-    credits: Number(reseller.credits || 0),
-    creditsUsed: Number(reseller.creditsUsed || 0),
-    pricePerUser: Number(reseller.pricePerUser || PANEL.resellerPerUserMonthly),
-    pricing: reseller.pricing || null,
-    contactWhatsapp: reseller.contactWhatsapp || reseller.whatsapp || "",
-    contactPhone: reseller.contactPhone || reseller.whatsapp || "",
-    status: reseller.status,
-    selfServe: Boolean(reseller.selfServe),
-    apiKey: reseller.apiKey,
-    licenseKey: reseller.selfServe ? reseller.licenseKey : reseller.licenseKey,
-    collectedTotal: Number(reseller.collectedTotal || 0),
-    createdAt: reseller.createdAt
-  };
-}
-
-function resellerStats(clients = []) {
-  const active = clients.filter((c) => c.status === "active");
-  return {
-    clients: clients.length,
-    active: active.length,
-    expired: clients.filter((c) => c.status === "expired").length,
-    suspended: clients.filter((c) => c.status === "suspended").length,
-    expiringSoon: active.filter((c) => c.daysLeft <= 3).length
-  };
-}
-
-function signStreamFor(baseUrl, username, file = "index.m3u8", kind = "live") {
-  const signed = signPlayRequest({ username, kind, target: file });
-  return {
-    url: `${baseUrl}/s/${signed.token}`,
-    token: signed.token,
-    expiresAt: signed.exp,
-    ttlSec: signed.exp - Math.floor(Date.now() / 1000)
-  };
-}
-
-export default async function handler(req, res) {
+export default async function panelHandler(req, res) {
   if (handleOptions(req, res)) return;
+  const rl = checkRateLimit(req, "panel", 300, 60_000);
+  if (!rl.allowed) return sendJson(res, 429, { ok: false, error: "Rate limit exceeded" });
 
   const q = parseQuery(req);
-  const isPost = req.method === "POST" || req.method === "PUT";
+  const isPost = req.method === "POST";
+  if (!isPost && req.method !== "GET") return sendJson(res, 405, { ok: false, error: "Method not allowed" });
   const body = isPost ? await parseBody(req) : {};
-  const action = String((isPost ? body.action : q.action) || q.ep || "config")
-    .trim()
-    .toLowerCase();
+  const action = String(body.action || q.action || "").toLowerCase().trim();
+  if (!action) return sendJson(res, 400, { ok: false, error: "Missing action" });
+  const base = getRequestBaseUrl(req);
 
   try {
-    /* ------------------------------ PUBLIC ------------------------------ */
-
-    if (action === "config" || action === "plans" || action === "pricing") {
-      return sendJson(res, 200, publicConfig(req), "public, max-age=120");
-    }
-
-    if (action === "help" || action === "docs") {
-      const base = getRequestBaseUrl(req);
-      return sendJson(res, 200, {
-        ok: true,
-        brand: BRAND.name,
-        base,
-        convention: "GET requests → ?action=NAME in query. POST requests → JSON body {\"action\":\"NAME\", ...}.",
-        auth: {
-          public: "no key needed",
-          resellerKey: "header x-api-key: mzr_… (from reseller/register or reseller/login)",
-          adminKey: "Authorization: Bearer mzk_…  OR  x-api-key: mzk_…  (create via admin/api-key-create)",
-          pinSession: "mzp_… token from admin/pin-login (Owner PIN)",
-          firebaseIdToken: "Authorization: Bearer <firebaseIdToken> — owner email only: " + BRAND.ownerEmail
-        },
-        actions: {
-          public: ["config", "plans", "help", "order", "order-status", "trial", "resolve", "reseller/register", "reseller/login-password", "recharge/contact"],
-          reseller: [
-            "reseller/login {code|email, apiKey|password}",
-            "reseller/me • reseller/stats",
-            "reseller/clients",
-            "reseller/client-create {name, days, planId?, mac?, connectionFee?, collectAmount?, via?}",
-            "reseller/credentials {username} → full Xtream + M3U + EPG + MAG portal + signed link",
-            "reseller/client-update {username, password?, mac?, devices?, email?, whatsapp?, note?}",
-            "reseller/client-renew {username, planId?}  (1 credit)",
-            "reseller/client-suspend {username, suspended?}",
-            "reseller/client-block {username, blocked?}",
-            "reseller/client-delete {username}",
-            "reseller/secure-link {username, file?, kind?}",
-            "reseller/key-rotate → new mzr_… key (old one invalid foran)",
-            "reseller/pricing-set {pricing}",
-            "reseller/payment-record {username, amount, months, via, note?}",
-            "reseller/finance • reseller/ledger"
-          ],
-          admin: [
-            "admin/me", "admin/pin-login {pin}", "admin/pin-set",
-            "admin/xtream-accounts • admin/xtream/create|update|renew|suspend|activate|delete",
-            "admin/stalker/list",
-            "admin/channels • admin/channel/create|update|delete",
-            "admin/clients • admin/client-create|renew|suspend|delete",
-            "admin/resellers • admin/reseller-create|update|reseller-detail • admin/credits-topup",
-            "admin/orders • admin/order-review {id, approve} • admin/payments • admin/trials",
-            "admin/api-keys • admin/api-key-create {label, expiresDays?} • admin/api-key-revoke {hash}",
-            "admin/settings • admin/settings-set {patch}",
-            "admin/analytics • admin/audit • admin/errors",
-            "admin/secure-link {username, file?, kind?}"
-          ],
-          protocols: {
-            xtreamPlayerApi: `${base}/player_api.php?username=U&password=P`,
-            m3uPlus: `${base}/get.php?username=U&password=P&type=m3u_plus&output=m3u8`,
-            epg: `${base}/xmltv.php?username=U&password=P`,
-            live: `${base}/live/U/P/<id>.m3u8`,
-            movie: `${base}/movie/U/P/<id>.mp4`,
-            series: `${base}/series/U/P/<id>/<ep>.mp4`,
-            magPortal: `${base}/portal.php`,
-            signedLink: `${base}/s/<token>`
-          },
-          embedApi: `${base}/api/embed?action=config|channels|movies|series|order|trial|order-status|health  (+ widget ${base}/embed.js — CORS *)`
-        },
-        examples: [
-          `curl -X POST ${base}/api/panel -H "x-api-key: mzr_KEY" -H "Content-Type: application/json" -d '{"action":"reseller/client-create","name":"Ahmed","days":30,"mac":"00:1A:79:AA:BB:CC"}'`,
-          `curl -X POST ${base}/api/panel -H "x-api-key: mzr_KEY" -H "Content-Type: application/json" -d '{"action":"reseller/credentials","username":"mzabc123"}'`,
-          `curl -X POST ${base}/api/panel -H "x-api-key: mzk_KEY" -H "Content-Type: application/json" -d '{"action":"admin/xtream/renew","username":"user1","days":30}'`
-        ]
-      });
-    }
-
-    if (action === "admin/pin-login" && isPost) {
-      const result = await verifyOwnerPin(body.pin, getClientIp(req));
-      if (!result.ok) {
-        return sendJson(res, result.status || 401, { ok: false, error: result.error });
+    /* ================= PUBLIC ================= */
+    if (PUBLIC_ACTIONS.has(action)) {
+      if (action === "config" || action === "plans") {
+        return sendJson(res, 200, S.publicConfig(base), "public, max-age=120");
       }
-      return sendJson(res, 200, {
-        ok: true,
-        token: result.token,
-        expiresIn: result.expiresIn,
-        admin: result.admin,
-        note: "Store this token as localStorage mz_admin_session. Valid 12 hours."
-      });
-    }
-
-    /* --------------------- SELF-SERVE RESELLER SIGNUP --------------------- */
-
-    if (action === "reseller/register") {
-      if (!isPost) return sendJson(res, 405, { ok: false, error: "Method not allowed" });
-      if (!SELF_SERVE.enabled) {
-        return sendJson(res, 403, { ok: false, error: "Self-serve reseller registration is closed. WhatsApp 0306-2015326." });
+      if (action === "help") {
+        return sendJson(res, 200, helpDoc(base));
       }
-      const rl = checkRateLimit(req, "panel_reseller_register", 6, 10 * 60_000);
-      if (!rl.allowed) {
-        return sendJson(res, 429, { ok: false, error: "Too many signup attempts. Try again after 10 minutes." });
-      }
-
-      const name = String(body.name || "").trim();
-      const email = String(body.email || "").trim().toLowerCase();
-      const whatsapp = String(body.whatsapp || "").trim();
-      const password = String(body.password || "");
-
-      if (name.length < 3) return sendJson(res, 400, { ok: false, error: "Enter your full name (3+ characters)." });
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-        return sendJson(res, 400, { ok: false, error: "Enter a valid email address." });
-      }
-      if (!/^[0-9+\-\s]{9,17}$/.test(whatsapp)) {
-        return sendJson(res, 400, { ok: false, error: "Enter a valid WhatsApp number (e.g. 03001234567)." });
-      }
-      if (password.length < 6) {
-        return sendJson(res, 400, { ok: false, error: "Password must be at least 6 characters." });
-      }
-
-      const created = await selfRegisterReseller({
-        name,
-        email,
-        whatsapp,
-        password,
-        city: body.city,
-        brandName: body.brandName,
-        selfServe: true
-      });
-
-      if (!created.ok) return sendJson(res, created.status || 400, { ok: false, error: created.error });
-
-      const r = created.reseller;
-      await pushAudit("reseller.self-registered", { code: r.code, email: r.email });
-      clearPanelCache();
-      return sendJson(res, 201, {
-        ok: true,
-        message: `Welcome ${r.name}! Aapka reseller panel ready hai.`,
-        reseller: {
-          code: r.code,
-          name: r.name,
-          email: r.email,
-          whatsapp: r.whatsapp,
-          brandName: r.brandName,
-          credits: r.credits,
-          pricing: r.pricing,
-          apiKey: r.apiKey,
-          licenseKey: r.licenseKey,
-          selfServe: true
-        },
-        starterCredits: SELF_SERVE.signupCredits,
-        setup: {
-          xtreamHost: getRequestBaseUrl(req),
-          m3uTemplate: `${getRequestBaseUrl(req)}/get.php?username=USER&password=PASS&type=m3u_plus&output=m3u8`
-        },
-        next: [
-          "Apni selling price set karein (Settings tab) — connection fee + monthly.",
-          "Dashboard se client add karein (Xtream ya MAC/Stalker).",
-          "Client ko M3U / Xtream / MAC details WhatsApp kar dein.",
-          "Mahina poora hone par 'Payment Received' se renew karein."
-        ]
-      });
-    }
-
-    if (action === "reseller/login-password") {
-      if (!isPost) return sendJson(res, 405, { ok: false, error: "Method not allowed" });
-      const rl = checkRateLimit(req, "panel_reseller_login", 12, 5 * 60_000);
-      if (!rl.allowed) {
-        return sendJson(res, 429, { ok: false, error: "Too many login attempts. Wait 5 minutes." });
-      }
-      const email = String(body.email || "").trim().toLowerCase();
-      const password = String(body.password || "");
-      const reseller = await getResellerByEmail(email);
-      if (!reseller || !verifyResellerPassword(reseller, password)) {
-        return sendJson(res, 401, { ok: false, error: "Email or password is incorrect." });
-      }
-      if (reseller.status !== "active") {
-        return sendJson(res, 403, { ok: false, error: "Account suspended. Contact 0306-2015326." });
-      }
-      await updateReseller(reseller.code, { lastLoginAt: new Date().toISOString() });
-      const clients = await listClients({ resellerCode: reseller.code });
-      return sendJson(res, 200, {
-        ok: true,
-        reseller: resellerPublic(reseller),
-        clients: clients.map((c) => ({ ...c, password: undefined })),
-        stats: resellerStats(clients),
-        finance: await resellerFinance(reseller.code)
-      });
-    }
-
-    if (action === "recharge/contact") {
-      const result = await rechargeContactFor({
-        username: q.username || body.username,
-        mac: q.mac || body.mac
-      });
-      return sendJson(res, 200, result, "public, max-age=60");
-    }
-
-    if (action === "resolve") {
-      const token = String(q.token || "").trim();
-      const check = verifyPlayToken(token);
-      if (!check.valid) {
-        return sendJson(res, 403, { ok: false, error: "Invalid or expired secure link", reason: check.reason });
-      }
-      const base = getRequestBaseUrl(req);
-      const { u, k, t } = check.payload;
-      const safeFile = String(t || "index.m3u8").replace(/[^a-zA-Z0-9._-]/g, "");
-      const path =
-        k === "movie" ? `/api/media?ep=live&kind=movie&user=${encodeURIComponent(u)}&file=${safeFile}` :
-        k === "playlist" ? `/playlist/${encodeURIComponent(u)}` :
-        `/api/media?ep=live&kind=live&user=${encodeURIComponent(u)}&file=${safeFile}`;
-      res.statusCode = 302;
-      res.setHeader("Location", base + path);
-      res.setHeader("Cache-Control", "no-store");
-      res.setHeader("X-Mizanora-Signed", "hmac-sha256");
-      res.end();
-      return;
-    }
-
-    if (action === "order" && isPost) {
-      const rl = checkRateLimit(req, "panel_order", 12, 60_000);
-      if (!rl.allowed) {
-        return sendJson(res, 429, { ok: false, error: "Too many order attempts. Try again in a minute." });
-      }
-      const name = String(body.name || "").trim();
-      const whatsapp = String(body.whatsapp || "").trim();
-      const planId = String(body.planId || "monthly");
-      const audience = body.audience === "reseller" ? "reseller" : "direct";
-      const priced = priceForPlan(planId, audience, body.quantity);
-
-      if (!name || name.length < 3) {
-        return sendJson(res, 400, { ok: false, error: "Please enter your full name." });
-      }
-      if (!/^[0-9+\-\s]{9,17}$/.test(whatsapp)) {
-        return sendJson(res, 400, { ok: false, error: "Enter a valid WhatsApp number (e.g. 03062015326)." });
-      }
-      if (audience === "direct" && priced.total > 0 && !String(body.txnId || "").trim()) {
-        return sendJson(res, 400, {
-          ok: false,
-          error: "Add your JazzCash Transaction ID (TID) after sending the payment."
+      if (action === "order") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const o = await S.createOrder(body);
+        return sendJson(res, 201, {
+          ok: true, order: o,
+          message: `Order ${o.id} receive ho gaya. WhatsApp ${WA_NUMBER} par payment ka screenshot bhejein — jaldi activate hoga.`,
+          whatsapp: WA_LINK
         });
       }
-
-      const order = await createOrder({
-        ...body,
-        planId: priced.plan.id,
-        audience,
-        quantity: priced.quantity
-      });
-      return sendJson(res, 200, {
-        ok: true,
-        order,
-        payment: {
-          method: PAYMENT.method,
-          number: PAYMENT.accountNumber,
-          title: PAYMENT.accountTitle,
-          whatsapp: PAYMENT.whatsappProof,
-          amount: order.total,
-          reference: order.id
-        },
-        next: [
-          `Send PKR ${order.total} to JazzCash ${PAYMENT.accountNumber} (${PAYMENT.accountTitle}).`,
-          `Send the screenshot on WhatsApp ${PANEL.supportPhoneDisplay} with reference ${order.id}.`,
-          "Your PRO / credits are activated after review (usually under 30 minutes)."
-        ]
-      });
-    }
-
-    if ((action === "order-status" || action === "status") && (isPost || q.id)) {
-      const id = String(body.orderId || body.id || q.id || "").trim();
-      const order = await getOrder(id);
-      if (!order) return sendJson(res, 404, { ok: false, error: "Order not found. Check your order ID." });
-      return sendJson(res, 200, {
-        ok: true,
-        order: {
-          id: order.id,
-          status: order.status,
-          planName: order.planName,
-          total: order.total,
-          currency: order.currency,
-          createdAt: order.createdAt,
-          reviewedAt: order.reviewedAt,
-          username: order.username || ""
-        }
-      });
-    }
-
-    if (action === "trial" && isPost) {
-      const rl = checkRateLimit(req, "panel_trial", 6, 10 * 60_000);
-      if (!rl.allowed) {
-        return sendJson(res, 429, {
-          ok: false,
-          error: `Too many trial requests. WhatsApp ${PANEL.supportPhoneDisplay} for manual help.`
+      if (action === "order-status") {
+        const o = await S.getOrder(String(body.id || q.id || "").toUpperCase());
+        if (!o) return sendJson(res, 404, { ok: false, error: "Order not found" });
+        return sendJson(res, 200, { ok: true, order: o });
+      }
+      if (action === "trial") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const r = await S.claimTrial(body);
+        if (!r.ok) return sendJson(res, 409, r);
+        return sendJson(res, 201, {
+          ok: true, ...r,
+          message: "🎁 1-day FREE trial active! Neeche apne Xtream credentials dekhein.",
+          links: {
+            m3u: `${base}/get.php?username=${r.client.username}&password=${r.client.password}&type=m3u_plus&output=m3u8`,
+            epg: `${base}/xmltv.php?username=${r.client.username}&password=${r.client.password}`,
+            playerApi: `${base}/player_api.php?username=${r.client.username}&password=${r.client.password}`
+          }
         });
       }
-      const email = String(body.email || "").trim().toLowerCase();
-      const deviceId = String(body.deviceId || "").trim() || String(req.headers["user-agent"] || "").slice(0, 60);
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-        return sendJson(res, 400, { ok: false, error: "A valid email is required for the free trial." });
-      }
-      const result = await claimTrial({
-        email,
-        deviceId: deviceId + "|" + getClientIp(req),
-        whatsapp: body.whatsapp
-      });
-      if (!result.ok) {
+      if (action === "resolve") {
+        // resolve a username -> public-safe info + links (used by landing page)
+        const u = String(body.username || q.username || "").toLowerCase();
+        const c = await S.getClient(u);
+        if (!c) return sendJson(res, 404, { ok: false, error: "Account not found" });
         return sendJson(res, 200, {
-          ok: false,
-          reason: result.reason,
-          error:
-            result.reason === "already_active"
-              ? "Your 1-day PRO trial is already active. Check your email / order for credentials."
-              : "This trial was already used. Upgrade on WhatsApp 0306-2015326 (PKR 200 / month).",
-          trial: result.trial ? { expDate: result.trial.expDate, username: result.trial.username } : null
+          ok: true,
+          username: c.username,
+          status: c.status, expired: c.expired, daysLeft: c.daysLeft,
+          mac: c.mac || undefined,
+          links: {
+            m3u: `${base}/get.php?username=${c.username}&password=${c.password}&type=m3u_plus&output=m3u8`,
+            epg: `${base}/xmltv.php?username=${c.username}&password=${c.password}`,
+            playerApi: `${base}/player_api.php?username=${c.username}&password=${c.password}`,
+            magPortal: c.mac ? `${base}/c/portal.php` : undefined
+          }
         });
       }
-      const base = getRequestBaseUrl(req);
-      return sendJson(res, 200, {
-        ok: true,
-        trial: result.trial,
-        credentials: {
-          serverUrl: base,
-          port: 443,
-          username: result.trial.username,
-          password: result.trial.password,
-          m3u: `${base}/get.php?username=${result.trial.username}&password=${result.trial.password}&type=m3u_plus&output=m3u8`,
-          epg: `${base}/xmltv.php?username=${result.trial.username}&password=${result.trial.password}`,
-          expiresAt: result.trial.expDate
-        },
-        player: PANEL.recommendedPlayer
-      });
+      if (action === "reseller/register") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        if (!S.SELF_SERVE.enabled) return sendJson(res, 403, { ok: false, error: "Self-serve registration closed. WhatsApp " + WA_NUMBER });
+        const rl2 = checkRateLimit(req, "reseller_register", 6, 10 * 60_000);
+        if (!rl2.allowed) return sendJson(res, 429, { ok: false, error: "Too many attempts. 10 min baad try karein." });
+        const email = String(body.email || "").toLowerCase().trim();
+        if (!isValidEmail(email)) return sendJson(res, 400, { ok: false, error: "Valid email required" });
+        if (String(body.password || "").length < 6) return sendJson(res, 400, { ok: false, error: "Password min 6 characters" });
+        const existing = (await S.listResellers()).find((r) => r.email === email);
+        if (existing) return sendJson(res, 409, { ok: false, error: "Is email se pehle se reseller account hai — login karein.", code: existing.code });
+        const created = await S.createReseller({ ...body, email, credits: S.SELF_SERVE.signupCredits });
+        return sendJson(res, 201, {
+          ok: true,
+          message: `Welcome ${created.name || "Dealer"}! Aapka reseller panel ready hai — ${created.credits} free starter credits mile.`,
+          reseller: { ...S.resellerPublic(created), apiKey: created.apiKey, code: created.code }
+        });
+      }
+      if (action === "reseller/login-password") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const r = await authorizeReseller(req, body);
+        if (!r.ok) return sendJson(res, r.status, { ok: false, error: r.error });
+        await S.updateReseller(r.reseller.code, { lastLoginAt: new Date().toISOString() });
+        return sendJson(res, 200, { ok: true, reseller: S.resellerPublic(r.reseller) });
+      }
+      if (action === "recharge/contact") {
+        const username = String(body.username || q.username || "").toLowerCase();
+        const c = await S.getClient(username);
+        if (!c) return sendJson(res, 404, { ok: false, error: "Account not found" });
+        const r = c.resellerCode ? await S.getResellerByCode(c.resellerCode) : null;
+        return sendJson(res, 200, {
+          ok: true,
+          whatsapp: r?.whatsapp ? `https://wa.me/${String(r.whatsapp).replace(/\D/g, "")}` : WA_LINK,
+          whatsappNumber: r?.whatsapp || WA_NUMBER,
+          resellerName: r?.name || "Mizanora Support",
+          message: `${r?.name || "Mizanora"} se recharge karein — ya owner WhatsApp ${WA_NUMBER}`
+        });
+      }
     }
 
-    /* ------------------------------ RESELLER ------------------------------ */
-
-    if (action.startsWith("reseller/")) {
+    /* ================= RESELLER ================= */
+    if (RESELLER_ACTIONS.has(action) || action.startsWith("reseller/")) {
       const auth = await authorizeReseller(req, body);
       if (!auth.ok) return sendJson(res, auth.status, { ok: false, error: auth.error });
-      const reseller = auth.reseller;
-      const base = getRequestBaseUrl(req);
+      const R = auth.reseller;
+      const owned = async (username) => {
+        const t = await S.getClient(username);
+        if (!t || t.resellerCode !== R.code) return null;
+        return t;
+      };
+      const clientLinks = (base, c) => ({
+        m3u: `${base}/get.php?username=${c.username}&password=${c.password}&type=m3u_plus&output=m3u8`,
+        epg: `${base}/xmltv.php?username=${c.username}&password=${c.password}`,
+        playerApi: `${base}/player_api.php?username=${c.username}&password=${c.password}`,
+        magPortal: c.mac ? `${base}/c/portal.php` : undefined,
+        xtream: { host: base, port: 443, username: c.username, password: c.password }
+      });
 
-      if (action === "reseller/login" || action === "reseller/stats" || action === "reseller/me") {
-        await updateReseller(reseller.code, { lastLoginAt: new Date().toISOString() });
-        const clients = await listClients({ resellerCode: reseller.code });
-        const stats = resellerStats(clients);
-        const pricing = reseller.pricing || {};
+      if (action === "reseller/login" || action === "reseller/me" || action === "reseller/stats") {
+        await S.updateReseller(R.code, { lastLoginAt: new Date().toISOString() });
+        const clients = await S.listClients({ resellerCode: R.code });
+        const stats = S.resellerStats(clients);
+        const pricing = R.pricing || {};
         return sendJson(res, 200, {
           ok: true,
-          reseller: resellerPublic(reseller),
-          stats: {
-            ...stats,
-            retailValue: stats.active * (Number(pricing.monthly) || PANEL.directPerUserMonthly)
-          },
-          finance: await resellerFinance(reseller.code),
-          selfServe: {
-            enabled: SELF_SERVE.enabled,
-            signupCredits: SELF_SERVE.signupCredits,
-            unitCost: SELF_SERVE.unitCost,
-            pricePresets: SELF_SERVE.pricePresets,
-            allowMacClients: SELF_SERVE.allowMacClients
-          },
+          reseller: S.resellerPublic(R),
+          stats: { ...stats, retailValue: stats.active * (Number(pricing.monthly) || S.PANEL.directPerUserMonthly) },
+          finance: await S.resellerFinance(R.code),
+          selfServe: { enabled: S.SELF_SERVE.enabled, signupCredits: S.SELF_SERVE.signupCredits, unitCost: S.SELF_SERVE.unitCost, pricePresets: S.SELF_SERVE.pricePresets, allowMacClients: S.SELF_SERVE.allowMacClients },
           clients: clients.map((c) => ({ ...c, password: undefined })),
-          xtream: {
-            serverUrl: base,
-            m3uPlus: `${base}/get.php?username=USER&password=PASS&type=m3u_plus&output=m3u8`,
-            epg: `${base}/xmltv.php?username=USER&password=PASS`
-          }
+          xtream: { serverUrl: base, m3uPlus: `${base}/get.php?username=USER&password=PASS&type=m3u_plus&output=m3u8`, epg: `${base}/xmltv.php?username=USER&password=PASS` }
         });
       }
-
-      if (action === "reseller/finance") {
-        return sendJson(res, 200, { ok: true, finance: await resellerFinance(reseller.code) });
-      }
-
-      if (action === "reseller/ledger") {
-        const payments = await listPayments({
-          resellerCode: reseller.code,
-          username: body.username || q.username || "",
-          limit: Number(body.limit) || 100
-        });
-        return sendJson(res, 200, {
-          ok: true,
-          count: payments.length,
-          payments,
-          finance: await resellerFinance(reseller.code)
-        });
-      }
-
-      if (action === "reseller/pricing-set") {
-        const updated = await setResellerPricing(reseller.code, {
-          pricing: body.pricing || body,
-          contactWhatsapp: body.contactWhatsapp,
-          contactPhone: body.contactPhone,
-          brandName: body.brandName,
-          pricePerUser: body.pricePerUser
-        });
-        return sendJson(res, 200, {
-          ok: true,
-          message: "Selling price + contact number update ho gaye.",
-          reseller: resellerPublic(updated)
-        });
-      }
-
-      if (action === "reseller/payment-record") {
-        const username = String(body.username || "").trim().toLowerCase();
-        const months = Math.max(1, Math.min(24, Number(body.months) || 1));
-        const target = await getClient(username);
-        if (!target || target.resellerCode !== reseller.code) {
-          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
-        }
-        const credits = Number(reseller.credits || 0);
-        if (credits < months) {
-          return sendJson(res, 402, {
-            ok: false,
-            error: `Aapke paas ${credits} credit hain lekin ${months} mahine ke liye ${months} chahiye. Credits top-up karein (JazzCash 0306-2015326).`
-          });
-        }
-        const payment = await recordClientPayment({
-          username: target.username,
-          amount: body.amount,
-          months,
-          via: body.via || "cash",
-          note: body.note || "",
-          resellerCode: reseller.code,
-          recordedBy: "reseller"
-        });
-        if (!payment.ok) return sendJson(res, payment.status || 400, { ok: false, error: payment.error });
-        await updateReseller(reseller.code, {
-          credits: credits - months,
-          creditsUsed: Number(reseller.creditsUsed || 0) + months
-        });
-        clearPanelCache();
-        return sendJson(res, 200, {
-          ok: true,
-          message: `${target.username} ka ${months} mahina renew ho gaya — Rs ${payment.payment.amount} collect.`,
-          payment: payment.payment,
-          client: payment.client,
-          creditsLeft: credits - months,
-          finance: await resellerFinance(reseller.code)
-        });
-      }
-
       if (action === "reseller/clients") {
-        const clients = await listClients({ resellerCode: reseller.code });
+        const clients = await S.listClients({ resellerCode: R.code });
         return sendJson(res, 200, { ok: true, count: clients.length, clients });
       }
-
       if (action === "reseller/client-create") {
-        const credits = Number(reseller.credits || 0);
-        if (credits < 1) {
-          return sendJson(res, 402, {
-            ok: false,
-            error: "Credits khatam. JazzCash 0306-2015326 par bhejein aur screenshot WhatsApp karein."
-          });
+        if (Number(R.credits || 0) < 1) {
+          return sendJson(res, 402, { ok: false, error: `Credits khatam. JazzCash ${WA_NUMBER} par bhejein aur WhatsApp par screenshot karein.` });
         }
-
-        const rawMac = String(body.mac || "").trim();
         let mac = "";
-        if (rawMac) {
-          if (!SELF_SERVE.allowMacClients) {
-            return sendJson(res, 403, { ok: false, error: "MAC/Stalker clients are disabled." });
-          }
-          mac = normalizeMac(rawMac);
-          if (!mac) {
-            return sendJson(res, 400, { ok: false, error: "Invalid MAC address (format 00:1A:79:XX:XX:XX)." });
-          }
-          const all = await listClients();
-          if (all.some((c) => String(c.mac || "").toUpperCase() === mac)) {
-            return sendJson(res, 409, { ok: false, error: "Ye MAC pehle se kisi client par registered hai." });
-          }
+        if (body.mac) {
+          if (!S.SELF_SERVE.allowMacClients) return sendJson(res, 403, { ok: false, error: "MAC/Stalker clients disabled." });
+          mac = normalizeMac(body.mac);
+          if (!mac) return sendJson(res, 400, { ok: false, error: "Invalid MAC (format 00:1A:79:XX:XX:XX)" });
+          const all = await S.listClients();
+          if (all.some((c) => c.mac && c.mac.toUpperCase() === mac)) return sendJson(res, 409, { ok: false, error: "Ye MAC pehle se registered hai." });
         }
-
-        const created = await createClient({
-          ...body,
-          mac,
-          resellerCode: reseller.code,
-          source: mac ? "reseller-mac" : "reseller"
-        });
-        await updateReseller(reseller.code, {
-          credits: credits - 1,
-          creditsUsed: Number(reseller.creditsUsed || 0) + 1
-        });
-
-        // Reseller ne client se kitne rupay liye? Do soorat hain:
-        //  1) collectAmount diya gaya → poora sale (fee + plan price) ek payment me.
-        //  2) sirf connection fee collect hui → wohi record hoti hai.
-        const pricing = reseller.pricing || {};
+        const created = await S.createClient({ ...body, mac, resellerCode: R.code, source: mac ? "reseller-mac" : "reseller" });
+        await S.updateReseller(R.code, { credits: Number(R.credits) - 1, creditsUsed: Number(R.creditsUsed || 0) + 1 });
+        const pricing = R.pricing || {};
+        const collectAmount = Math.max(0, Number(body.collectAmount) || 0);
         const connectionFee = Math.max(0, Number(body.connectionFee ?? pricing.connectionFee ?? 0) || 0);
-        const collectAmount = Math.max(0, Number(body.collectAmount) || 0) || 0;
         let feeRecord = null;
-        if (collectAmount > 0) {
-          const recorded = await recordClientPayment({
-            username: created.username,
-            amount: collectAmount,
-            months: Math.round((Number(body.days) || 30) / 30),
-            via: body.via || "cash",
-            note: "Client sale (connection + plan)",
-            resellerCode: reseller.code,
-            recordedBy: "reseller"
+        const amt = collectAmount > 0 ? collectAmount : connectionFee;
+        if (amt > 0 && body.collectFee !== false) {
+          const rec = await S.recordClientPayment({
+            username: created.username, amount: amt,
+            months: collectAmount > 0 ? Math.round((Number(body.days) || 30) / 30) : 0,
+            via: body.via || "cash", note: collectAmount > 0 ? "Client sale (connection + plan)" : "Connection fee",
+            resellerCode: R.code, recordedBy: "reseller"
           });
-          feeRecord = recorded.ok ? recorded.payment : null;
-        } else if (connectionFee > 0 && body.collectFee !== false) {
-          const recorded = await recordClientPayment({
-            username: created.username,
-            amount: connectionFee,
-            months: 0,
-            via: body.via || "cash",
-            note: "Connection fee",
-            resellerCode: reseller.code,
-            recordedBy: "reseller"
-          });
-          feeRecord = recorded.ok ? recorded.payment : null;
+          feeRecord = rec.payment;
         }
-
-        clearPanelCache();
+        S.clearPanelCache();
         return sendJson(res, 200, {
-          ok: true,
-          client: created,
-          creditsLeft: credits - 1,
-          connectionFee: feeRecord,
-          finance: await resellerFinance(reseller.code),
-          mac: mac || undefined,
-          stalker: mac
-            ? {
-                portalUrl: `${base}/c/portal.php`,
-                portalUrlShort: `${base}/c/`,
-                mac,
-                note: "MAG / Stalker box me ye Portal URL aur MAC daalein."
-              }
-            : undefined,
-          sellPrice: {
-            monthly: Number(pricing.monthly) || SELF_SERVE.monthlyDefault,
-            connectionFee: Number(pricing.connectionFee) || SELF_SERVE.connectionFeeDefault
-          },
-          links: {
-            m3u: `${base}/get.php?username=${created.username}&password=${created.password}&type=m3u_plus&output=m3u8`,
-            epg: `${base}/xmltv.php?username=${created.username}&password=${created.password}`,
-            playerApi: `${base}/player_api.php?username=${created.username}&password=${created.password}`,
-            xtream: { host: base, port: 443, username: created.username, password: created.password }
-          }
+          ok: true, client: created, creditsLeft: Number(R.credits) - 1, connectionFee: feeRecord,
+          finance: await S.resellerFinance(R.code),
+          stalker: mac ? { portalUrl: `${base}/c/portal.php`, mac, note: "MAG/Stalker box mein ye Portal URL + MAC daalein." } : undefined,
+          sellPrice: { monthly: Number(pricing.monthly) || S.SELF_SERVE.monthlyDefault, connectionFee: Number(pricing.connectionFee) || S.SELF_SERVE.connectionFeeDefault },
+          links: clientLinks(base, created)
         });
       }
-
-      if (action === "reseller/client-block") {
-        const target = await getClient(body.username);
-        if (!target || target.resellerCode !== reseller.code) {
-          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
-        }
-        const updated = await suspendClient(target.username, body.blocked !== false);
-        return sendJson(res, 200, {
-          ok: true,
-          client: updated,
-          message: body.blocked === false ? "Client unblocked." : "Client blocked — payment na aane par service band."
-        });
-      }
-
-      if (action === "reseller/client-renew") {
-        const target = await getClient(body.username);
-        if (!target || target.resellerCode !== reseller.code) {
-          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
-        }
-        if (Number(reseller.credits || 0) < 1) {
-          return sendJson(res, 402, { ok: false, error: "No credits left to renew this client." });
-        }
-        const renewed = await renewClient(target.username, { planId: body.planId || "monthly" });
-        await updateReseller(reseller.code, {
-          credits: Number(reseller.credits || 0) - 1,
-          creditsUsed: Number(reseller.creditsUsed || 0) + 1
-        });
-        return sendJson(res, 200, { ok: true, client: renewed, creditsLeft: Number(reseller.credits || 0) - 1 });
-      }
-
-      if (action === "reseller/client-suspend") {
-        const target = await getClient(body.username);
-        if (!target || target.resellerCode !== reseller.code) {
-          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
-        }
-        const updated = await suspendClient(target.username, body.suspended !== false);
-        return sendJson(res, 200, { ok: true, client: updated });
-      }
-
-      if (action === "reseller/secure-link") {
-        const username = String(body.username || "").trim();
-        const target = await getClient(username);
-        if (!target || target.resellerCode !== reseller.code) {
-          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
-        }
-        return sendJson(res, 200, {
-          ok: true,
-          ...signStreamFor(base, username, body.file || "index.m3u8", body.kind || "live")
-        });
-      }
-
       if (action === "reseller/credentials") {
-        const target = await getClient(String(body.username || "").trim());
-        if (!target || target.resellerCode !== reseller.code) {
-          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
-        }
-        const u = target.username, pw = target.password;
+        const t = await owned(body.username);
+        if (!t) return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
         return sendJson(res, 200, {
           ok: true,
-          client: { ...target, password: undefined },
-          credentials: {
-            serverUrl: base,
-            port: 443,
-            username: u,
-            password: pw,
-            playerApi: `${base}/player_api.php?username=${encodeURIComponent(u)}&password=${encodeURIComponent(pw)}`,
-            m3u: `${base}/get.php?username=${encodeURIComponent(u)}&password=${encodeURIComponent(pw)}&type=m3u_plus&output=m3u8`,
-            epg: `${base}/xmltv.php?username=${encodeURIComponent(u)}&password=${encodeURIComponent(pw)}`,
-            mac: target.mac || undefined,
-            magPortal: target.mac ? `${base}/c/portal.php` : undefined,
-            signedLink: signStreamFor(base, u, "index.m3u8", "live").url
-          }
+          client: { ...t, password: undefined },
+          credentials: { serverUrl: base, port: 443, username: t.username, password: t.password, mac: t.mac || undefined, ...clientLinks(base, t), signedLink: S.signStreamFor(base, t.username, "index.m3u8", "live").url }
         });
       }
-
       if (action === "reseller/client-update") {
-        const target = await getClient(String(body.username || "").trim());
-        if (!target || target.resellerCode !== reseller.code) {
-          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
-        }
+        const t = await owned(body.username);
+        if (!t) return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
         const patch = {};
-        for (const f of ["password", "email", "whatsapp", "note", "displayName"]) {
-          if (body[f] !== undefined) patch[f] = String(body[f]).slice(0, f === "note" ? 300 : 120);
-        }
+        for (const f of ["password", "email", "whatsapp", "name", "note"]) if (body[f] !== undefined) patch[f] = String(body[f]).slice(0, f === "note" ? 300 : 120);
         if (body.devices !== undefined) patch.devices = Math.max(1, Number(body.devices) || 1);
         if (body.mac !== undefined) {
-          const mac = normalizeMac(String(body.mac || ""));
+          const mac = normalizeMac(body.mac);
           if (body.mac && !mac) return sendJson(res, 400, { ok: false, error: "Invalid MAC format." });
           if (mac) {
-            const all = await listClients();
-            const clash = all.find((c) => c.username !== target.username && String(c.mac || "").toUpperCase() === mac);
-            if (clash) return sendJson(res, 409, { ok: false, error: `MAC already on client ${clash.username}.` });
+            const all = await S.listClients();
+            const clash = all.find((c) => c.username !== t.username && c.mac && c.mac.toUpperCase() === mac);
+            if (clash) return sendJson(res, 409, { ok: false, error: `MAC already on ${clash.username}` });
           }
           patch.mac = mac || "";
         }
         if (!Object.keys(patch).length) return sendJson(res, 400, { ok: false, error: "Nothing to update." });
-        const updated = await updateClient(target.username, patch);
-        clearPanelCache();
-        await pushAudit("client.updated", { username: target.username, by: reseller.code, fields: Object.keys(patch) });
+        const updated = await S.updateClient(t.username, patch);
+        S.clearPanelCache();
         return sendJson(res, 200, { ok: true, client: updated });
       }
-
+      if (action === "reseller/client-renew") {
+        const t = await owned(body.username);
+        if (!t) return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
+        if (Number(R.credits || 0) < 1) return sendJson(res, 402, { ok: false, error: "No credits left to renew." });
+        const renewed = await S.renewClient(t.username, { planId: body.planId || "monthly" });
+        await S.updateReseller(R.code, { credits: Number(R.credits) - 1, creditsUsed: Number(R.creditsUsed || 0) + 1 });
+        return sendJson(res, 200, { ok: true, client: renewed, creditsLeft: Number(R.credits) - 1 });
+      }
+      if (action === "reseller/client-suspend" || action === "reseller/client-block") {
+        const t = await owned(body.username);
+        if (!t) return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
+        const updated = await S.suspendClient(t.username, body.suspended !== false && body.blocked !== false);
+        return sendJson(res, 200, { ok: true, client: updated });
+      }
       if (action === "reseller/client-delete") {
-        const target = await getClient(String(body.username || "").trim());
-        if (!target || target.resellerCode !== reseller.code) {
-          return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
-        }
-        await rtdbSet(`panel/clients/${target.username}`, null);
-        await rtdbSet(`xtreamAccounts/${target.username}`, null);
-        clearPanelCache();
-        await pushAudit("client.deleted", { username: target.username, by: reseller.code });
-        return sendJson(res, 200, { ok: true, deleted: target.username });
+        const t = await owned(body.username);
+        if (!t) return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
+        await S.deleteClient(t.username);
+        return sendJson(res, 200, { ok: true, deleted: t.username });
       }
-
+      if (action === "reseller/secure-link") {
+        const t = await owned(body.username);
+        if (!t) return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
+        return sendJson(res, 200, { ok: true, ...S.signStreamFor(base, t.username, body.file || "index.m3u8", body.kind || "live") });
+      }
       if (action === "reseller/key-rotate") {
+        const { generateResellerApiKey } = await import("../_lib/auth.js");
+        const { hashApiKey } = await import("../_lib/auth.js");
         const newKey = generateResellerApiKey();
-        await updateReseller(reseller.code, { apiKey: newKey });
-        clearPanelCache();
-        await pushAudit("reseller.key-rotated", { code: reseller.code });
-        return sendJson(res, 200, {
-          ok: true,
-          apiKey: newKey,
-          note: "Purana mzr_ key foran invalid ho gaya. Naya key ek dafa hi dikhta hai — turant save kar lo."
-        });
+        await S.updateReseller(R.code, { apiKeyHash: hashApiKey(newKey) });
+        S.clearPanelCache();
+        return sendJson(res, 200, { ok: true, apiKey: newKey, note: "Purana mzr_ key foran invalid. Naya key ek dafa dikhta hai — save kar lo." });
       }
+      if (action === "reseller/pricing-set") {
+        const p = R.pricing || {};
+        await S.updateReseller(R.code, { pricing: { ...p, ...body.pricing } });
+        return sendJson(res, 200, { ok: true, pricing: (await S.getResellerByCode(R.code)).pricing });
+      }
+      if (action === "reseller/payment-record") {
+        const t = await owned(body.username);
+        if (!t) return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
+        const rec = await S.recordClientPayment({ ...body, username: t.username, resellerCode: R.code, recordedBy: "reseller" });
+        return sendJson(res, 200, rec);
+      }
+      if (action === "reseller/finance") return sendJson(res, 200, { ok: true, finance: await S.resellerFinance(R.code) });
+      if (action === "reseller/ledger") return sendJson(res, 200, { ok: true, payments: await S.listPayments({ resellerCode: R.code }) });
+      return sendJson(res, 400, { ok: false, error: "Unknown reseller action: " + action });
     }
 
-    /* -------------------------------- ADMIN -------------------------------- */
-
-    if (action.startsWith("admin/")) {
+    /* ================= ADMIN ================= */
+    if (ADMIN_ACTIONS.has(action) || action.startsWith("admin/")) {
+      // bootstrap: PIN login works without any prior auth
+      if (action === "admin/pin-login") {
+        if (!verifyBootstrapPin(body.pin)) {
+          await S.pushAudit("pin.failed", { ip: req.headers["x-forwarded-for"] || "" });
+          return sendJson(res, 401, { ok: false, error: "Invalid Owner PIN" });
+        }
+        const token = createPinSession();
+        await S.pushAudit("pin.login", {});
+        return sendJson(res, 200, { ok: true, token, expiresIn: 12 * 3600, note: "x-admin-token header mein bhejein" });
+      }
       const admin = await authenticateAdmin(req);
       if (!admin.ok) return sendJson(res, admin.status || 401, { ok: false, error: admin.error });
-      const base = getRequestBaseUrl(req);
 
-      if (action === "admin/me") {
-        return sendJson(res, 200, {
-          ok: true,
-          admin: { uid: admin.uid, email: admin.email, role: admin.role, via: admin.via }
-        });
-      }
-
-      if (action === "admin/payments") {
-        const payments = await listPayments({ limit: Number(body.limit) || 200 });
-        const total = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-        return sendJson(res, 200, { ok: true, count: payments.length, total, payments });
-      }
-
-      if (action === "admin/analytics") {
-        // Business stats + LIVE visitor/stream analytics + collected frontend
-        // errors — sab ek hi response me, taake admin panel me sab kuch dikhe.
-        const [business, live, errors] = await Promise.all([
-          getAnalytics(),
-          getAnalyticsDashboardSnapshot().catch(() => null),
-          listClientErrors(20).catch(() => [])
-        ]);
-        return sendJson(res, 200, {
-          ...business,
-          live: live
-            ? {
-                summary: live.summary,
-                breakdowns: live.breakdowns,
-                sessions: (live.sessions || []).slice(0, 25),
-                plays: (live.plays || []).slice(0, 25),
-                generatedPkt: live.generatedPkt
-              }
-            : null,
-          errors: {
-            count: (live?.errors?.count ?? 0),
-            unique: (live?.errors?.unique ?? errors.length),
-            latest: errors.slice(0, 10)
-          }
-        });
-      }
-
-      if (action === "admin/errors") {
-        const errors = await listClientErrors(Number(body.limit) || 50);
-        return sendJson(res, 200, { ok: true, count: errors.length, errors });
-      }
-
-      if (action === "admin/reseller-detail") {
-        const code = String(body.code || q.code || "").trim().toUpperCase();
-        const reseller = await getResellerByCode(code);
-        if (!reseller) return sendJson(res, 404, { ok: false, error: "Reseller not found." });
-        const [clients, payments, finance] = await Promise.all([
-          listClients({ resellerCode: reseller.code }),
-          listPayments({ resellerCode: reseller.code, limit: 100 }),
-          resellerFinance(reseller.code)
-        ]);
-        return sendJson(res, 200, {
-          ok: true,
-          reseller: {
-            ...resellerPublic(reseller),
-            createdAt: reseller.createdAt,
-            lastLoginAt: reseller.lastLoginAt || "",
-            selfServe: Boolean(reseller.selfServe)
-          },
-          stats: resellerStats(clients),
-          finance,
-          payments,
-          clients: clients.map((c) => {
-            const exp = Number(c.expDate || 0);
-            return {
-              ...c,
-              password: c.password || "",
-              links: {
-                m3u: `${base}/get.php?username=${c.username}&password=${c.password || ""}&type=m3u_plus&output=m3u8`,
-                epg: `${base}/xmltv.php?username=${c.username}&password=${c.password || ""}`,
-                xtream: { host: base, port: 443, username: c.username, password: c.password || "" },
-                stalker: c.mac
-                  ? { portalUrl: `${base}/c/portal.php`, portalUrlShort: `${base}/c/`, mac: c.mac }
-                  : null
-              },
-              expiresPkt: exp ? new Date(exp * 1000).toISOString().slice(0, 10) : ""
-            };
-          })
-        });
-      }
-
-      if (action === "admin/resellers") {
-        const [resellers, clients, payments] = await Promise.all([
-          listResellers(),
-          listClients(),
-          listPayments({ limit: 500 })
-        ]);
-        return sendJson(res, 200, {
-          ok: true,
-          count: resellers.length,
-          resellers: resellers.map((r) => {
-            const mine = clients.filter((c) => c.resellerCode === r.code);
-            const collected = payments
-              .filter((p) => p.resellerCode === r.code)
-              .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-            return {
-              ...r,
-              password: undefined,
-              passwordHash: undefined,
-              passwordSalt: undefined,
-              licenseHash: undefined,
-              clients: mine.length,
-              activeClients: mine.filter((c) => c.status === "active").length,
-              expiredClients: mine.filter((c) => c.status === "expired").length,
-              macClients: mine.filter((c) => c.mac).length,
-              collected,
-              pricing: normalizePricing(r.pricing || {}),
-              clientNames: mine.slice(0, 6).map((c) => c.username)
-            };
-          }),
-          tiers: RESELLER_TIERS
-        });
-      }
-
-      if (action === "admin/orders") {
-        const orders = await listOrders();
-        const status = String(q.status || body.status || "all").toLowerCase();
-        const filtered = status === "all" ? orders : orders.filter((o) => o.status === status);
-        return sendJson(res, 200, { ok: true, count: filtered.length, orders: filtered });
-      }
-
-      if (action === "admin/order-review") {
-        const target = await getOrder(body.orderId || body.id);
-        if (!target) return sendJson(res, 404, { ok: false, error: "Order not found." });
-        const decision = String(body.decision || "approve").toLowerCase();
-        if (decision === "reject") {
-          const updated = await updateOrder(target.id, {
-            status: "rejected",
-            reviewedBy: admin.email,
-            adminNote: String(body.note || "").slice(0, 300)
-          });
-          return sendJson(res, 200, { ok: true, order: updated });
-        }
-
-        const planDays = Number(target.days) || 30;
-        let activated = null;
-
-        if (target.audience === "reseller" || target.kind === "credits") {
-          let reseller = target.resellerCode ? await getResellerByCode(target.resellerCode) : null;
-          if (!reseller) {
-            reseller = await createReseller({
-              name: target.name || "Dealer",
-              email: target.email,
-              whatsapp: target.whatsapp,
-              credits: 0
-            });
-          }
-          const creditsToAdd = Math.max(1, Number(target.quantity) || Math.ceil(Number(target.total) / PANEL.resellerPerUserMonthly) || 1);
-          const topped = await topUpCredits(reseller.code, creditsToAdd);
-          activated = { type: "reseller", resellerCode: topped.code, credits: topped.credits, added: creditsToAdd };
-        } else {
-          const username = target.username || ("mz" + Date.now().toString(36).slice(-6));
-          const existing = await getClient(username);
-          if (existing) {
-            activated = { type: "client", client: await renewClient(username, { planId: target.planId }) };
-          } else {
-            activated = {
-              type: "client",
-              client: await createClient({
-                username,
-                email: target.email,
-                whatsapp: target.whatsapp,
-                planId: target.planId || "monthly",
-                days: planDays,
-                devices: 1,
-                source: "order",
-                orderId: target.id
-              })
-            };
-          }
-        }
-
-        const updated = await updateOrder(target.id, {
-          status: "approved",
-          reviewedBy: admin.email,
-          activated
-        });
-        return sendJson(res, 200, {
-          ok: true,
-          order: updated,
-          activated,
-          links: activated?.client
-            ? {
-                m3u: `${base}/get.php?username=${activated.client.username}&password=${activated.client.password}&type=m3u_plus&output=m3u8`,
-                epg: `${base}/xmltv.php?username=${activated.client.username}&password=${activated.client.password}`
-              }
-            : null
-        });
-      }
-
-      if (action === "admin/reseller-create") {
-        const created = await createReseller(body);
-        return sendJson(res, 200, { ok: true, reseller: created });
-      }
-
-      if (action === "admin/reseller-update") {
-        const updated = await updateReseller(body.code, body.patch || body);
-        if (!updated) return sendJson(res, 404, { ok: false, error: "Reseller not found." });
-        return sendJson(res, 200, { ok: true, reseller: updated });
-      }
-
-      if (action === "admin/credits-topup") {
-        const updated = await topUpCredits(body.code, body.amount);
-        if (!updated) return sendJson(res, 404, { ok: false, error: "Reseller not found." });
-        return sendJson(res, 200, { ok: true, reseller: updated });
-      }
-
-      if (action === "admin/clients") {
-        const clients = await listClients({ resellerCode: q.resellerCode || body.resellerCode });
-        return sendJson(res, 200, { ok: true, count: clients.length, clients });
-      }
-
-      if (action === "admin/client-create") {
-        const created = await createClient(body);
-        return sendJson(res, 200, {
-          ok: true,
-          client: created,
-          links: {
-            m3u: `${base}/get.php?username=${created.username}&password=${created.password}&type=m3u_plus&output=m3u8`,
-            epg: `${base}/xmltv.php?username=${created.username}&password=${created.password}`
-          }
-        });
-      }
-
-      if (action === "admin/client-renew") {
-        const renewed = await renewClient(body.username, {
-          planId: body.planId || "monthly",
-          resellerCode: body.resellerCode
-        });
-        if (!renewed) return sendJson(res, 404, { ok: false, error: "Client not found." });
-        return sendJson(res, 200, { ok: true, client: renewed });
-      }
-
-      if (action === "admin/client-suspend") {
-        const updated = await suspendClient(body.username, body.suspended !== false);
-        if (!updated) return sendJson(res, 404, { ok: false, error: "Client not found." });
-        return sendJson(res, 200, { ok: true, client: updated });
-      }
-
-      if (action === "admin/pin-set") {
-        const result = await setOwnerPin(body.newPin, body.currentPin);
-        if (!result.ok) return sendJson(res, result.status || 400, { ok: false, error: result.error });
-        return sendJson(res, 200, { ok: true, note: result.note, saved: result.saved });
-      }
-
-      if (action === "admin/trials") {
-        const trials = await listTrials();
-        return sendJson(res, 200, { ok: true, count: trials.length, trials });
-      }
-
-      if (action === "admin/audit") {
-        const [audit, trials] = await Promise.all([listAudit(80), listTrials()]);
-        return sendJson(res, 200, { ok: true, audit, trials: trials.slice(0, 40) });
-      }
-
-      if (action === "admin/keys") {
-        const generated = generateLicenseKey("MZK");
-        return sendJson(res, 200, {
-          ok: true,
-          licenseKey: generated,
-          licenseHash: hashLicenseKey(generated),
-          note: "Store only the hash. Give the key to the customer once — it cannot be recovered."
-        });
-      }
-
-      /* ---------------------- ADMIN: CHANNELS ---------------------- */
-      if (action === "admin/channels") {
-        const channels = await getChannels();
-        return sendJson(res, 200, { ok: true, count: channels.length, channels });
-      }
-
-      /* ---------------------- ADMIN: PLAYLISTS ---------------------- */
-      if (action === "admin/playlists") {
-        const raw = await rtdbGet("playlists", { ttlMs: 5000 });
-        let arr = [];
-        if (raw && typeof raw === "object") {
-          arr = Array.isArray(raw) ? raw.filter(Boolean) : Object.entries(raw).map(([id, v]) => ({ id, ...v }));
-        }
-        return sendJson(res, 200, { ok: true, count: arr.length, playlists: arr });
-      }
-
-      /* ---------------------- ADMIN: XTREAM ACCOUNTS ---------------------- */
+      if (action === "admin/me") return sendJson(res, 200, { ok: true, admin: { email: admin.user.email, uid: admin.user.uid, via: admin.via }, owner: OWNER_EMAIL, brand: S.BRAND.name });
+      if (action === "admin/pin-set") return sendJson(res, 200, { ok: true, note: "Bootstrap PIN fixed hai (repo config)." });
       if (action === "admin/xtream-accounts") {
-        const raw = await rtdbGet("xtreamAccounts", { ttlMs: 5000 });
-        let arr = [];
-        if (raw && typeof raw === "object") {
-          arr = Array.isArray(raw) ? raw.filter(Boolean) : Object.entries(raw).map(([id, v]) => ({ id, ...v }));
-        }
-        return sendJson(res, 200, { ok: true, count: arr.length, xtreamAccounts: arr });
+        const xt = (await S.rtdbGetXtream?.()) || (await (await import("../_lib/rtdb.js")).rtdbGet("xtreamAccounts")) || {};
+        const list = (Array.isArray(xt) ? xt : Object.values(xt)).map((a) => ({ ...a, password: a.password }));
+        return sendJson(res, 200, { ok: true, count: list.length, accounts: list });
       }
-
-      /* ---------------------- ADMIN: CATALOG (MOVIES / SERIES) ---------------------- */
-      if (action === "admin/catalog") {
-        const type = String(q.type || body.type || "movies").toLowerCase();
-        if (type === "series") {
-          const series = await getSeries();
-          return sendJson(res, 200, { ok: true, count: series.length, series });
-        }
-        const movies = await getMovies();
-        return sendJson(res, 200, { ok: true, count: movies.length, movies });
+      const xtream = async (fn) => fn(String(body.username || "").toLowerCase());
+      if (action === "admin/xtream/create") return sendJson(res, 200, { ok: true, client: await S.createClient({ ...body, source: "admin" }) });
+      if (action === "admin/xtream/update") {
+        const t = await S.getClient(body.username);
+        if (!t) return sendJson(res, 404, { ok: false, error: "Not found" });
+        return sendJson(res, 200, { ok: true, client: await S.updateClient(t.username, body) });
       }
-
-      /* ---------------------- ADMIN: CHANNEL CREATE ---------------------- */
-      if (action === "admin/channel/create" && isPost) {
-        const ch = body;
-        if (!ch.name || !ch.url) {
-          return sendJson(res, 400, { ok: false, error: "Channel name and stream URL are required." });
-        }
-        const key = String(ch.id || `ch_${Date.now().toString(36)}`);
-        const record = {
-          id: key,
-          name: ch.name,
-          category: ch.category || "📺 Live TV",
-          xtreamGroup: ch.xtreamGroup || ch.category || "📺 Live TV",
-          country: ch.country || "PK",
-          language: ch.language || "Urdu",
-          tier: ch.tier || "free",
-          order: Number(ch.order) || 9999,
-          pinned: Boolean(ch.pinned),
-          status: ch.status || "active",
-          url: ch.url,
-          backupUrls: Array.isArray(ch.backupUrls) ? ch.backupUrls : [],
-          logo: ch.logo || "",
-          streamId: ch.streamId || 0,
-          slug: ch.slug || key,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-        await rtdbSet(`channels/${key}`, record);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, channel: record });
+      if (action === "admin/xtream/renew") {
+        const t = await S.getClient(body.username);
+        if (!t) return sendJson(res, 404, { ok: false, error: "Not found" });
+        return sendJson(res, 200, { ok: true, client: await S.renewClient(t.username, { planId: body.planId || "monthly" }) });
       }
-
-      /* ---------------------- ADMIN: CHANNEL UPDATE ---------------------- */
-      if (action === "admin/channel/update" && isPost) {
-        const key = String(body.id || "");
-        if (!key) return sendJson(res, 400, { ok: false, error: "Channel id required." });
-        const existing = await rtdbGet(`channels/${key}`, { ttlMs: 1000 });
-        if (!existing) return sendJson(res, 404, { ok: false, error: "Channel not found." });
-        const record = { ...existing, ...body, id: key, updatedAt: new Date().toISOString() };
-        await rtdbSet(`channels/${key}`, record);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, channel: record });
+      if (action === "admin/xtream/suspend") return sendJson(res, 200, { ok: true, client: await S.suspendClient(body.username, true) });
+      if (action === "admin/xtream/activate") return sendJson(res, 200, { ok: true, client: await S.suspendClient(body.username, false) });
+      if (action === "admin/xtream/delete") { await S.deleteClient(body.username); return sendJson(res, 200, { ok: true, deleted: body.username }); }
+      if (action === "admin/stalker/list") return sendJson(res, 200, { ok: true, clients: await S.listStalkerClients() });
+      if (action === "admin/channels") return sendJson(res, 200, { ok: true, count: (await S.listChannels()).length, channels: await S.listChannels() });
+      if (action === "admin/clients") return sendJson(res, 200, { ok: true, count: (await S.listClients()).length, clients: await S.listClients() });
+      if (action === "admin/client-create") return sendJson(res, 200, { ok: true, client: await S.createClient({ ...body, source: "admin" }) });
+      if (action === "admin/client-renew") return sendJson(res, 200, { ok: true, client: await S.renewClient(body.username, { planId: body.planId || "monthly" }) });
+      if (action === "admin/client-suspend") return sendJson(res, 200, { ok: true, client: await S.suspendClient(body.username, body.suspended !== false) });
+      if (action === "admin/client-delete") { await S.deleteClient(body.username); return sendJson(res, 200, { ok: true }); }
+      if (action === "admin/resellers") return sendJson(res, 200, { ok: true, resellers: await S.listResellers() });
+      if (action === "admin/reseller-create") {
+        const r = await S.createReseller(body);
+        return sendJson(res, 201, { ok: true, reseller: { ...S.resellerPublic(r), apiKey: r.apiKey, code: r.code } });
       }
-
-      /* ---------------------- ADMIN: CHANNEL DELETE ---------------------- */
-      if (action === "admin/channel/delete" && isPost) {
-        const key = String(body.id || "");
-        if (!key) return sendJson(res, 400, { ok: false, error: "Channel id required." });
-        await rtdbSet(`channels/${key}`, null);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, deleted: key });
+      if (action === "admin/reseller-update") {
+        const r = await S.updateReseller(String(body.code || "").toUpperCase(), body.patch || body);
+        return r ? sendJson(res, 200, { ok: true, reseller: S.resellerPublic(r) }) : sendJson(res, 404, { ok: false, error: "Not found" });
       }
-
-      /* ---------------------- ADMIN: PLAYLIST CREATE ---------------------- */
-      if (action === "admin/playlist/create" && isPost) {
-        const pl = body;
-        if (!pl.name) return sendJson(res, 400, { ok: false, error: "Playlist name required." });
-        const key = String(pl.id || `pl_${Date.now().toString(36)}`);
-        const record = {
-          id: key,
-          name: pl.name,
-          channelIds: Array.isArray(pl.channelIds) ? pl.channelIds : [],
-          customStreams: Array.isArray(pl.customStreams) ? pl.customStreams : [],
-          uid: pl.uid || "admin",
-          updatedAt: new Date().toISOString()
-        };
-        await rtdbSet(`playlists/${key}`, record);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, playlist: record });
+      if (action === "admin/credits-topup") {
+        const r = await S.topUpCredits(String(body.code || "").toUpperCase(), Number(body.credits || 0));
+        return r ? sendJson(res, 200, { ok: true, credits: r.credits }) : sendJson(res, 404, { ok: false, error: "Reseller not found" });
       }
-
-      /* ---------------------- ADMIN: PLAYLIST DELETE ---------------------- */
-      if (action === "admin/playlist/delete" && isPost) {
-        const key = String(body.id || "");
-        if (!key) return sendJson(res, 400, { ok: false, error: "Playlist id required." });
-        await rtdbSet(`playlists/${key}`, null);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, deleted: key });
-      }
-
-      /* ---------------------- ADMIN: XTREAM ACCOUNT CREATE ---------------------- */
-      if (action === "admin/xtream/create" && isPost) {
-        const xt = body;
-        if (!xt.username) return sendJson(res, 400, { ok: false, error: "Username required." });
-        const key = String(xt.username).replace(/[.#$[]]/g, "").replace(/[\/]/g, "");
-        const record = {
-          username: key,
-          password: xt.password || `MZ${Math.floor(1000 + Math.random() * 9000)}`,
-          plan: xt.plan || "free",
-          maxConnections: Number(xt.maxConnections) || 1,
-          email: xt.email || "",
-          status: xt.status || "Active",
-          expDate: xt.expDate ? Math.floor(new Date(xt.expDate).getTime() / 1000) : 0,
-          createdAt: new Date().toISOString(),
-          uid: xt.uid || "admin"
-        };
-        await rtdbSet(`xtreamAccounts/${key}`, record);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, xtream: record });
-      }
-
-      /* ---------------------- ADMIN: XTREAM ACCOUNT DELETE ---------------------- */
-      if (action === "admin/xtream/delete" && isPost) {
-        const key = String(body.username || body.id || "").replace(/[.#$[]]/g, "").replace(/[\/]/g, "");
-        if (!key) return sendJson(res, 400, { ok: false, error: "Username required." });
-        await rtdbSet(`xtreamAccounts/${key}`, null);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, deleted: key });
-      }
-
-      /* ------------- ADMIN: XTREAM update / renew / suspend ------------- */
-      const xtKey = (u) => String(u || "").replace(/[.#$[]]/g, "").replace(/[\/]/g, "");
-
-      if (action === "admin/xtream/update" && isPost) {
-        const key = xtKey(body.username || body.id);
-        if (!key) return sendJson(res, 400, { ok: false, error: "username required." });
-        const existing = await rtdbGet(`xtreamAccounts/${key}`, { ttlMs: 5000 });
-        if (!existing) return sendJson(res, 404, { ok: false, error: `Xtream account '${key}' not found.` });
-        const patch = { ...existing };
-        for (const f of ["password", "plan", "status", "email", "notes", "displayName", "maxConnections", "uid"]) {
-          if (body[f] !== undefined) patch[f] = body[f];
-        }
-        if (body.mac !== undefined) {
-          const mac = normalizeMac(String(body.mac || ""));
-          if (body.mac && !mac) return sendJson(res, 400, { ok: false, error: "Invalid MAC format." });
-          patch.mac = mac || "";
-        }
-        if (body.expDate !== undefined) {
-          patch.expDate = body.expDate
-            ? Math.floor(new Date(body.expDate).getTime() / 1000)
-            : 0;
-        }
-        patch.updatedAt = new Date().toISOString();
-        await rtdbSet(`xtreamAccounts/${key}`, patch);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, xtream: patch });
-      }
-
-      if (action === "admin/xtream/renew" && isPost) {
-        const key = xtKey(body.username || body.id);
-        if (!key) return sendJson(res, 400, { ok: false, error: "username required." });
-        const existing = await rtdbGet(`xtreamAccounts/${key}`, { ttlMs: 5000 });
-        if (!existing) return sendJson(res, 404, { ok: false, error: `Xtream account '${key}' not found.` });
-        const days = Math.max(1, Number(body.days) || 30);
-        const nowSec = Math.floor(Date.now() / 1000);
-        const baseExp = Math.max(nowSec, Number(existing.expDate || 0));
-        const expDate = baseExp + days * 86400;
-        const patch = { ...existing, expDate, status: "Active", updatedAt: new Date().toISOString(), renewedDays: days };
-        await rtdbSet(`xtreamAccounts/${key}`, patch);
-        clearPanelCache();
-        return sendJson(res, 200, {
-          ok: true,
-          xtream: patch,
-          expiresAt: new Date(expDate * 1000).toISOString()
-        });
-      }
-
-      if ((action === "admin/xtream/suspend" || action === "admin/xtream/activate") && isPost) {
-        const key = xtKey(body.username || body.id);
-        if (!key) return sendJson(res, 400, { ok: false, error: "username required." });
-        const existing = await rtdbGet(`xtreamAccounts/${key}`, { ttlMs: 5000 });
-        if (!existing) return sendJson(res, 404, { ok: false, error: `Xtream account '${key}' not found.` });
-        const patch = {
-          ...existing,
-          status: action === "admin/xtream/suspend" ? "Suspended" : "Active",
-          updatedAt: new Date().toISOString()
-        };
-        await rtdbSet(`xtreamAccounts/${key}`, patch);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, xtream: patch });
-      }
-
-      /* ------------- ADMIN: STALKER / MAG (MAC-bound accounts) ------------- */
-      if (action === "admin/stalker/list") {
-        const [xtream, clients] = await Promise.all([
-          rtdbGet("xtreamAccounts", { ttlMs: 5000 }).catch(() => null),
-          listClients().catch(() => [])
-        ]);
-        const stalker = [];
-        if (xtream && typeof xtream === "object") {
-          for (const [k, v] of Object.entries(xtream)) {
-            if (v && v.mac) {
-              stalker.push({
-                source: "xtream",
-                username: v.username || k,
-                mac: v.mac,
-                plan: v.plan || "free",
-                status: v.status || "Active",
-                expDate: v.expDate || 0,
-                expiresAt: v.expDate ? new Date(Number(v.expDate) * 1000).toISOString() : null
-              });
+      if (action === "admin/orders") return sendJson(res, 200, { ok: true, orders: await S.listOrders() });
+      if (action === "admin/order-review") {
+        const o = await S.getOrder(String(body.id || "").toUpperCase());
+        if (!o) return sendJson(res, 404, { ok: false, error: "Order not found" });
+        if (body.approve === true || body.approve === "true") {
+          const client = await S.createClient({
+            name: o.name, email: o.email, whatsapp: o.whatsapp,
+            planId: o.planId, days: o.days, resellerCode: o.resellerCode, source: "order", orderId: o.id
+          });
+          const updated = await S.updateOrder(o.id, { status: "approved", reviewedAt: new Date().toISOString(), clientUsername: client.username });
+          return sendJson(res, 200, {
+            ok: true, order: updated, client,
+            links: {
+              m3u: `${base}/get.php?username=${client.username}&password=${client.password}&type=m3u_plus&output=m3u8`,
+              playerApi: `${base}/player_api.php?username=${client.username}&password=${client.password}`
             }
-          }
+          });
         }
-        for (const c of clients || []) {
-          if (c && c.mac) {
-            stalker.push({
-              source: "panel-client",
-              id: c.id,
-              username: c.username,
-              mac: c.mac,
-              resellerCode: c.resellerCode || "",
-              plan: c.plan || "free",
-              status: c.status || "Active",
-              expDate: c.expDate || 0,
-              expiresAt: c.expDate ? new Date(Number(c.expDate) * 1000).toISOString() : null
-            });
-          }
-        }
-        return sendJson(res, 200, { ok: true, count: stalker.length, stalker });
+        const updated = await S.updateOrder(o.id, { status: "rejected", reviewedAt: new Date().toISOString() });
+        return sendJson(res, 200, { ok: true, order: updated });
       }
-
-      /* ------------- ADMIN: delete panel client ------------- */
-      if (action === "admin/client-delete" && isPost) {
-        const id = String(body.id || body.clientId || "").trim();
-        if (!id) return sendJson(res, 400, { ok: false, error: "id required." });
-        await rtdbSet(`panel/clients/${id}`, null);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, deleted: id });
+      if (action === "admin/payments") return sendJson(res, 200, { ok: true, payments: await S.listPayments() });
+      if (action === "admin/trials") return sendJson(res, 200, { ok: true, trials: await S.listTrials() });
+      if (action === "admin/api-keys") return sendJson(res, 200, { ok: true, keys: await S.listApiKeys() });
+      if (action === "admin/api-key-create") {
+        const k = await S.createApiKey({ label: body.label, expiresDays: Number(body.expiresDays) || 0 });
+        return sendJson(res, 201, { ok: true, apiKey: k.apiKey, id: k.id, label: k.label, expiresAt: k.expiresAt });
       }
-
-      /* ------------- ADMIN: API KEYS (mzk_…) ------------- */
-      if (action === "admin/api-keys") {
-        const raw = await rtdbGet("panel/apiKeys", { ttlMs: 5000 }).catch(() => null);
-        const keys = raw && typeof raw === "object"
-          ? Object.entries(raw).map(([hash, v]) => ({
-              id: hash.slice(0, 16),
-              hash,
-              label: v.label || "",
-              role: v.role || "admin",
-              scopes: v.scopes || ["admin:*"],
-              createdAt: v.createdAt || null,
-              expiresAt: v.expiresAt || 0,
-              lastUsedAt: v.lastUsedAt || 0,
-              revoked: Boolean(v.revoked)
-            }))
-          : [];
-        return sendJson(res, 200, { ok: true, count: keys.length, apiKeys: keys });
+      if (action === "admin/api-key-revoke") {
+        const { hashApiKey } = await import("../_lib/auth.js");
+        const target = String(body.hash || "");
+        const ok = await S.revokeApiKeyByHash(target.startsWith("mzk_") ? hashApiKey(target) : target);
+        return ok ? sendJson(res, 200, { ok: true, revoked: true }) : sendJson(res, 404, { ok: false, error: "Key not found" });
       }
-
-      if (action === "admin/api-key-create" && isPost) {
-        const label = String(body.label || "").trim() || "external-panel";
-        const expiresDays = Math.max(0, Number(body.expiresDays) || 0); // 0 = never
-        const scopes = Array.isArray(body.scopes) && body.scopes.length ? body.scopes : ["admin:*"];
-        const key = generateAdminApiKey();
-        const hash = hashApiKey(key);
-        const record = {
-          hash,
-          label,
-          role: "admin",
-          scopes,
-          createdAt: new Date().toISOString(),
-          expiresAt: expiresDays > 0 ? Date.now() + expiresDays * 86400_000 : 0,
-          revoked: false,
-          createdBy: admin.uid || "admin"
-        };
-        await rtdbSet(`panel/apiKeys/${hash}`, record);
-        clearPanelCache();
-        return sendJson(res, 200, {
-          ok: true,
-          apiKey: key, // shown ONCE — store it now
-          masked: maskKey(key),
-          record: { label, role: "admin", scopes, expiresAt: record.expiresAt, createdAt: record.createdAt },
-          usage: 'Authorization: Bearer ' + key + '   (or header: x-api-key: ' + key + ')'
-        });
+      if (action === "admin/settings") return sendJson(res, 200, { ok: true, settings: await S.getSettings() });
+      if (action === "admin/settings-set") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        return sendJson(res, 200, { ok: true, settings: await S.setSettings(body.patch || body) });
       }
-
-      if (action === "admin/api-key-revoke" && isPost) {
-        const hash = String(body.hash || body.id || "").trim();
-        if (!hash) return sendJson(res, 400, { ok: false, error: "hash (or id) required." });
-        const full = hash.length === 64 ? hash : null;
-        let target = full;
-        if (!target) {
-          const all = await rtdbGet("panel/apiKeys", { ttlMs: 5000 }).catch(() => null);
-          if (all && typeof all === "object") {
-            const hit = Object.keys(all).find((h) => h.startsWith(hash));
-            if (hit) target = hit;
-          }
-        }
-        if (!target) return sendJson(res, 404, { ok: false, error: "API key not found." });
-        await rtdbSet(`panel/apiKeys/${target}/revoked`, true);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, revoked: target.slice(0, 16) });
-      }
-
-      /* ------------- ADMIN: SETTINGS via API ------------- */
-      if (action === "admin/settings") {
-        const raw = await rtdbGet("settings", { ttlMs: 5000 }).catch(() => null);
-        const priv = (raw && raw.private) || {};
-        const redactedPrivate = Object.fromEntries(Object.keys(priv).map((k) => [k, "•••"]));
-        return sendJson(res, 200, {
-          ok: true,
-          defaults: { ...DEFAULT_SETTINGS, ...((raw && raw.defaults) || {}) },
-          stored: raw || {},
-          private: redactedPrivate
-        });
-      }
-
-      if (action === "admin/settings-set" && isPost) {
-        const patch = (body && typeof body.patch === "object" && body.patch) || body;
-        const clean = {};
-        for (const [k, v] of Object.entries(patch || {})) {
-          if (k === "private" || k.startsWith("$")) continue;
-          if (!(k in DEFAULT_SETTINGS)) continue; // whitelist
-          clean[k] = v;
-        }
-        if (!Object.keys(clean).length) {
-          return sendJson(res, 400, { ok: false, error: "No valid settings keys in patch. Allowed: " + Object.keys(DEFAULT_SETTINGS).join(", ") });
-        }
-        const current = await rtdbGet("settings/defaults", { ttlMs: 5000 }).catch(() => null);
-        const merged = { ...DEFAULT_SETTINGS, ...(current || {}), ...clean };
-        await rtdbSet("settings/defaults", merged);
-        clearPanelCache();
-        return sendJson(res, 200, { ok: true, updated: Object.keys(clean), settings: merged });
-      }
-
+      if (action === "admin/analytics") return sendJson(res, 200, { ok: true, analytics: await S.getAnalytics() });
+      if (action === "admin/audit") return sendJson(res, 200, { ok: true, audit: await S.listAudit(Number(q.limit) || 60) });
+      if (action === "admin/errors") return sendJson(res, 200, { ok: true, errors: await S.listClientErrors(Number(q.limit) || 50) });
       if (action === "admin/secure-link") {
-        if (body.mac && !normalizeMac(body.mac)) {
-          return sendJson(res, 400, { ok: false, error: "Invalid MAC address format." });
-        }
-        const target = String(body.username || "").trim();
-        return sendJson(res, 200, {
-          ok: true,
-          ...signStreamFor(base, target, body.file || "index.m3u8", body.kind || "live"),
-          fingerprint: deviceFingerprint(req)
-        });
+        const t = await S.getClient(body.username);
+        if (!t) return sendJson(res, 404, { ok: false, error: "Not found" });
+        return sendJson(res, 200, { ok: true, ...S.signStreamFor(base, t.username, body.file || "index.m3u8", body.kind || "live") });
       }
+      return sendJson(res, 400, { ok: false, error: "Unknown admin action: " + action });
     }
 
-    /* ------------------------------ MISC / DEBUG ------------------------------ */
-
-    if (action === "health" || action === "ping") {
-      return sendJson(res, 200, {
-        ok: true,
-        service: "miznaoraiptv-panel",
-        version: PANEL.version,
-        keywords: KEYWORDS.core.length,
-        at: new Date().toISOString()
-      });
-    }
-
-    return sendJson(res, 400, {
-      ok: false,
-      error: `Unknown action '${action}'.`,
-      help: "Read /api/panel?action=config for the full panel contract.",
-      authUsed: Boolean(getClientToken(req))
-    });
+    return sendJson(res, 400, { ok: false, error: "Unknown action: " + action });
   } catch (err) {
-    return sendJson(res, 500, {
-      ok: false,
-      error: "Panel request failed",
-      detail: String(err?.message || err).slice(0, 200)
-    });
+    console.error("panel error:", err);
+    return sendJson(res, 500, { ok: false, error: "Panel request failed: " + (err?.message || err) });
   }
 }
 
-export { normalizeClient };
+function helpDoc(base) {
+  return {
+    ok: true,
+    brand: "Mizanora IPTV",
+    base,
+    convention: "GET → ?action=NAME · POST → JSON body {\"action\":\"NAME\", …}",
+    auth: {
+      public: "no key",
+      reseller: "x-api-key: mzr_… (reseller/register ya reseller/login-password se)",
+      admin: "Authorization: Bearer <firebaseIdToken> (owner Google) OR x-admin-token: mzp_… (admin/pin-login) OR x-api-key: mzk_…"
+    },
+    actions: {
+      public: ["config", "plans", "help", "order", "order-status", "trial", "resolve", "reseller/register", "reseller/login-password", "recharge/contact"],
+      reseller: ["reseller/login {code,password}", "reseller/me|stats", "reseller/clients", "reseller/client-create {name,days,planId?,mac?,collectAmount?,via?}", "reseller/credentials {username}", "reseller/client-update {username,…}", "reseller/client-renew {username,planId?}", "reseller/client-suspend|client-block {username}", "reseller/client-delete {username}", "reseller/secure-link {username,file?,kind?}", "reseller/key-rotate", "reseller/pricing-set {pricing}", "reseller/payment-record {username,amount,months,via}", "reseller/finance", "reseller/ledger"],
+      admin: ["admin/me", "admin/pin-login {pin}", "admin/xtream-accounts", "admin/xtream/create|update|renew|suspend|activate|delete {username,…}", "admin/stalker/list", "admin/channels", "admin/clients", "admin/client-create|renew|suspend|delete", "admin/resellers", "admin/reseller-create|reseller-update", "admin/credits-topup {code,credits}", "admin/orders", "admin/order-review {id,approve}", "admin/payments", "admin/trials", "admin/api-keys", "admin/api-key-create {label,expiresDays?}", "admin/api-key-revoke {hash}", "admin/settings|settings-set", "admin/analytics", "admin/audit", "admin/errors", "admin/secure-link {username}"]
+    },
+    protocols: {
+      xtreamPlayerApi: `${base}/player_api.php?username=U&password=P`,
+      m3uPlus: `${base}/get.php?username=U&password=P&type=m3u_plus&output=m3u8`,
+      epg: `${base}/xmltv.php?username=U&password=P`,
+      live: `${base}/live/U/P/<id>.m3u8`, movie: `${base}/movie/U/P/<id>.mp4`, series: `${base}/series/U/P/<id>/<ep>.mp4`,
+      magPortal: `${base}/portal.php`, signedLink: `${base}/s/<token>`
+    },
+    embedApi: `${base}/api/embed?action=config|channels|movies|series|order|trial|order-status|health  (+ widget ${base}/embed.js — CORS *)`
+  };
+}

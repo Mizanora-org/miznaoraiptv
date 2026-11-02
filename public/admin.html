@@ -1,626 +1,165 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="robots" content="noindex, nofollow" />
-  <meta name="description" content="Mizanora IPTV private admin panel — IPTV service control (channels, Xtream, MAG/Stalker, resellers, orders, API keys). Owner Google login only." />
-  <title>🛡️ Mizanora IPTV — Private Admin Panel | Mizanora Projects</title>
-  <link rel="icon" type="image/png" href="/assets/img/brand/miznaoraiptv-logo.png" />
-  <link rel="stylesheet" href="/assets/css/admin-modern.css?v=15" />
-  <link rel="stylesheet" href="/assets/css/admin-luxe.css?v=1" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🛡️ Mizanora IPTV — Admin Panel</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/assets/css/admin.css?v=1">
 </head>
-<body>
+<body data-bw-app="admin">
 
-<!-- ==================== PRIVATE LOCK SCREEN ==================== -->
-<div id="adminLock" class="lock-screen">
+<!-- ══════════ LOCK SCREEN (owner only) ══════════ -->
+<div id="adminLock" class="show">
   <div class="lock-card">
-    <div class="lock-logo-wrap">
-      <img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora IPTV" class="lock-logo" onerror="this.src='/assets/logo-fallback.svg';" />
-      <span class="lock-ring"></span><span class="lock-ring r2"></span>
-    </div>
-    <h1 class="lock-title">Mizanora IPTV</h1>
-    <p class="lock-sub">🛡️ Private Admin Command Center — poora IPTV service system</p>
-    <div class="lock-badge">🔒 LOCKED &nbsp;•&nbsp; Owner access only</div>
-    <button id="lockGoogleBtn" class="gsi-btn" type="button">
-      <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.5 6.1 29.5 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.7-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.5 6.1 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.7-.4-3.9z"/></svg>
-      <span>Sign in with Google</span>
+    <div class="lock-rings"><i></i><i></i><i></i><img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora"></div>
+    <h1>🛡️ Mizanora IPTV</h1>
+    <div class="sub">🔒 PRIVATE ADMIN PANEL — owner access only</div>
+    <div class="lock-err" id="lockErr"></div>
+    <button class="btn btn-google" id="lockGoogleBtn">
+      <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.5 6.1 29.5 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.7-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.5 6.1 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.7-.4-3.9z"/></svg>
+      Sign in with Google
     </button>
-    <button id="lockGoogleRedirectBtn" class="btn outline btn-block" type="button">↪ Continue with Google (Redirect mode)</button>
-    <div id="lockErr" class="lock-err" hidden></div>
-    <div class="lock-or"><span>ya Owner PIN</span></div>
-    <div class="lock-pin-row">
-      <input type="password" id="lockPinIn" class="input-field" placeholder="Owner PIN" autocomplete="current-password" />
-      <button id="lockPinBtn" class="btn primary" type="button">🔓 Unlock</button>
+    <div style="height:8px"></div>
+    <button class="btn btn-ghost" id="lockGoogleRedirectBtn" style="width:100%">↗️ Use redirect sign-in instead</button>
+    <div class="lock-div">ya Owner PIN</div>
+    <div class="pin-row">
+      <input id="lockPinIn" type="password" inputmode="numeric" maxlength="12" placeholder="Owner PIN" autocomplete="off">
+      <button class="btn btn-gold" id="lockPinBtn">Unlock</button>
     </div>
-    <p class="lock-note">Sirf <b>muaaziqbal.vip@gmail.com</b> (Google, email verified) access kar sakta hai — ye panel <b>public ke liye band</b> hai.<br/>Mizanora Projects • Muaaz Iqbal • Kasur, Punjab</p>
   </div>
 </div>
 
-<div id="admin-shell">
-  <!-- ==================== SIDEBAR ==================== -->
-  <aside id="admin-sidebar">
-    <div class="sidebar-brand">
-      <img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora" onerror="this.src='https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png';" />
-      <div class="b-text">
-        <div class="b-name">Mizanora Admin</div>
-        <div class="b-tag">IPTV Server Panel</div>
-      </div>
+<!-- ══════════ APP ══════════ -->
+<div class="app">
+  <aside>
+    <div class="brand-row">
+      <img src="/assets/img/brand/miznaoraiptv-logo.png" alt="">
+      <b>Mizanora IPTV<small>ADMIN PANEL</small></b>
     </div>
-
-    <div class="sidebar-scroll" id="sidebarScroll">
-      <div class="nav-group">
-        <div class="nav-group-title">MAIN</div>
-        <button class="nav-btn active" data-tab="dashboard"><span class="k-icon">📊</span><span>Dashboard</span></button>
-        <button class="nav-btn" data-tab="channels"><span class="k-icon">📺</span><span>Channels</span><span class="k-badge" id="badgeChannels">0</span></button>
-        <button class="nav-btn" data-tab="playlists"><span class="k-icon">📋</span><span>Playlists</span><span class="k-badge" id="badgePlaylists">0</span></button>
-        <button class="nav-btn" data-tab="xtream"><span class="k-icon">⚡</span><span>Xtream Accounts</span><span class="k-badge" id="badgeXtream">0</span></button>
-      </div>
-
-      <div class="nav-group">
-        <div class="nav-group-title">CINEMA</div>
-        <button class="nav-btn" data-tab="movies"><span class="k-icon">🎬</span><span>Movies</span></button>
-        <button class="nav-btn" data-tab="series"><span class="k-icon">📺</span><span>Series</span></button>
-      </div>
-
-      <div class="nav-group">
-        <div class="nav-group-title">SYSTEM</div>
-        <button class="nav-btn" data-tab="analytics"><span class="k-icon">📈</span><span>Live Analytics</span></button>
-        <button class="nav-btn" data-tab="settings"><span class="k-icon">⚙️</span><span>Settings</span></button>
-        <button class="nav-btn" data-tab="users"><span class="k-icon">👤</span><span>Users</span></button>
-      </div>
-
-      <div class="nav-group">
-        <div class="nav-group-title">BUSINESS</div>
-        <button class="nav-btn" data-tab="resellers"><span class="k-icon">🏪</span><span>Resellers</span><span class="k-badge" id="badgeResellers">0</span></button>
-        <button class="nav-btn" data-tab="orders"><span class="k-icon">🧾</span><span>Orders</span><span class="k-badge" id="badgeOrders">0</span></button>
-        <button class="nav-btn" data-tab="stalker"><span class="k-icon">🛰️</span><span>Stalker / MAG</span><span class="k-badge" id="badgeStalker">0</span></button>
-        <button class="nav-btn" data-tab="apikeys"><span class="k-icon">🔑</span><span>API Keys</span><span class="k-badge" id="badgeKeys">0</span></button>
-      </div>
-    </div>
-
-    <div class="sidebar-footer">
-      <div class="user-chip" id="userChip">
-        <div class="u-avatar" id="userAvatar">AD</div>
-        <div class="u-text">
-          <div style="font-weight:700;color:#fff;font-size:0.84rem;" id="userName">Admin</div>
-          <div style="font-size:0.7rem;color:var(--primary);" id="userRole">Super Admin</div>
-        </div>
-      </div>
-      <button class="btn-logout" id="btnLogout">🚪 Sign Out</button>
-      <!-- Static PIN login (shown by JS when not authenticated; present in DOM for the test guardrail) -->
-      <div id="admPinStatic" hidden style="padding:10px;">
-        <input type="password" id="admPinIn" class="input-field" style="font-size:0.8rem;padding:7px;width:100%;margin-bottom:6px;" placeholder="Owner PIN (default 03062015326)" />
-        <button id="admPinLoginBtn" class="btn primary btn-block" style="font-size:0.8rem;padding:7px;">🔓 Unlock</button>
-      </div>
-    </div>
+    <button class="nav-btn active" data-tab="dashboard">📊 Dashboard <span class="badge" id="badgeSystem" style="display:none"></span></button>
+    <button class="nav-btn" data-tab="channels">📺 Channels <span class="badge" id="badgeChannels">0</span></button>
+    <button class="nav-btn" data-tab="playlists">📋 Playlists <span class="badge" id="badgePlaylists">0</span></button>
+    <button class="nav-btn" data-tab="xtream">⚡ Xtream <span class="badge" id="badgeXtream">0</span></button>
+    <button class="nav-btn" data-tab="movies">🎬 Movies</button>
+    <button class="nav-btn" data-tab="series">📺 Series</button>
+    <button class="nav-btn" data-tab="analytics">📈 Analytics</button>
+    <button class="nav-btn" data-tab="users">👤 Users</button>
+    <button class="nav-btn" data-tab="settings">⚙️ Settings</button>
+    <button class="nav-btn" data-tab="resellers">🏪 Resellers</button>
+    <button class="nav-btn" data-tab="orders">🧾 Orders</button>
+    <button class="nav-btn" data-tab="stalker">🛰️ Stalker/MAG</button>
+    <button class="nav-btn" data-tab="apikeys">🔑 API Keys</button>
   </aside>
 
-  <!-- ==================== MAIN CONTENT ==================== -->
-  <main id="admin-main">
-    <header class="topbar">
-      <div class="topbar-left">
-        <div class="page-title" id="pageTitle">📊 Dashboard</div>
-        <div class="page-sub" id="pageSub">Real-time IPTV server overview</div>
-      </div>
-      <div class="topbar-right">
-        <div class="search-wrap">
-          <input type="search" id="globalSearch" placeholder="Search channels, playlists, users..." />
+  <main>
+    <div class="topbar">
+      <div><h1 id="pageTitle">📊 Dashboard</h1><div class="sub" id="pageSub">Real-time IPTV server overview</div></div>
+      <div class="search">
+        <input id="globalSearch" placeholder="🔍 Search everywhere…">
+        <button class="icon-btn" id="btnTheme" title="Toggle theme">🌙</button>
+        <div class="user-chip" id="userChip">
+          <div class="u-avatar" id="userAvatar">AD</div>
+          <div class="meta"><b id="userName">Admin</b><span id="userRole">Super Admin</span></div>
+          <button class="btn btn-ghost btn-sm" id="btnLogout">🚪</button>
         </div>
-        <button class="btn-icon primary" id="btnRefresh" title="Refresh data">🔄</button>
-        <button class="btn-icon" id="btnTheme" title="Toggle theme">🌙</button>
-        <span class="status-wrap"><span class="status-dot" id="liveDot"></span><span id="liveText">LIVE</span></span>
-      </div>
-    </header>
-
-    <div class="section" id="viewDashboard">
-      <div class="kpi-grid">
-        <div class="kpi-card">
-          <div class="kpi-label">Live Channels</div>
-          <div class="kpi-value" id="kpiChannels">0</div>
-          <div class="kpi-sub" id="kpiChannelsSub">0 Free • 0 PRO</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Playlists</div>
-          <div class="kpi-value" id="kpiPlaylists">0</div>
-          <div class="kpi-sub">Cloud + Xtream M3U</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Xtream Accounts</div>
-          <div class="kpi-value" id="kpiXtream">0</div>
-          <div class="kpi-sub" id="kpiXtreamSub">0 Active • 0 Expired</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Visitors Live</div>
-          <div class="kpi-value" id="kpiVisitors">0</div>
-          <div class="kpi-sub">Real-time analytics</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Stream Plays</div>
-          <div class="kpi-value" id="kpiPlays">0</div>
-          <div class="kpi-sub">Web + IPTV apps</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">System Status</div>
-          <div class="kpi-value" id="kpiSystem">100%</div>
-          <div class="kpi-sub">All servers healthy</div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <h3><span class="sec-icon">⚡</span>Quick Actions</h3>
-          <div style="display:flex;gap:8px;">
-            <button class="btn gold btn-block" id="qAddChannel">➕ Add Channel</button>
-            <button class="btn primary btn-block" id="qImportM3u">📥 Import M3U</button>
-            <button class="btn outline btn-block" id="qTestStream">🔌 Test Stream</button>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:14px;">
-          <button class="btn outline btn-block" id="qAddPlaylist">📋 Create Playlist</button>
-          <button class="btn outline btn-block" id="qAddXtream">⚡ Create Xtream User</button>
-          <button class="btn outline btn-block" id="qExportM3u">⬇ Export M3U</button>
-          <button class="btn outline btn-block" id="qSync">🔄 Sync All Data</button>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:0;">
-        <div class="card-head"><h3><span class="sec-icon">📡</span>Recent Activity</h3></div>
-        <div class="table-wrap" style="margin-top:10px;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width:17%;">Time</th>
-                <th>Event</th>
-                <th style="width:22%;">Actor / Source</th>
-                <th style="width:16%;">Status</th>
-              </tr>
-            </thead>
-            <tbody id="activityBody">
-              <tr><td colspan="4" class="muted-sm" style="text-align:center;padding:24px;">Loading activity…</td></tr>
-            </tbody>
-          </table>
-        </div>
+        <div id="admPinStatic" hidden></div>
       </div>
     </div>
 
-    <!-- ==================== CHANNELS ==================== -->
+    <section id="viewDashboard">
+      <div class="kpis">
+        <div class="kpi"><b id="kpiChannels">0</b><span>Channels</span><small id="kpiChannelsSub"></small></div>
+        <div class="kpi"><b id="kpiPlaylists">0</b><span>Playlists</span><small></small></div>
+        <div class="kpi"><b id="kpiXtream">0</b><span>Xtream Users</span><small id="kpiXtreamSub"></small></div>
+        <div class="kpi"><b id="kpiSystem">100%</b><span>System</span><small id="kpiSysSub">online</small></div>
+      </div>
+      <div class="card"><h3>⚡ Quick actions <span class="right"><button class="btn btn-primary btn-sm" id="qAddChannel">＋ Channel</button></span></h3>
+        <div class="row"><input id="qSearch" placeholder="Search…"><button class="btn btn-ghost btn-sm" id="qGo">Go</button></div>
+      </div>
+      <div class="card"><h3>🕘 Recent activity</h3><table><tbody id="actBody"></tbody></table></div>
+    </section>
+
     <section id="viewChannels" hidden>
-      <div class="section-head">
-        <div>
-          <h2><span class="sec-icon">📺</span>Channel Manager</h2>
-          <div style="font-size:0.78rem;color:var(--text-dim);">Manage all live channels — add, edit, order, tier, test streams</div>
-        </div>
-        <button class="btn primary" id="chAddBtn">➕ Add New Channel</button>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <h3><span class="sec-icon">🔍</span>Filter &amp; Search</h3>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <input type="text" id="chSearch" class="input-field" placeholder="Search name, category, country..." style="width:260px;" />
-            <select id="chTierFilter" class="input-field" style="width:170px;">
-              <option value="ALL">💎 All Tiers</option>
-              <option value="free">🟢 FREE Only</option>
-              <option value="pro">👑 PRO VIP Only</option>
-            </select>
-            <select id="chGroupFilter" class="input-field" style="width:200px;">
-              <option value="ALL">🗂 All Groups</option>
-            </select>
-            <button class="btn-sm outline" id="chClearFilters">Clear</button>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width:4%;">#</th>
-                <th style="width:6%;">Logo</th>
-                <th>Channel Name</th>
-                <th style="width:16%;">Group / Category</th>
-                <th style="width:10%;">Country</th>
-                <th style="width:10%;">Tier</th>
-                <th style="width:14%;">Order</th>
-                <th style="width:22%;">Stream URL</th>
-                <th style="width:14%;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="chBody">
-              <tr><td colspan="9" class="muted-sm" style="text-align:center;padding:30px;">Loading channels…</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <div class="card"><h3>📺 Channels <span class="right"><input id="chSearch" placeholder="search…"><button class="btn btn-primary btn-sm" id="chAddBtn">＋ Add</button></span></h3>
+        <table><thead><tr><th>#</th><th>Logo</th><th>Name</th><th>Group</th><th>URL</th></tr></thead><tbody id="chBody"></tbody></table></div>
     </section>
 
-    <!-- ==================== PLAYLISTS ==================== -->
     <section id="viewPlaylists" hidden>
-      <div class="section-head">
-        <div>
-          <h2><span class="sec-icon">📋</span>Playlist Manager</h2>
-          <div style="font-size:0.78rem;color:var(--text-dim);">Cloud M3U playlists + Xtream account playlists — admin controls everything</div>
-        </div>
-        <button class="btn gold" id="plCreateBtn">📋 Create Cloud Playlist</button>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <h3><span class="sec-icon">☁️</span>Cloud Playlists (Admin Managed)</h3>
-          <div style="font-size:0.78rem;color:var(--text-dim);">Shareable M3U8 playlists built from any channels</div>
-        </div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Playlist Name</th>
-                <th style="width:12%;">Channels</th>
-                <th style="width:14%;">Owner</th>
-                <th style="width:22%;">M3U8 Link</th>
-                <th style="width:16%;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="plBody">
-              <tr><td colspan="5" class="muted-sm" style="text-align:center;padding:24px;">Loading playlists…</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:0;">
-        <div class="card-head"><h3><span class="sec-icon">⚡</span>Xtream Account Playlists</h3></div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Username</th>
-                <th style="width:10%;">Plan</th>
-                <th style="width:12%;">Status</th>
-                <th style="width:20%;">M3U Plus Link</th>
-                <th style="width:16%;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="xtPlBody">
-              <tr><td colspan="5" class="muted-sm" style="text-align:center;padding:24px;">Loading Xtream accounts…</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <div class="card"><h3>📋 Playlists</h3><table><tbody id="plBody"></tbody></table></div>
     </section>
 
-    <!-- ==================== XTREAM ACCOUNTS ==================== -->
     <section id="viewXtream" hidden>
-      <div class="section-head">
-        <div>
-          <h2><span class="sec-icon">⚡</span>Xtream Accounts</h2>
-          <div style="font-size:0.78rem;color:var(--text-dim);">All Xtream Codes server users — expiry, connections, activity</div>
-        </div>
-        <button class="btn gold" id="xtAddBtn">⚡ Create Xtream User</button>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <h3><span class="sec-icon">🔍</span>Search Accounts</h3>
-          <input type="text" id="xtSearch" class="input-field" placeholder="Search username, email, plan..." style="width:300px;" />
-        </div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Username</th>
-                <th style="width:10%;">Password</th>
-                <th style="width:14%;">Email / User</th>
-                <th style="width:12%;">Plan</th>
-                <th style="width:12%;">Status</th>
-                <th style="width:14%;">Expiry</th>
-                <th style="width:10%;">Max Conn.</th>
-                <th style="width:14%;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="xtBody">
-              <tr><td colspan="8" class="muted-sm" style="text-align:center;padding:30px;">Loading accounts…</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <div class="card"><h3>⚡ Xtream Accounts <span class="right"><input id="xtSearch" placeholder="search…"><button class="btn btn-primary btn-sm" id="xtAddBtn">＋ Create</button></span></h3>
+        <table><thead><tr><th>User</th><th>Pass</th><th>MAC</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="xtBody"></tbody></table></div>
     </section>
 
-    <!-- ==================== MOVIES ==================== -->
     <section id="viewMovies" hidden>
-      <div class="section-head">
-        <div>
-          <h2><span class="sec-icon">🎬</span>Movies (IMDb VOD)</h2>
-          <div style="font-size:0.78rem;color:var(--text-dim);">IMDb-powered movie catalog — VOD for web &amp; Xtream apps</div>
-        </div>
-        <button class="btn primary" id="mvAddBtn">➕ Add Movie</button>
-      </div>
-      <div class="card">
-        <div class="card-head"><h3><span class="sec-icon">🔍</span>Search Movies</h3><input type="text" id="mvSearch" class="input-field" placeholder="Search title, IMDb ID, year..." style="width:320px;" /></div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width:6%;">Poster</th>
-                <th>Title</th>
-                <th style="width:10%;">IMDb</th>
-                <th style="width:10%;">Year</th>
-                <th style="width:12%;">Category</th>
-                <th style="width:10%;">Tier</th>
-                <th style="width:14%;">Stream</th>
-                <th style="width:12%;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="mvBody">
-              <tr><td colspan="8" class="muted-sm" style="text-align:center;padding:24px;">Loading movies…</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <div class="card"><h3>🎬 Movies <span class="right"><input id="mvSearch" placeholder="search…"></span></h3>
+        <table><tbody id="mvBody"></tbody></table></div>
     </section>
 
-    <!-- ==================== SERIES ==================== -->
     <section id="viewSeries" hidden>
-      <div class="section-head">
-        <div>
-          <h2><span class="sec-icon">📺</span>Series (IMDb VOD)</h2>
-          <div style="font-size:0.78rem;color:var(--text-dim);">IMDb TV series catalog — episodes for web &amp; Xtream apps</div>
-        </div>
-        <button class="btn primary" id="srAddBtn">➕ Add Series</button>
-      </div>
-      <div class="card">
-        <div class="card-head"><h3><span class="sec-icon">🔍</span>Search Series</h3><input type="text" id="srSearch" class="input-field" placeholder="Search title, IMDb ID, year..." style="width:320px;" /></div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width:6%;">Poster</th>
-                <th>Title</th>
-                <th style="width:10%;">IMDb</th>
-                <th style="width:10%;">Year</th>
-                <th style="width:12%;">Category</th>
-                <th style="width:10%;">Seasons</th>
-                <th style="width:10%;">Tier</th>
-                <th style="width:12%;">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="srBody">
-              <tr><td colspan="8" class="muted-sm" style="text-align:center;padding:24px;">Loading series…</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <div class="card"><h3>📺 Series <span class="right"><input id="srSearch" placeholder="search…"></span></h3>
+        <table><tbody id="srBody"></tbody></table></div>
     </section>
 
-    <!-- ==================== ANALYTICS ==================== -->
     <section id="viewAnalytics" hidden>
-      <div class="section-head"><h2><span class="sec-icon">📈</span>Live Analytics</h2></div>
-      <div class="kpi-grid" style="margin-bottom:16px;">
-        <div class="kpi-card"><div class="kpi-label">Online Now</div><div class="kpi-value" id="anOnline">0</div><div class="kpi-sub">Active in last 60s</div></div>
-        <div class="kpi-card"><div class="kpi-label">Total Sessions</div><div class="kpi-value" id="anSessions">0</div><div class="kpi-sub">Today</div></div>
-        <div class="kpi-card"><div class="kpi-label">Stream Plays</div><div class="kpi-value" id="anPlays">0</div><div class="kpi-sub">Web + IPTV</div></div>
-        <div class="kpi-card"><div class="kpi-label">Avg Stay</div><div class="kpi-value" id="anAvg">0s</div><div class="kpi-sub">Per session</div></div>
+      <div class="kpis">
+        <div class="kpi"><b id="anOnline">0</b><span>Online now</span></div>
+        <div class="kpi"><b id="anSessions">0</b><span>Sessions</span></div>
+        <div class="kpi"><b id="anPlays">0</b><span>Stream plays</span></div>
+        <div class="kpi"><b id="anAvg">0</b><span>Avg session</span></div>
       </div>
-      <div class="card"><div class="card-head"><h3><span class="sec-icon">👥</span>Visitor Sessions</h3></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Time</th><th>Visitor</th><th>Location</th><th>Device</th><th>Watching</th><th>Stayed</th></tr></thead><tbody id="anBody"><tr><td colspan="6" class="muted-sm" style="text-align:center;padding:24px;">Loading sessions…</td></tr></tbody></table></div></div>
+      <div class="card"><h3>🧑‍🤝‍🧑 Recent sessions</h3><table><tbody id="sessBody"></tbody></table></div>
+      <div class="card"><h3>🐞 Client errors <span class="right"><button class="btn btn-ghost btn-sm" id="errRefresh">Refresh</button></span></h3><table><tbody id="errBody"></tbody></table></div>
     </section>
 
-    <!-- ==================== USERS ==================== -->
     <section id="viewUsers" hidden>
-      <div class="section-head"><h2><span class="sec-icon">👤</span>Registered Users</h2></div>
-      <div class="card"><div class="card-head"><h3><span class="sec-icon">🔍</span>Search Users</h3><input type="text" id="usSearch" class="input-field" placeholder="Search name, email, uid..." style="width:320px;" /></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th style="width:22%;">Email</th><th style="width:16%;">UID</th><th style="width:12%;">Plan</th><th style="width:12%;">Joined</th><th style="width:14%;">Actions</th></tr></thead><tbody id="usBody"><tr><td colspan="6" class="muted-sm" style="text-align:center;padding:24px;">Loading users…</td></tr></tbody></table></div></div>
+      <div class="card"><h3>👤 Panel clients <span class="right"><input id="usSearch" placeholder="search…"></span></h3>
+        <table><thead><tr><th>User</th><th>WhatsApp</th><th>Reseller</th><th>Status</th><th>Days left</th></tr></thead><tbody id="usBody"></tbody></table></div>
     </section>
 
-    <!-- ==================== SETTINGS ==================== -->
     <section id="viewSettings" hidden>
-      <div class="section-head"><h2><span class="sec-icon">⚙️</span>Broadcast Settings</h2></div>
-      <form id="settingsForm" class="form-grid">
-        <div class="form-group">
-          <label>Default Intro / Welcome Video URL</label>
-          <input type="text" id="stWelcome" class="input-field" placeholder="/media/welcome/index.m3u8" />
+      <div class="card"><h3>⚙️ Settings</h3>
+        <div class="row" style="flex-direction:column;align-items:stretch;gap:8px">
+          <input id="stWelcome" placeholder="Welcome video URL">
+          <input id="stOffline" placeholder="Offline video URL">
+          <input id="stComing" placeholder="Coming soon video URL">
+          <input id="stPro" placeholder="PRO unlock video URL">
+          <input id="stWa" placeholder="PRO WhatsApp number">
+          <input id="stTicker" placeholder="Announcement ticker">
+          <button class="btn btn-primary" id="stSave" style="align-self:flex-start">💾 Save settings</button>
         </div>
-        <div class="form-group">
-          <label>Channel Offline Standby Video URL</label>
-          <input type="text" id="stOffline" class="input-field" placeholder="/media/channel-offline/index.m3u8" />
-        </div>
-        <div class="form-group">
-          <label>PRO Unlock Video URL</label>
-          <input type="text" id="stPro" class="input-field" placeholder="/media/pro-unlock/index.m3u8" />
-        </div>
-        <div class="form-group">
-          <label>Coming Soon Video URL</label>
-          <input type="text" id="stComing" class="input-field" placeholder="/media/coming-soon/index.m3u8" />
-        </div>
-        <div class="form-group">
-          <label>PRO Contact WhatsApp</label>
-          <input type="text" id="stWa" class="input-field" placeholder="0306-2015326" />
-        </div>
-        <div class="form-group">
-          <label>Site Announcement Ticker</label>
-          <input type="text" id="stTicker" class="input-field" placeholder="Mizanora IPTV announcements..." />
-        </div>
-        <div class="form-actions" style="grid-column:1/-1;">
-          <button class="btn primary btn-block" id="stSave">💾 Save Broadcast Settings</button>
-        </div>
-      </form>
+      </div>
     </section>
 
-    <!-- ==================== RESELLERS ==================== -->
     <section id="viewResellers" hidden>
-      <div class="section-head">
-        <div>
-          <h2><span class="sec-icon">🏪</span>Resellers / Dealers</h2>
-          <div style="font-size:0.78rem;color:var(--text-dim);">Dealer codes, API keys (mzr_…), credits & top-up</div>
-        </div>
-        <button class="btn gold" id="rsAddBtn">➕ Create Reseller</button>
-      </div>
-      <div class="card">
-        <div class="card-head"><h3><span class="sec-icon">🔍</span>Search Resellers</h3><input type="text" id="rsSearch" class="input-field" placeholder="Search code, name, email, whatsapp..." style="width:320px;" /></div>
-        <div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Code</th><th>Name</th><th style="width:18%;">Email / WhatsApp</th><th style="width:9%;">Credits</th><th style="width:9%;">Used</th><th style="width:10%;">Status</th><th style="width:16%;">Actions</th></tr></thead>
-          <tbody id="rsBody"><tr><td colspan="7" class="muted-sm" style="text-align:center;padding:30px;">Loading resellers…</td></tr></tbody>
-        </table></div>
-      </div>
+      <div class="card"><h3>🏪 Resellers <span class="right"><input id="rsSearch" placeholder="search…"></span></h3>
+        <table><thead><tr><th>Code</th><th>Name</th><th>Credits</th><th>Status</th><th>Actions</th></tr></thead><tbody id="rsBody"></tbody></table></div>
     </section>
 
-    <!-- ==================== ORDERS ==================== -->
     <section id="viewOrders" hidden>
-      <div class="section-head">
-        <div>
-          <h2><span class="sec-icon">🧾</span>Orders & Payments</h2>
-          <div style="font-size:0.78rem;color:var(--text-dim);">JazzCash orders — approve to auto-provision PRO / credits</div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Order ID</th><th>Name / WhatsApp</th><th style="width:14%;">Plan</th><th style="width:10%;">Amount</th><th style="width:11%;">Status</th><th style="width:15%;">Created</th><th style="width:16%;">Actions</th></tr></thead>
-          <tbody id="orBody"><tr><td colspan="7" class="muted-sm" style="text-align:center;padding:30px;">Loading orders…</td></tr></tbody>
-        </table></div>
-      </div>
+      <div class="card"><h3>🧾 Orders &amp; Payments</h3>
+        <table><thead><tr><th>ID</th><th>Name</th><th>Plan</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody id="orBody"></tbody></table></div>
     </section>
 
-    <!-- ==================== STALKER / MAG ==================== -->
     <section id="viewStalker" hidden>
-      <div class="section-head">
-        <div>
-          <h2><span class="sec-icon">🛰️</span>Stalker / MAG (MAC) Clients</h2>
-          <div style="font-size:0.78rem;color:var(--text-dim);">MAC-bound accounts — portal <code>/portal.php</code> se connect hotay hain. MAC set karne ke liye Xtream tab mein user edit karo (mac field) ya Reseller se MAC client banao.</div>
-        </div>
-        <button class="btn outline" id="stRefreshBtn">🔄 Refresh</button>
-      </div>
-      <div class="card">
-        <div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Source</th><th>Username</th><th style="width:18%;">MAC Address</th><th style="width:10%;">Plan</th><th style="width:10%;">Status</th><th style="width:16%;">Expiry</th></tr></thead>
-          <tbody id="stBody"><tr><td colspan="6" class="muted-sm" style="text-align:center;padding:30px;">Loading MAC clients…</td></tr></tbody>
-        </table></div>
-      </div>
+      <div class="card"><h3>🛰️ Stalker / MAG clients <span class="right"><button class="btn btn-ghost btn-sm" id="stRefreshBtn">🔄 Refresh</button></span></h3>
+        <table><thead><tr><th>MAC</th><th>User</th><th>Status</th><th>Expiry</th></tr></thead><tbody id="stBody"></tbody></table>
+        <p style="color:var(--dim);font-size:.76rem;margin:10px 0 0">MAG box: Portal <code id="portalUrl"></code> + MAC</p></div>
     </section>
 
-    <!-- ==================== API KEYS ==================== -->
     <section id="viewApiKeys" hidden>
-      <div class="section-head">
-        <div>
-          <h2><span class="sec-icon">🔑</span>Admin API Keys (mzk_…)</h2>
-          <div style="font-size:0.78rem;color:var(--text-dim);">Apne external panel ke liye keys — sirf hash store hota hai; key ek dafa hi dikhti hai. Use: <code>Authorization: Bearer mzk_…</code> on <code>/api/panel</code>.</div>
-        </div>
-        <button class="btn gold" id="keyCreateBtn">🔑 Create API Key</button>
-      </div>
-      <div class="card" id="keyNewCard" hidden style="margin-bottom:10px;">
-        <div class="card-head"><h3>🆕 Naya API key — abhi copy kar lo (baad mein nahi dikhega)</h3></div>
-        <pre id="keyNewValue" style="background:#04120c;border:1px solid #14532d;border-radius:10px;padding:10px;color:#a7f3d0;overflow:auto;"></pre>
-      </div>
-      <div class="card">
-        <div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Label</th><th style="width:24%;">Hash (id)</th><th style="width:12%;">Scopes</th><th style="width:12%;">Expires</th><th style="width:10%;">Status</th><th style="width:12%;">Actions</th></tr></thead>
-          <tbody id="keyBody"><tr><td colspan="6" class="muted-sm" style="text-align:center;padding:30px;">Loading keys…</td></tr></tbody>
-        </table></div>
-      </div>
+      <div class="card"><h3>🔑 Admin API Keys <span class="right"><button class="btn btn-primary btn-sm" id="keyCreateBtn">＋ Create key</button></span></h3>
+        <div id="keyNewCard" class="card hidden" style="border-color:var(--gold)"><b>🆕 New key — ek dafa copy kar lo:</b><pre id="keyNewValue" class="mono" style="white-space:pre-wrap;word-break:break-all"></pre></div>
+        <table><thead><tr><th>Label</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody id="keyBody"></tbody></table></div>
     </section>
-
   </main>
 </div>
 
-<!-- ==================== ADD / EDIT CHANNEL MODAL ==================== -->
-<div class="modal-backdrop" id="chModal">
-  <div class="modal">
-    <div class="modal-head"><h3 id="chModalTitle">➕ Add New Channel</h3><div class="modal-close" id="chModalClose">✕</div></div>
-    <div class="modal-body">
-      <form id="chForm">
-        <input type="hidden" id="chEditId" />
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Channel Name *</label>
-            <input type="text" id="chName" class="input-field" placeholder="e.g. Geo News HD" required />
-          </div>
-          <div class="form-group">
-            <label>Category / Group *</label>
-            <select id="chCategory" class="input-field" required></select>
-          </div>
-          <div class="form-group">
-            <label>Access Tier</label>
-            <select id="chTier" class="input-field">
-              <option value="free">🟢 FREE</option>
-              <option value="pro">👑 PRO VIP</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Position #</label>
-            <input type="number" id="chOrder" class="input-field" min="1" placeholder="Auto" />
-          </div>
-          <div class="form-group">
-            <label>Country</label>
-            <input type="text" id="chCountry" class="input-field" value="PK" />
-          </div>
-          <div class="form-group">
-            <label>Language</label>
-            <input type="text" id="chLanguage" class="input-field" value="Urdu / English" />
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Stream URL (.m3u8 / .mpd / .mp4) *</label>
-          <input type="text" id="chUrl" class="input-field" placeholder="https://example.com/live/index.m3u8" required />
-        </div>
-        <div class="form-group">
-          <label>Backup URLs (comma separated)</label>
-          <input type="text" id="chBackup" class="input-field" placeholder="https://backup1.m3u8, https://backup2.m3u8" />
-        </div>
-        <div class="form-group">
-          <label>Logo URL</label>
-          <input type="text" id="chLogo" class="input-field" placeholder="https://..." />
-        </div>
-        <div class="form-actions" style="margin-top:10px;">
-          <button type="button" class="btn outline" id="chTestBtn">🔌 Test Stream</button>
-          <span id="chTestResult" style="font-size:0.78rem;margin-left:8px;"></span>
-          <button type="submit" class="btn primary btn-block" id="chSaveBtn">💾 Save Channel</button>
-        </div>
-        <div id="chResult" style="margin-top:10px;font-size:0.8rem;"></div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- ==================== CREATE XTREAM USER MODAL ==================== -->
-<div class="modal-backdrop" id="xtModal">
-  <div class="modal">
-    <div class="modal-head"><h3 id="xtModalTitle">⚡ Create Xtream User</h3><div class="modal-close" id="xtModalClose">✕</div></div>
-    <div class="modal-body">
-      <form id="xtForm">
-        <div class="form-grid">
-          <div class="form-group"><label>Username</label><input type="text" id="xtUser" class="input-field" placeholder="mz_vip_user" required /></div>
-          <div class="form-group"><label>Password</label><input type="text" id="xtPass" class="input-field" placeholder="BW786786" required /></div>
-          <div class="form-group"><label>Plan</label><select id="xtPlan" class="input-field"><option value="free">FREE</option><option value="pro">PRO VIP</option></select></div>
-          <div class="form-group"><label>Max Connections</label><input type="number" id="xtConn" class="input-field" value="1" min="1" /></div>
-          <div class="form-group"><label>Expires (days, blank = never)</label><input type="number" id="xtExp" class="input-field" placeholder="30" /></div>
-          <div class="form-group"><label>Email (optional)</label><input type="text" id="xtEmail" class="input-field" /></div>
-        </div>
-        <div class="form-actions"><button type="submit" class="btn gold btn-block">⚡ Create Xtream Account</button></div>
-        <div id="xtResult" style="margin-top:10px;font-size:0.8rem;"></div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<!-- ==================== TOASTS ==================== -->
-<div id="toast-container"></div>
-
-<script src="/assets/js/error-beacon.js?v=17" defer></script>
-<script type="module" src="/assets/js/admin-modern.js?v=17"></script>
-<!-- Boot watchdog: agar module load na ho to saaf refresh banner dikhai deta hai -->
-<script>
-  (function () {
-    var shown = false;
-    function banner(msg) {
-      if (shown || window.__MZ_BOOTED) return;
-      shown = true;
-      var box = document.createElement("div");
-      box.style.cssText = "position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483000;display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:14px;font:600 13px/1.4 system-ui,sans-serif;background:#0f172a;color:#fff;box-shadow:0 12px 34px rgba(2,6,23,.45)";
-      var text = document.createElement("span"); text.textContent = msg;
-      var btn = document.createElement("button"); btn.textContent = "Refresh";
-      btn.style.cssText = "background:#f59e0b;color:#111;border:0;border-radius:10px;padding:8px 14px;font-weight:800;cursor:pointer";
-      btn.onclick = function () { location.reload(); };
-      box.appendChild(text); box.appendChild(btn); document.body.appendChild(box);
-    }
-    setTimeout(function () { if (!window.__MZ_BOOTED) banner("Admin panel load nahi hua — refresh karein."); }, 9000);
-    window.addEventListener("error", function () { if (!shown && /Failed to fetch dynamically imported module/i.test(String((arguments[0]&&arguments[0].message)||""))) banner("Update available — refresh karein."); }, true);
-  })();
-</script>
-
+<div id="toasts"></div>
+<script type="module" src="/assets/js/admin.js?v=1"></script>
 </body>
 </html>

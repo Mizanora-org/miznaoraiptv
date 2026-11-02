@@ -1,296 +1,39 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "framework": null,
-  "installCommand": "true",
-  "buildCommand": null,
-  "outputDirectory": "public",
-  "cleanUrls": true,
-  "trailingSlash": false,
-  "rewrites": [
-    {
-      "source": "/media/:folder/:seg.ts",
-      "destination": "/media/:folder/:seg.m2ts"
-    },
-    {
-      "source": "/player_api.php",
-      "destination": "/api/xtream?ep=player"
-    },
-    {
-      "source": "/panel_api.php",
-      "destination": "/api/xtream?ep=player"
-    },
-    {
-      "source": "/get.php",
-      "destination": "/api/xtream?ep=get"
-    },
-    {
-      "source": "/xmltv.php",
-      "destination": "/api/xtream?ep=xmltv"
-    },
-    {
-      "source": "/portal.php",
-      "destination": "/api/xtream?ep=portal"
-    },
-    {
-      "source": "/server/load.php",
-      "destination": "/api/xtream?ep=portal"
-    },
-    {
-      "source": "/stalker_portal/server/load.php",
-      "destination": "/api/xtream?ep=portal"
-    },
-    {
-      "source": "/c/portal.php",
-      "destination": "/api/xtream?ep=portal"
-    },
-    {
-      "source": "/c/server/load.php",
-      "destination": "/api/xtream?ep=portal"
-    },
-    {
-      "source": "/c/stalker_portal/server/load.php",
-      "destination": "/api/xtream?ep=portal"
-    },
-    {
-      "source": "/c/load.php",
-      "destination": "/api/xtream?ep=portal"
-    },
-    {
-      "source": "/live/:user/:pass/:file",
-      "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:file"
-    },
-    {
-      "source": "/movie/:user/:pass/:file",
-      "destination": "/api/media?ep=live&kind=movie&user=:user&pass=:pass&file=:file"
-    },
-    {
-      "source": "/series/:user/:pass/:file",
-      "destination": "/api/media?ep=live&kind=series&user=:user&pass=:pass&file=:file"
-    },
-    {
-      "source": "/:user/:pass/:id(\\d+)",
-      "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:id.m3u8"
-    },
-    {
-      "source": "/:user/:pass/:id(\\d+).:ext(m3u8|ts)",
-      "destination": "/api/media?ep=live&kind=live&user=:user&pass=:pass&file=:id.:ext"
-    },
-    {
-      "source": "/ch/:slug",
-      "destination": "/api/media?ep=live&kind=live&slug=:slug"
-    },
-    {
-      "source": "/playlist/:id",
-      "destination": "/api/media?ep=playlist&id=:id"
-    },
-    {
-      "source": "/s/:token",
-      "destination": "/api/admin?ep=panel&action=resolve&token=:token"
-    },
-    {
-      "source": "/api/gate",
-      "destination": "/api/media?ep=gate"
-    },
-    {
-      "source": "/api/analytics",
-      "destination": "/api/admin?ep=analytics"
-    },
-    {
-      "source": "/api/stream",
-      "destination": "/api/media?ep=stream"
-    },
-    {
-      "source": "/api/proxy",
-      "destination": "/api/media?ep=proxy"
-    },
-    {
-      "source": "/api/playlist",
-      "destination": "/api/media?ep=playlist"
-    },
-    {
-      "source": "/api/embed",
-      "destination": "/api/admin?ep=embed"
-    },
-    {
-      "source": "/api/panel",
-      "destination": "/api/admin?ep=panel"
-    },
-    {
-      "source": "/api/probe",
-      "destination": "/api/admin?ep=probe"
-    },
-    {
-      "source": "/api/sync",
-      "destination": "/api/admin?ep=sync"
-    },
-    {
-      "source": "/api/github/push",
-      "destination": "/api/admin?ep=github_push"
-    },
-    {
-      "source": "/api/imdb",
-      "destination": "/api/admin?ep=imdb"
-    },
-    {
-      "source": "/admin",
-      "destination": "/admin.html"
-    },
-    {
-      "source": "/",
-      "destination": "/admin.html"
-    }
-  ],
   "headers": [
-    {
-      "source": "/",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache"
-        },
-        {
-          "key": "X-Robots-Tag",
-          "value": "noindex, nofollow"
-        },
-        {
-          "key": "Cross-Origin-Opener-Policy",
-          "value": "same-origin-allow-popups"
-        }
-      ]
-    },
-    {
-      "source": "/admin.html",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache"
-        },
-        {
-          "key": "X-Robots-Tag",
-          "value": "noindex, nofollow"
-        },
-        {
-          "key": "Cross-Origin-Opener-Policy",
-          "value": "same-origin-allow-popups"
-        }
-      ]
-    },
-    {
-      "source": "/admin.html",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache"
-        },
-        {
-          "key": "Cross-Origin-Opener-Policy",
-          "value": "same-origin-allow-popups"
-        }
-      ]
-    },
-    {
-      "source": "/",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-cache"
-        },
-        {
-          "key": "Cross-Origin-Opener-Policy",
-          "value": "same-origin-allow-popups"
-        }
-      ]
-    },
-    {
-      "source": "/media/(.*)\\.(ts|m2ts)",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "video/mp2t"
-        },
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=86400"
-        }
-      ]
-    },
-    {
-      "source": "/media/(.*)\\.mp4",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "video/mp4"
-        },
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=86400"
-        }
-      ]
-    },
-    {
-      "source": "/media/(.*)\\.m3u8",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/vnd.apple.mpegurl; charset=utf-8"
-        },
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=3600"
-        }
-      ]
-    },
-    {
-      "source": "/media/(.*)\\.mpd",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/dash+xml; charset=utf-8"
-        },
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=3600"
-        }
-      ]
-    },
-    {
-      "source": "/assets/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=0, must-revalidate"
-        }
-      ]
-    },
-    {
-      "source": "/admin",
-      "headers": [
-        {
-          "key": "Cross-Origin-Opener-Policy",
-          "value": "same-origin-allow-popups"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "no-cache"
-        }
-      ]
-    }
+    { "source": "/", "headers": [
+      { "key": "Cache-Control", "value": "no-cache" },
+      { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
+    ]},
+    { "source": "/admin", "headers": [
+      { "key": "Cache-Control", "value": "no-cache" },
+      { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+      { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
+    ]},
+    { "source": "/admin.html", "headers": [
+      { "key": "Cache-Control", "value": "no-cache" },
+      { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
+      { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
+    ]},
+    { "source": "/assets/(.*)", "headers": [ { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" } ] },
+    { "source": "/media/(.*)\\.(ts|m2ts)", "headers": [ { "key": "Content-Type", "value": "video/mp2t" }, { "key": "Access-Control-Allow-Origin", "value": "*" }, { "key": "Cache-Control", "value": "no-cache" } ] },
+    { "source": "/media/(.*)", "headers": [ { "key": "Access-Control-Allow-Origin", "value": "*" }, { "key": "Cache-Control", "value": "public, max-age=86400" } ] },
+    { "source": "/api/(.*)", "headers": [ { "key": "Access-Control-Allow-Origin", "value": "*" } ] }
+  ],
+  "rewrites": [
+    { "source": "/player_api.php", "destination": "/api/xtream?ep=player" },
+    { "source": "/panel_api.php", "destination": "/api/xtream?ep=player" },
+    { "source": "/get.php", "destination": "/api/xtream?ep=get" },
+    { "source": "/xmltv.php", "destination": "/api/xtream?ep=xmltv" },
+    { "source": "/live/(.*)", "destination": "/api/xtream?ep=file&kind=live&rest=$1" },
+    { "source": "/movie/(.*)", "destination": "/api/xtream?ep=file&kind=movie&rest=$1" },
+    { "source": "/series/(.*)", "destination": "/api/xtream?ep=file&kind=series&rest=$1" },
+    { "source": "/portal.php", "destination": "/api/portal?ep=portal" },
+    { "source": "/stalker_portal/(.*)", "destination": "/api/portal?ep=stalker&rest=$1" },
+    { "source": "/c/portal.php", "destination": "/api/portal?ep=c" },
+    { "source": "/c/(.*)", "destination": "/api/portal?ep=c" },
+    { "source": "/s/(.*)", "destination": "/api/stream?ep=signed&token=$1" },
+    { "source": "/api/panel", "destination": "/api/panel" },
+    { "source": "/admin", "destination": "/admin.html" }
   ]
 }

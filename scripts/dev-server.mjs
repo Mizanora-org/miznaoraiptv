@@ -1,73 +1,39 @@
+/**
+ * Mizanora IPTV — dev server (fresh rebuild)
+ * Serves public/ statically + routes /api/* and protocol rewrites (from
+ * vercel.json) to api/*.js handlers. Binds 0.0.0.0 for live preview.
+ */
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PUBLIC_DIR = path.join(ROOT, "public");
 const API_DIR = path.join(ROOT, "api");
-const vercelConfig = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || "0.0.0.0";
 
-const MIME_TYPES = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".mjs": "application/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".webmanifest": "application/manifest+json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".ico": "image/x-icon",
-  ".txt": "text/plain; charset=utf-8",
-  ".xml": "application/xml; charset=utf-8",
-  ".m3u8": "application/vnd.apple.mpegurl; charset=utf-8",
-  ".m3u": "audio/x-mpegurl; charset=utf-8",
-  ".mpd": "application/dash+xml; charset=utf-8",
-  ".m4s": "video/iso.segment",
-  ".ts": "video/mp2t",
-  ".m2ts": "video/mp2t",
-  ".flv": "video/x-flv",
-  ".mkv": "video/x-matroska",
-  ".webm": "video/webm",
-  ".mp4": "video/mp4"
+const MIME = {
+  ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8", ".png": "image/png", ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".webp": "image/webp",
+  ".mp4": "video/mp4", ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t",
+  ".webmanifest": "application/manifest+json", ".txt": "text/plain; charset=utf-8", ".xml": "application/xml"
 };
 
-function compilePattern(source) {
-  const paramNames = [];
-  const tokenMap = [];
-  const tokenized = source.replace(/:([A-Za-z0-9_]+)(\([^)]+\))?/g, (_, name, customGroup) => {
-    const idx = tokenMap.length;
-    paramNames.push(name);
-    tokenMap.push(customGroup || "([^/]+)");
-    return `__PARAM_${idx}__`;
-  });
-  const escaped = tokenized
-    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/__PARAM_(\d+)__/g, (_, i) => tokenMap[Number(i)]);
-  return { regex: new RegExp("^" + escaped + "$"), paramNames };
-}
+const vercel = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf-8"));
+const rewrites = (vercel.rewrites || []).map((r) => ({ src: new RegExp("^" + r.source.replace(/\(\.\*\)/g, "(.*)").replace(/:([a-zA-Z]+)/g, "([^/]+)").replace(/\$/g, "$") + "$"), dest: r.destination }));
 
-const compiledRewrites = (vercelConfig.rewrites || []).map((r) => ({
-  ...r,
-  ...compilePattern(r.source)
-}));
-
-function matchRewrite(pathname, existingSearchParams) {
-  for (const rule of compiledRewrites) {
-    const m = pathname.match(rule.regex);
+function matchRewrite(pathname) {
+  for (const r of rewrites) {
+    const m = pathname.match(r.src);
     if (m) {
-      let dest = rule.destination;
-      rule.paramNames.forEach((name, idx) => {
-        dest = dest.replace(`:${name}`, encodeURIComponent(decodeURIComponent(m[idx + 1])));
-      });
-      const destUrl = new URL(dest, "http://localhost");
-      for (const [k, v] of existingSearchParams.entries()) {
-        if (!destUrl.searchParams.has(k)) destUrl.searchParams.set(k, v);
-      }
-      return destUrl;
+      let dest = r.dest;
+      m.slice(1).forEach((g, i) => { dest = dest.replace(new RegExp("\\$" + (i + 1), "g"), g); });
+      const u = new URL(dest, "http://x");
+      return { pathname: u.pathname, search: u.search };
     }
   }
   return null;
@@ -76,18 +42,10 @@ function matchRewrite(pathname, existingSearchParams) {
 const handlerCache = new Map();
 async function loadApiHandler(apiPathname) {
   const rel = apiPathname.replace(/^\/api\/?/, "");
-  const candidates = [
-    path.join(API_DIR, `${rel}.js`),
-    path.join(API_DIR, rel, "index.js")
-  ];
-  for (const file of candidates) {
-    if (fs.existsSync(file) && fs.statSync(file).isFile()) {
-      if (!handlerCache.has(file)) {
-        const mod = await import(pathToFileURL(file).href);
-        handlerCache.set(file, mod.default);
-      }
-      return handlerCache.get(file);
-    }
+  const file = path.join(API_DIR, rel.endsWith(".js") ? rel : rel + ".js");
+  if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+    if (!handlerCache.has(file)) handlerCache.set(file, (await import(pathToFileURL(file).href)).default);
+    return handlerCache.get(file);
   }
   return null;
 }
@@ -95,84 +53,41 @@ async function loadApiHandler(apiPathname) {
 export function createAppServer() {
   return http.createServer(async (req, res) => {
     try {
-      const incomingUrl = new URL(req.url || "/", "http://localhost");
-      let pathname = incomingUrl.pathname;
-      if (pathname.length > 1 && pathname.endsWith("/")) {
-        pathname = pathname.slice(0, -1);
-      }
+      const incoming = new URL(req.url, "http://localhost");
+      let pathname = decodeURIComponent(incoming.pathname);
+      if (pathname.length > 1 && pathname.endsWith("/")) pathname = pathname.slice(0, -1);
 
-      const rewritten = matchRewrite(pathname, incomingUrl.searchParams);
-      const effectivePath = rewritten ? rewritten.pathname : pathname;
-      const effectiveSearch = rewritten ? rewritten.search : incomingUrl.search;
+      const rw = matchRewrite(pathname);
+      const effectivePath = rw ? rw.pathname : pathname;
+      // merge original query with rewrite destination query (Vercel-style)
+      const merged = new URLSearchParams(incoming.search);
+      if (rw) for (const [k, v] of new URLSearchParams(rw.search).entries()) merged.set(k, v);
+      const effectiveSearch = merged.toString() ? "?" + merged.toString() : "";
 
       if (effectivePath.startsWith("/api/")) {
         const fn = await loadApiHandler(effectivePath);
         if (fn) {
           req.url = effectivePath + effectiveSearch;
-          const qObj = {};
-          const sp = new URLSearchParams(effectiveSearch);
-          for (const [k, v] of sp.entries()) qObj[k] = v;
-          req.query = qObj;
+          req.query = Object.fromEntries(new URLSearchParams(effectiveSearch).entries());
           await fn(req, res);
           return;
         }
       }
 
-      // Serve static files from public/
       let relFile = effectivePath === "/" ? "index.html" : effectivePath.replace(/^\/+/, "");
       let diskPath = path.resolve(PUBLIC_DIR, relFile);
-      if (!diskPath.startsWith(PUBLIC_DIR)) {
-        res.writeHead(403);
-        res.end("Forbidden");
-        return;
-      }
-
-      if (!fs.existsSync(diskPath) && !path.extname(diskPath)) {
-        if (fs.existsSync(`${diskPath}.html`)) {
-          diskPath = `${diskPath}.html`;
-        }
-      }
-
+      if (!diskPath.startsWith(PUBLIC_DIR)) { res.writeHead(403); return res.end("Forbidden"); }
+      if (!fs.existsSync(diskPath) && !path.extname(diskPath) && fs.existsSync(diskPath + ".html")) diskPath += ".html";
       if (!fs.existsSync(diskPath) || !fs.statSync(diskPath).isFile()) {
         res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-        res.end("404 Not Found");
-        return;
+        return res.end("404 Not Found");
       }
-
       const ext = path.extname(diskPath).toLowerCase();
-      const mime = MIME_TYPES[ext] || "application/octet-stream";
-      const stat = fs.statSync(diskPath);
-
       res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Accept-Ranges", "bytes");
-      if (ext === ".html") {
-        // Google sign-in popup ko window.closed se check karne dein (COOP warning fix)
-        res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
-      }
-
-      const range = req.headers.range;
-      if (range) {
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10) || 0;
-        const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
-        if (start >= stat.size || end >= stat.size) {
-          res.writeHead(416, { "Content-Range": `bytes */${stat.size}` });
-          res.end();
-          return;
-        }
-        res.writeHead(206, {
-          "Content-Range": `bytes ${start}-${end}/${stat.size}`,
-          "Content-Length": end - start + 1,
-          "Content-Type": mime
-        });
-        fs.createReadStream(diskPath, { start, end }).pipe(res);
-        return;
-      }
-
-      res.writeHead(200, {
-        "Content-Type": mime,
-        "Content-Length": stat.size
-      });
+      if (ext === ".html") res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+      if (ext === ".m3u8") res.setHeader("Cache-Control", "no-store");
+      const stat = fs.statSync(diskPath);
+      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Content-Length": stat.size, "Accept-Ranges": "bytes" });
       fs.createReadStream(diskPath).pipe(res);
     } catch (err) {
       res.writeHead(500, { "Content-Type": "application/json" });
@@ -181,11 +96,8 @@ export function createAppServer() {
   });
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const port = Number(process.env.PORT) || 3000;
-  const host = process.env.HOST || "0.0.0.0";
-  const server = createAppServer();
-  server.listen(port, host, () => {
-    console.log(`🌊 Mizanora IPTV server listening on http://${host}:${port}`);
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+  createAppServer().listen(PORT, HOST, () => {
+    console.log(`🌊 Mizanora IPTV server listening on http://${HOST}:${PORT}`);
   });
 }
