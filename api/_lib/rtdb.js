@@ -186,6 +186,16 @@ export async function rtdbGet(nodePath, { ttlMs = 6000, authToken = "" } = {}) {
 export async function rtdbSet(nodePath, value, { authToken = "", method = "PUT" } = {}) {
   const clean = nodePath.replace(/^\/+|\/+$/g, "");
   updateLocalMirrorNode(clean, value);
+  // Invalidate cache for this node AND its parent so writes (e.g. API-key
+  // revocation) take effect immediately instead of after the read TTL.
+  memCache.delete(`${clean}:pub`);
+  memCache.delete(`${clean}:auth`);
+  const parts = clean.split("/");
+  if (parts.length > 1) {
+    const parent = parts.slice(0, -1).join("/");
+    memCache.delete(`${parent}:pub`);
+    memCache.delete(`${parent}:auth`);
+  }
   const secret = authToken || process.env.FIREBASE_DATABASE_SECRET || "";
   const qs = secret ? `?auth=${encodeURIComponent(secret)}` : "";
   const url = `${DEFAULT_RTDB_URL}/${clean}.json${qs}`;

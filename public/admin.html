@@ -4,11 +4,38 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>Mizanora Admin Panel — IPTV Server Control | Mizanora Projects</title>
+  <meta name="description" content="Mizanora IPTV private admin panel — IPTV service control (channels, Xtream, MAG/Stalker, resellers, orders, API keys). Owner Google login only." />
+  <title>🛡️ Mizanora IPTV — Private Admin Panel | Mizanora Projects</title>
   <link rel="icon" type="image/png" href="/assets/img/brand/miznaoraiptv-logo.png" />
   <link rel="stylesheet" href="/assets/css/admin-modern.css?v=15" />
+  <link rel="stylesheet" href="/assets/css/admin-luxe.css?v=1" />
 </head>
 <body>
+
+<!-- ==================== PRIVATE LOCK SCREEN ==================== -->
+<div id="adminLock" class="lock-screen">
+  <div class="lock-card">
+    <div class="lock-logo-wrap">
+      <img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora IPTV" class="lock-logo" onerror="this.src='/assets/logo-fallback.svg';" />
+      <span class="lock-ring"></span><span class="lock-ring r2"></span>
+    </div>
+    <h1 class="lock-title">Mizanora IPTV</h1>
+    <p class="lock-sub">🛡️ Private Admin Command Center — poora IPTV service system</p>
+    <div class="lock-badge">🔒 LOCKED &nbsp;•&nbsp; Owner access only</div>
+    <button id="lockGoogleBtn" class="gsi-btn" type="button">
+      <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.5 6.1 29.5 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.7-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.5 6.1 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.7-.4-3.9z"/></svg>
+      <span>Sign in with Google</span>
+    </button>
+    <button id="lockGoogleRedirectBtn" class="btn outline btn-block" type="button">↪ Continue with Google (Redirect mode)</button>
+    <div id="lockErr" class="lock-err" hidden></div>
+    <div class="lock-or"><span>ya Owner PIN</span></div>
+    <div class="lock-pin-row">
+      <input type="password" id="lockPinIn" class="input-field" placeholder="Owner PIN" autocomplete="current-password" />
+      <button id="lockPinBtn" class="btn primary" type="button">🔓 Unlock</button>
+    </div>
+    <p class="lock-note">Sirf <b>muaaziqbal.vip@gmail.com</b> (Google, email verified) access kar sakta hai — ye panel <b>public ke liye band</b> hai.<br/>Mizanora Projects • Muaaz Iqbal • Kasur, Punjab</p>
+  </div>
+</div>
 
 <div id="admin-shell">
   <!-- ==================== SIDEBAR ==================== -->
@@ -42,6 +69,14 @@
         <button class="nav-btn" data-tab="settings"><span class="k-icon">⚙️</span><span>Settings</span></button>
         <button class="nav-btn" data-tab="users"><span class="k-icon">👤</span><span>Users</span></button>
       </div>
+
+      <div class="nav-group">
+        <div class="nav-group-title">BUSINESS</div>
+        <button class="nav-btn" data-tab="resellers"><span class="k-icon">🏪</span><span>Resellers</span><span class="k-badge" id="badgeResellers">0</span></button>
+        <button class="nav-btn" data-tab="orders"><span class="k-icon">🧾</span><span>Orders</span><span class="k-badge" id="badgeOrders">0</span></button>
+        <button class="nav-btn" data-tab="stalker"><span class="k-icon">🛰️</span><span>Stalker / MAG</span><span class="k-badge" id="badgeStalker">0</span></button>
+        <button class="nav-btn" data-tab="apikeys"><span class="k-icon">🔑</span><span>API Keys</span><span class="k-badge" id="badgeKeys">0</span></button>
+      </div>
     </div>
 
     <div class="sidebar-footer">
@@ -69,8 +104,6 @@
         <div class="page-sub" id="pageSub">Real-time IPTV server overview</div>
       </div>
       <div class="topbar-right">
-        <a class="btn-icon" href="/admin-guide.html" title="Admin Guide" style="text-decoration:none;">📚</a>
-        <a class="btn-icon" href="/api.html" title="API Reference" style="text-decoration:none;">📡</a>
         <div class="search-wrap">
           <input type="search" id="globalSearch" placeholder="Search channels, playlists, users..." />
         </div>
@@ -408,6 +441,79 @@
         </div>
       </form>
     </section>
+
+    <!-- ==================== RESELLERS ==================== -->
+    <section id="viewResellers" hidden>
+      <div class="section-head">
+        <div>
+          <h2><span class="sec-icon">🏪</span>Resellers / Dealers</h2>
+          <div style="font-size:0.78rem;color:var(--text-dim);">Dealer codes, API keys (mzr_…), credits & top-up</div>
+        </div>
+        <button class="btn gold" id="rsAddBtn">➕ Create Reseller</button>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3><span class="sec-icon">🔍</span>Search Resellers</h3><input type="text" id="rsSearch" class="input-field" placeholder="Search code, name, email, whatsapp..." style="width:320px;" /></div>
+        <div class="table-wrap"><table class="data-table">
+          <thead><tr><th>Code</th><th>Name</th><th style="width:18%;">Email / WhatsApp</th><th style="width:9%;">Credits</th><th style="width:9%;">Used</th><th style="width:10%;">Status</th><th style="width:16%;">Actions</th></tr></thead>
+          <tbody id="rsBody"><tr><td colspan="7" class="muted-sm" style="text-align:center;padding:30px;">Loading resellers…</td></tr></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ==================== ORDERS ==================== -->
+    <section id="viewOrders" hidden>
+      <div class="section-head">
+        <div>
+          <h2><span class="sec-icon">🧾</span>Orders & Payments</h2>
+          <div style="font-size:0.78rem;color:var(--text-dim);">JazzCash orders — approve to auto-provision PRO / credits</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="table-wrap"><table class="data-table">
+          <thead><tr><th>Order ID</th><th>Name / WhatsApp</th><th style="width:14%;">Plan</th><th style="width:10%;">Amount</th><th style="width:11%;">Status</th><th style="width:15%;">Created</th><th style="width:16%;">Actions</th></tr></thead>
+          <tbody id="orBody"><tr><td colspan="7" class="muted-sm" style="text-align:center;padding:30px;">Loading orders…</td></tr></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ==================== STALKER / MAG ==================== -->
+    <section id="viewStalker" hidden>
+      <div class="section-head">
+        <div>
+          <h2><span class="sec-icon">🛰️</span>Stalker / MAG (MAC) Clients</h2>
+          <div style="font-size:0.78rem;color:var(--text-dim);">MAC-bound accounts — portal <code>/portal.php</code> se connect hotay hain. MAC set karne ke liye Xtream tab mein user edit karo (mac field) ya Reseller se MAC client banao.</div>
+        </div>
+        <button class="btn outline" id="stRefreshBtn">🔄 Refresh</button>
+      </div>
+      <div class="card">
+        <div class="table-wrap"><table class="data-table">
+          <thead><tr><th>Source</th><th>Username</th><th style="width:18%;">MAC Address</th><th style="width:10%;">Plan</th><th style="width:10%;">Status</th><th style="width:16%;">Expiry</th></tr></thead>
+          <tbody id="stBody"><tr><td colspan="6" class="muted-sm" style="text-align:center;padding:30px;">Loading MAC clients…</td></tr></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- ==================== API KEYS ==================== -->
+    <section id="viewApiKeys" hidden>
+      <div class="section-head">
+        <div>
+          <h2><span class="sec-icon">🔑</span>Admin API Keys (mzk_…)</h2>
+          <div style="font-size:0.78rem;color:var(--text-dim);">Apne external panel ke liye keys — sirf hash store hota hai; key ek dafa hi dikhti hai. Use: <code>Authorization: Bearer mzk_…</code> on <code>/api/panel</code>.</div>
+        </div>
+        <button class="btn gold" id="keyCreateBtn">🔑 Create API Key</button>
+      </div>
+      <div class="card" id="keyNewCard" hidden style="margin-bottom:10px;">
+        <div class="card-head"><h3>🆕 Naya API key — abhi copy kar lo (baad mein nahi dikhega)</h3></div>
+        <pre id="keyNewValue" style="background:#04120c;border:1px solid #14532d;border-radius:10px;padding:10px;color:#a7f3d0;overflow:auto;"></pre>
+      </div>
+      <div class="card">
+        <div class="table-wrap"><table class="data-table">
+          <thead><tr><th>Label</th><th style="width:24%;">Hash (id)</th><th style="width:12%;">Scopes</th><th style="width:12%;">Expires</th><th style="width:10%;">Status</th><th style="width:12%;">Actions</th></tr></thead>
+          <tbody id="keyBody"><tr><td colspan="6" class="muted-sm" style="text-align:center;padding:30px;">Loading keys…</td></tr></tbody>
+        </table></div>
+      </div>
+    </section>
+
   </main>
 </div>
 

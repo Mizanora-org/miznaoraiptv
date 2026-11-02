@@ -10,15 +10,18 @@
 import {
   subscribeAuth,
   loginWithGoogle,
+  loginWithGoogleRedirect,
   loginWithEmailPassword,
   logoutUser,
   getFirebaseIdToken,
+  isAdminEmail,
+  ADMIN_EMAIL,
   dbRead,
   dbWatch,
   dbWrite,
   dbDelete,
   getCurrentUserSnapshot
-} from "/assets/js/firebase-client.js?v=2";
+} from "/assets/js/firebase-client.js?v=3";
 
 const STATE = {
   user: null,
@@ -28,6 +31,10 @@ const STATE = {
   movies: [],
   series: [],
   users: [],
+  resellers: [],
+  orders: [],
+  stalker: [],
+  apiKeys: [],
   settings: {},
   activity: [],
   tab: "dashboard",
@@ -63,48 +70,116 @@ function fmtDate(ts) {
   try { return new Date(ts).toLocaleString("en-PK", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return "—"; }
 }
 
-/* ==================== Auth gate ==================== */
+/* ==================== Auth gate (PRIVATE — Google owner lock) ==================== */
+function showLock(msg) {
+  const l = $("adminLock");
+  if (l) l.classList.add("show");
+  document.body.classList.add("is-locked");
+  lockErr(msg || "");
+}
+function hideLock() {
+  const l = $("adminLock");
+  if (l) l.classList.remove("show");
+  document.body.classList.remove("is-locked");
+}
+function lockErr(m) {
+  const e = $("lockErr");
+  if (!e) return;
+  e.textContent = m;
+  e.hidden = !m;
+}
+
+async function enterAdmin(user, via) {
+  STATE.user = user;
+  paintUser();
+  hideLock();
+  try { await loadAll(); } catch {}
+  try { window.app?.init?.(); } catch {}
+  switchTab(STATE.tab || "dashboard");
+}
+
 async function ensureAdmin() {
-  // 1) Firebase user
+  // 1) Firebase user — STRICT owner check: sirf ADMIN_EMAIL allowed
   const snap = getCurrentUserSnapshot();
   if (snap && !snap.isPreviewSession) {
-    STATE.user = snap;
-    paintUser();
+    if (!isAdminEmail(snap.email)) {
+      showLock(`⛔ Access denied — ye panel sirf ${ADMIN_EMAIL} ke liye hai. Aapka account (${snap.email || "unknown"}) authorized nahi hai.`);
+      try { await logoutUser(); } catch {}
+      localStorage.removeItem("mz_admin_session");
+      return false;
+    }
+    await enterAdmin(snap, "google");
     return true;
   }
-  // 2) Stored PIN session token (mz_admin_session)
+  // 2) Owner PIN session (mzp_… in localStorage)
   const t = adminToken();
   if (t) {
-    STATE.user = { displayName: "Owner (PIN)", email: "owner@miznaoraiptv.tv", uid: "owner_pin" };
-    paintUser();
+    await enterAdmin({ displayName: "Owner (PIN)", email: ADMIN_EMAIL, uid: "owner_pin" }, "pin");
     return true;
   }
-  // Not signed in -> show static PIN login block in sidebar
+  // 3) Locked
+  showLock();
   const pinWrap = $("admPinStatic");
   if (pinWrap) pinWrap.hidden = false;
   const uChip = $("userChip");
   if (uChip) {
-    uChip.innerHTML = `<div style="padding:10px;color:var(--text-dim);font-size:0.82rem;"><div style="font-weight:700;color:#fff;margin-bottom:4px;">🔐 Sign in to Admin</div><div style="font-size:0.7rem;color:var(--primary);">Use the PIN block below (works on any domain)</div></div>`;
+    uChip.innerHTML = `<div style="padding:10px;color:var(--text-dim);font-size:0.82rem;"><div style="font-weight:700;color:#fff;margin-bottom:4px;">🔐 Private Admin Panel</div><div style="font-size:0.7rem;">Google owner login ya Owner PIN required</div></div>`;
   }
-  const btn = $("btnLogout");
-  if (btn) btn.textContent = "🔓 Sign In";
   return false;
 }
 
-async function adminLoginWithPin() {
-  const pin = $("admPinIn")?.value.trim();
+async function onAuthUser(u) {
+  if (u && !u.isPreviewSession) {
+    if (!isAdminEmail(u.email)) {
+      showLock(`⛔ Access denied — ye panel sirf ${ADMIN_EMAIL} ke liye hai.`);
+      try { await logoutUser(); } catch {}
+      return;
+    }
+    await enterAdmin(u, "google");
+  } else if (!u) {
+    if (adminToken()) return; // PIN session still valid
+    showLock();
+  }
+}
+
+function bindLockControls() {
+  $("lockGoogleBtn")?.addEventListener("click", async () => {
+    lockErr("");
+    const b = $("lockGoogleBtn");
+    if (b) b.disabled = true;
+    const res = await loginWithGoogle();
+    if (b) b.disabled = false;
+    if (!res.ok) {
+      const hint = res.code === "auth/unauthorized-domain"
+        ? ` — add ${location.hostname} in Firebase → Authentication → Settings → Authorized domains, ya neeche Owner PIN use karo.`
+        : "";
+      lockErr((res.error || "Google sign-in failed") + hint);
+    }
+    // success handled by subscribeAuth -> onAuthUser
+  });
+  $("lockGoogleRedirectBtn")?.addEventListener("click", async () => {
+    lockErr("Redirecting to Google sign-in…");
+    await loginWithGoogleRedirect();
+  });
+  $("lockPinBtn")?.addEventListener("click", async () => {
+    const pin = $("lockPinIn")?.value.trim();
+    await adminLoginWithPin(pin);
+  });
+  $("lockPinIn")?.addEventListener("keydown", (e) => { if (e.key === "Enter") $("lockPinBtn")?.click(); });
+}
+
+async function adminLoginWithPin(pinArg) {
+  const pin = String(pinArg ?? $("admPinIn")?.value ?? "").trim();
   if (!pin) return toast("Enter the Owner PIN.", "error");
   try {
     const res = await apiPost("admin/pin-login", { pin });
-    if (!res.ok) return toast(res.error || "Invalid PIN", "error");
+    if (!res.ok) { lockErr(res.error || "Invalid PIN"); return toast(res.error || "Invalid PIN", "error"); }
     localStorage.setItem(
       "mz_admin_session",
       JSON.stringify({ token: res.token, exp: Math.floor(Date.now() / 1000) + (res.expiresIn || 43200) - 60 })
     );
-    STATE.user = { displayName: "Owner (PIN)", email: "owner@miznaoraiptv.tv", uid: "owner_pin" };
-    paintUser();
-    toast("Owner access granted");
-    await loadAll();
+    await enterAdmin({ displayName: "Owner (PIN)", email: ADMIN_EMAIL, uid: "owner_pin" }, "pin");
+    toast("👑 Owner access granted");
   } catch (err) { toast(err.message, "error"); }
 }
 
@@ -114,7 +189,7 @@ function paintUser() {
   const pinWrap = $("admPinStatic");
   if (pinWrap) pinWrap.hidden = true;
   $("userName").textContent = u.displayName || u.email || "Admin";
-  $("userRole").textContent = u.email ? (u.email.includes("muaaziqbal") ? "Super Admin" : "Admin") : "Admin";
+  $("userRole").textContent = isAdminEmail(u.email) ? "👑 Super Admin (Owner)" : "Admin";
   $("userAvatar").textContent = (u.displayName || u.email || "A").slice(0, 2).toUpperCase();
   const btn = $("btnLogout");
   if (btn) {
@@ -152,20 +227,30 @@ async function fetchWithTimeout(url, opts = {}, ms = API_TIMEOUT_MS) {
   } finally { clearTimeout(timer); }
 }
 
+async function authHeaders(extra = {}) {
+  const headers = { ...extra };
+  const t = adminToken();
+  if (t) headers["x-admin-token"] = t; // Owner PIN session (mzp_…)
+  const u = getCurrentUserSnapshot();
+  if (u && !u.isPreviewSession) {
+    try {
+      const idt = await getFirebaseIdToken();
+      if (idt) headers["Authorization"] = "Bearer " + idt; // Google/Email Firebase admin
+    } catch {}
+  }
+  return headers;
+}
+
 async function apiGet(action, params = {}) {
   const qs = new URLSearchParams({ action, ...params }).toString();
-  const headers = { Accept: "application/json" };
-  const t = adminToken();
-  if (t) headers["x-admin-token"] = t;
+  const headers = await authHeaders({ Accept: "application/json" });
   const res = await fetchWithTimeout(`/api/panel?${qs}`, { headers });
   if (!res.ok) throw new Error(`API ${action} failed (${res.status})`);
   return res.json();
 }
 
 async function apiPost(action, payload) {
-  const headers = { "Content-Type": "application/json" };
-  const t = adminToken();
-  if (t) headers["x-admin-token"] = t;
+  const headers = await authHeaders({ "Content-Type": "application/json" });
   const res = await fetchWithTimeout("/api/panel", {
     method: "POST",
     headers,
@@ -382,7 +467,11 @@ async function loadAll() {
     (async () => { try { await loadUsers(); } catch (e) { console.warn("loadUsers failed", e.message); } })(),
     (async () => { try { await loadSettings(); } catch (e) { console.warn("loadSettings failed", e.message); } })(),
     (async () => { try { await loadActivity(); } catch (e) { console.warn("loadActivity failed", e.message); } })(),
-    (async () => { try { await loadAnalytics(); } catch (e) { console.warn("loadAnalytics failed", e.message); } })()
+    (async () => { try { await loadAnalytics(); } catch (e) { console.warn("loadAnalytics failed", e.message); } })(),
+    (async () => { try { await loadResellers(); } catch (e) { console.warn("loadResellers failed", e.message); } })(),
+    (async () => { try { await loadOrders(); } catch (e) { console.warn("loadOrders failed", e.message); } })(),
+    (async () => { try { await loadStalker(); } catch (e) { console.warn("loadStalker failed", e.message); } })(),
+    (async () => { try { await loadApiKeys(); } catch (e) { console.warn("loadApiKeys failed", e.message); } })()
   ]);
 }
 
@@ -402,7 +491,11 @@ function switchTab(tab) {
     series: "📺 Series",
     analytics: "📈 Live Analytics",
     users: "👤 Users",
-    settings: "⚙️ Settings"
+    settings: "⚙️ Settings",
+    resellers: "🏪 Resellers / Dealers",
+    orders: "🧾 Orders & Payments",
+    stalker: "🛰️ Stalker / MAG Clients",
+    apikeys: "🔑 Admin API Keys"
   }[tab] || tab;
   $("pageSub").textContent = {
     dashboard: "Real-time IPTV server overview",
@@ -413,7 +506,11 @@ function switchTab(tab) {
     series: "IMDb TV series catalog with episodes",
     analytics: "Real-time visitors, sessions & stream plays",
     users: "Registered Firebase users & Xtream mappings",
-    settings: "Broadcast videos, ticker & PRO contact"
+    settings: "Broadcast videos, ticker & PRO contact",
+    resellers: "Dealer codes, mzr_ keys, credits & top-ups",
+    orders: "JazzCash orders — approve to auto-provision",
+    stalker: "MAC-bound clients (portal /portal.php)",
+    apikeys: "mzk_ keys for your own external panel"
   }[tab] || "";
   if (tab === "channels") renderChannels();
   if (tab === "playlists") renderPlaylists();
@@ -422,6 +519,10 @@ function switchTab(tab) {
   if (tab === "series") renderSeries();
   if (tab === "users") renderUsers();
   if (tab === "analytics") loadAnalytics();
+  if (tab === "resellers") loadResellers();
+  if (tab === "orders") loadOrders();
+  if (tab === "stalker") loadStalker();
+  if (tab === "apikeys") loadApiKeys();
 }
 
 function applySearch(listId) {
@@ -910,7 +1011,7 @@ window.app = {
     $("btnRefresh")?.addEventListener("click", async () => { $("btnRefresh").disabled = true; await loadAll(); toast("Data refreshed"); $("btnRefresh").disabled = false; });
     // PIN login (delegated, since sidebar HTML is dynamic)
     document.addEventListener("click", (e) => {
-      if (e.target.id === "admPinLoginBtn") adminLoginWithPin();
+      if (e.target.id === "admPinLoginBtn") adminLoginWithPin($("admPinIn")?.value);
     });
     $("admPinIn")?.addEventListener("keydown", (e) => { if (e.key === "Enter") adminLoginWithPin(); });
     // Theme
@@ -931,21 +1032,151 @@ window.app = {
   }
 };
 
+/* ==================== BUSINESS: Resellers / Orders / Stalker / API Keys ==================== */
+function expBadge(exp) {
+  if (!exp) return '<span class="k-badge">lifetime</span>';
+  const d = new Date(Number(exp) * 1000);
+  const left = Math.ceil((d - Date.now()) / 86400000);
+  return `<span class="k-badge ${left <= 3 ? "bad" : ""}">${left}d left</span>`;
+}
+
+async function loadResellers() {
+  const r = await apiGet("admin/resellers");
+  STATE.resellers = r.resellers || [];
+  renderResellers();
+  const b = $("badgeResellers"); if (b) b.textContent = STATE.resellers.length;
+}
+function renderResellers() {
+  const tb = $("rsBody"); if (!tb) return;
+  const q = ($("rsSearch")?.value || "").toLowerCase();
+  const rows = STATE.resellers.filter(r => !q || JSON.stringify(r).toLowerCase().includes(q));
+  tb.innerHTML = rows.length ? rows.map(r => `
+    <tr data-row>
+      <td><b>${esc(r.code || "")}</b></td>
+      <td>${esc(r.name || "")}<div class="muted-sm">${esc(r.brandName || "")}</div></td>
+      <td>${esc(r.email || "")}<div class="muted-sm">${esc(r.whatsapp || "")}</div></td>
+      <td><b>${esc(r.credits ?? 0)}</b></td>
+      <td>${esc(r.creditsUsed ?? 0)}</td>
+      <td>${r.status === "active" ? '<span class="k-badge">active</span>' : `<span class="k-badge bad">${esc(r.status || "?")}</span>`}</td>
+      <td><button class="btn outline btn-sm" data-rs-topup="${esc(r.code)}">+10 💳</button></td>
+    </tr>`).join("") : '<tr><td colspan="7" class="muted-sm" style="text-align:center;padding:24px;">No resellers yet. Resellers khud /reseller API se register kar sakte hain.</td></tr>';
+}
+
+async function loadOrders() {
+  const r = await apiGet("admin/orders", { limit: 200 });
+  STATE.orders = r.orders || [];
+  renderOrders();
+  const pending = STATE.orders.filter(o => String(o.status).toLowerCase() === "pending").length;
+  const b = $("badgeOrders"); if (b) b.textContent = STATE.orders.length ? `${STATE.orders.length}${pending ? ` (${pending} pending)` : ""}` : "0";
+}
+function renderOrders() {
+  const tb = $("orBody"); if (!tb) return;
+  const rows = STATE.orders;
+  tb.innerHTML = rows.length ? rows.map(o => {
+    const st = String(o.status || "pending").toLowerCase();
+    const badge = st === "pending" ? '<span class="k-badge">PENDING</span>' : st === "approved" ? '<span class="k-badge">approved</span>' : `<span class="k-badge bad">${esc(st)}</span>`;
+    return `<tr data-row>
+      <td><code>${esc(o.id || "")}</code></td>
+      <td>${esc(o.name || "")}<div class="muted-sm">${esc(o.whatsapp || "")}</div></td>
+      <td>${esc(o.planName || o.planId || "")}</td>
+      <td><b>PKR ${esc(o.total ?? 0)}</b></td>
+      <td>${badge}</td>
+      <td class="muted-sm">${esc(fmtDate(o.createdAt ? new Date(o.createdAt).getTime() : 0))}</td>
+      <td>${st === "pending" ? `<button class="btn primary btn-sm" data-or-approve="${esc(o.id)}">✅ Approve</button> <button class="btn outline btn-sm" data-or-reject="${esc(o.id)}">❌ Reject</button>` : '<span class="muted-sm">—</span>'}</td>
+    </tr>`;
+  }).join("") : '<tr><td colspan="7" class="muted-sm" style="text-align:center;padding:24px;">No orders yet.</td></tr>';
+}
+
+async function loadStalker() {
+  const r = await apiGet("admin/stalker/list");
+  STATE.stalker = r.stalker || [];
+  renderStalker();
+  const b = $("badgeStalker"); if (b) b.textContent = STATE.stalker.length;
+}
+function renderStalker() {
+  const tb = $("stBody"); if (!tb) return;
+  const rows = STATE.stalker;
+  tb.innerHTML = rows.length ? rows.map(c => `
+    <tr data-row>
+      <td><span class="k-badge">${esc(c.source || "")}</span></td>
+      <td><b>${esc(c.username || "")}</b>${c.resellerCode ? `<div class="muted-sm">${esc(c.resellerCode)}</div>` : ""}</td>
+      <td><code>${esc(c.mac || "")}</code></td>
+      <td>${esc(c.plan || "free")}</td>
+      <td>${String(c.status || "").toLowerCase().includes("suspend") || String(c.status || "").toLowerCase() === "expired" ? `<span class="k-badge bad">${esc(c.status)}</span>` : '<span class="k-badge">active</span>'}</td>
+      <td>${c.expiresAt ? esc(c.expiresAt.slice(0, 10)) + " " + expBadge(c.expDate) : "—"}</td>
+    </tr>`).join("") : '<tr><td colspan="6" class="muted-sm" style="text-align:center;padding:24px;">Koi MAC client nahi. Xtream user mein <code>mac</code> set karo ya reseller se MAC client banao.</td></tr>';
+}
+
+async function loadApiKeys() {
+  const r = await apiGet("admin/api-keys");
+  STATE.apiKeys = r.apiKeys || [];
+  renderApiKeys();
+  const b = $("badgeKeys"); if (b) b.textContent = STATE.apiKeys.filter(k => !k.revoked).length;
+}
+function renderApiKeys() {
+  const tb = $("keyBody"); if (!tb) return;
+  const rows = STATE.apiKeys;
+  tb.innerHTML = rows.length ? rows.map(k => `
+    <tr data-row>
+      <td><b>${esc(k.label || "")}</b><div class="muted-sm">${esc(k.createdAt ? k.createdAt.slice(0, 10) : "")}</div></td>
+      <td><code>${esc(k.id)}…</code></td>
+      <td class="muted-sm">${esc((k.scopes || []).join(", "))}</td>
+      <td>${k.expiresAt ? esc(new Date(k.expiresAt).toISOString().slice(0, 10)) : "never"}</td>
+      <td>${k.revoked ? '<span class="k-badge bad">revoked</span>' : '<span class="k-badge">active</span>'}</td>
+      <td>${k.revoked ? '<span class="muted-sm">—</span>' : `<button class="btn outline btn-sm" data-key-revoke="${esc(k.hash)}">🚫 Revoke</button>`}</td>
+    </tr>`).join("") : '<tr><td colspan="6" class="muted-sm" style="text-align:center;padding:24px;">No API keys yet — create one to run your own panel on /api/panel.</td></tr>';
+}
+
+function bindBusinessControls() {
+  $("stRefreshBtn")?.addEventListener("click", () => loadStalker());
+  $("keyCreateBtn")?.addEventListener("click", async () => {
+    const label = "panel-" + new Date().toISOString().slice(0, 10);
+    try {
+      const r = await apiPost("admin/api-key-create", { label, expiresDays: 0 });
+      if (r.ok && r.apiKey) {
+        const card = $("keyNewCard"); const pre = $("keyNewValue");
+        if (card) card.hidden = false;
+        if (pre) pre.textContent = r.apiKey + "\n\n" + (r.usage || "");
+        toast("🔑 API key created — copy kar lo!");
+        loadApiKeys();
+      } else toast(r.error || "Failed", "error");
+    } catch (e) { toast(e.message, "error"); }
+  });
+  $("rsSearch")?.addEventListener("input", () => renderResellers());
+  document.addEventListener("click", async (e) => {
+    const el = e.target.closest("[data-rs-topup],[data-or-approve],[data-or-reject],[data-key-revoke]");
+    if (!el) return;
+    try {
+      if (el.dataset.rsTopup) {
+        await apiPost("admin/credits-topup", { code: el.dataset.rsTopup, credits: 10 });
+        toast("+10 credits added"); loadResellers();
+      } else if (el.dataset.orApprove) {
+        await apiPost("admin/order-review", { id: el.dataset.orApprove, approve: true });
+        toast("Order approved — provisioned ✅"); loadOrders();
+      } else if (el.dataset.orReject) {
+        await apiPost("admin/order-review", { id: el.dataset.orReject, approve: false });
+        toast("Order rejected"); loadOrders();
+      } else if (el.dataset.keyRevoke) {
+        await apiPost("admin/api-key-revoke", { hash: el.dataset.keyRevoke });
+        toast("API key revoked 🚫"); loadApiKeys();
+      }
+    } catch (err) { toast(err.message, "error"); }
+  });
+}
+
 /* ==================== Boot ==================== */
 (async () => {
   try {
+    bindLockControls();
+    bindBusinessControls();
+    subscribeAuth((u) => { onAuthUser(u); });
     const authed = await ensureAdmin();
-    if (!authed) {
-      // Still load public-ish data so panel isn't empty, but writes require sign-in
-    }
+    if (!authed) { showLock(); return; } // locked — private panel, no data load
     await loadAll();
-    window.app.init();
-    // Auto-switch to channels if no preference
+    window.app?.init?.();
     switchTab("dashboard");
-    // show a small sign-in hint once
-    setTimeout(() => { if (!STATE.user) toast("Sign in with Owner PIN / Google to manage channels & playlists", "warn"); }, 1500);
   } catch (err) {
     console.error("Admin panel boot failed", err);
-    toast("Boot failed: " + err.message, "error");
+    showLock("Boot error: " + (err?.message || err));
   }
 })();
