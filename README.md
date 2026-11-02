@@ -123,3 +123,13 @@ The suites cover real HTTP flows (imports, EPG, public/admin/reseller, Xtream, s
 - Configure video URLs under **Admin → Settings**. Use supported formats and reliable HTTPS sources; external videos used in the browser also need CORS. These are playback fallbacks, not upstream health checks or automatic recovery.
 
 **External-player limitation:** the timed welcome intro and detected-offline fallback are implemented in the built-in website player. Xtream/M3U live streams redirect directly to the provider; this serverless application does not stitch an intro into external IPTV apps, transcode streams, or detect upstream outages after redirect. Live playback still depends on the provider and player.
+
+### Rebuild branded videos
+
+The bundled 8-second welcome, offline, recharge and coming-soon cards contain the Mizanora logo and WhatsApp support number. Their audio is a synthesized ambient tone, not narration. The number is rendered into the videos; changing the admin support setting does not change these files. To update the branding or number, edit `scripts/build-brand-videos.sh` and run it with FFmpeg (libx264/AAC), ImageMagick and DejaVu fonts installed:
+
+```bash
+scripts/build-brand-videos.sh
+```
+
+The script regenerates the MP4s and corresponding four HLS segments for each video. Existing custom URLs saved in Admin → Settings still take precedence over these bundled defaults.

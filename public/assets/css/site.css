@@ -111,3 +111,12 @@ section{scroll-margin-top:76px}.center{text-align:center;margin-top:20px}.announ
 
 /* Explicitly respect hidden for player layers with author display rules. */
 #liveVideo[hidden], .intro-overlay[hidden] { display: none !important; }
+/* Keep the branded bumper visible while showing channel-specific loading info. */
+.intro-overlay:not([hidden]){inset:auto 14px 14px auto;width:min(250px,45%);padding:12px;border:1px solid rgba(245,196,81,.4);border-radius:14px;background:rgba(3,22,16,.92);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.intro-overlay .intro-rings{width:36px;height:36px;flex:none}
+.intro-overlay .intro-rings img{inset:6px;width:24px;height:24px}
+.intro-overlay>b{font-size:.7rem;letter-spacing:.08em;margin-top:6px}
+.intro-overlay>span{font-size:.68rem;color:#d1e7dc}
+.intro-overlay #introChannel{font-weight:700;color:#f8d884;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.intro-overlay .intro-progress{width:85%;margin-top:9px}
+@media(max-width:640px){.intro-overlay:not([hidden]){inset:auto 7px 7px auto;padding:7px;width:min(190px,48%)}.intro-overlay .intro-rings{width:28px;height:28px}.intro-overlay .intro-rings img{inset:5px;width:18px;height:18px}.intro-overlay>b{font-size:.57rem}.intro-overlay>span{font-size:.58rem}}

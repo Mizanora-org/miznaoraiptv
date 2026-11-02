@@ -57,6 +57,15 @@ const parsedXml = parseXmlTv('<tv><channel id="demo.one"><display-name>Demo &amp
 check("XMLTV parser decodes channels, programmes and entities", parsedXml.channels[0]?.name === "Demo & One" && parsedXml.programmes[0]?.title === "News & Views" && formatXmlTvDate(parsedXml.programmes[0].start) === "20261102000000 +0000");
 const localPlaylists = fs.readdirSync(path.join(ROOT, "public/media"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => path.join(ROOT, "public/media", entry.name, "index.m3u8")).filter((file) => fs.existsSync(file));
 check("bundled HLS playlists reference existing media segments", localPlaylists.length >= 5 && localPlaylists.every((file) => fs.readFileSync(file, "utf8").split(/\r?\n/).filter((line) => line.startsWith("seg")).every((line) => fs.existsSync(path.join(path.dirname(file), line.trim())))));
+for (const kind of ["welcome", "channel-offline", "pro-unlock", "coming-soon"]) {
+  const dir = path.join(ROOT, "public/media", kind);
+  const playlist = fs.readFileSync(path.join(dir, "index.m3u8"), "utf8");
+  const durations = [...playlist.matchAll(/#EXTINF:([0-9.]+)/g)].map((m) => Number(m[1]));
+  const segments = playlist.split(/\r?\n/).filter((line) => /^seg\d+\.m2ts$/.test(line));
+  const mp4 = fs.readFileSync(path.join(dir, "video.mp4"));
+  check(`${kind} branded video has eight-second VOD HLS and MP4`, durations.length === 4 && Math.abs(durations.reduce((sum, n) => sum + n, 0) - 8) < 0.1 && playlist.includes("#EXT-X-ENDLIST") && segments.length === 4 && segments.every((name) => fs.statSync(path.join(dir, name)).size > 0) && mp4.subarray(4, 8).toString() === "ftyp");
+}
+check("media is revalidated after branding updates", vercel.headers.some((entry) => entry.source === "/media/(.*)" && entry.headers.some((h) => h.key === "Cache-Control" && h.value === "no-cache")));
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8"));
 const panelData = fs.readFileSync(path.join(ROOT, "data/panel.js"), "utf8");
