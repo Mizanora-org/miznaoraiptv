@@ -89,76 +89,8 @@
       "destination": "/api/admin?ep=panel&action=resolve&token=:token"
     },
     {
-      "source": "/pricing",
-      "destination": "/api/seo?ep=pricing"
-    },
-    {
-      "source": "/plans",
-      "destination": "/api/seo?ep=pricing"
-    },
-    {
-      "source": "/packages",
-      "destination": "/api/seo?ep=pricing"
-    },
-    {
-      "source": "/reseller-panel",
-      "destination": "/reseller.html"
-    },
-    {
-      "source": "/reseller",
-      "destination": "/reseller.html"
-    },
-    {
-      "source": "/legal",
-      "destination": "/api/seo?ep=legal"
-    },
-    {
-      "source": "/legal/:slug",
-      "destination": "/api/seo?ep=legal&slug=:slug"
-    },
-    {
-      "source": "/terms",
-      "destination": "/api/seo?ep=legal&slug=terms"
-    },
-    {
-      "source": "/privacy",
-      "destination": "/api/seo?ep=legal&slug=privacy"
-    },
-    {
-      "source": "/privacy-policy",
-      "destination": "/api/seo?ep=legal&slug=privacy"
-    },
-    {
-      "source": "/license",
-      "destination": "/api/seo?ep=legal&slug=license"
-    },
-    {
-      "source": "/refund-policy",
-      "destination": "/api/seo?ep=legal&slug=refund"
-    },
-    {
-      "source": "/reseller-agreement",
-      "destination": "/api/seo?ep=legal&slug=reseller-agreement"
-    },
-    {
-      "source": "/dmca",
-      "destination": "/api/seo?ep=legal&slug=dmca"
-    },
-    {
-      "source": "/about-founder",
-      "destination": "/api/seo?ep=legal&slug=founder"
-    },
-    {
-      "source": "/about",
-      "destination": "/api/seo?ep=legal&slug=founder"
-    },
-    {
       "source": "/api/gate",
       "destination": "/api/media?ep=gate"
-    },
-    {
-      "source": "/google:code.html",
-      "destination": "/api/seo?ep=gsc_file&code=:code"
     },
     {
       "source": "/api/analytics",
@@ -175,46 +107,6 @@
     {
       "source": "/api/playlist",
       "destination": "/api/media?ep=playlist"
-    },
-    {
-      "source": "/blog/feed.xml",
-      "destination": "/api/seo?ep=rss"
-    },
-    {
-      "source": "/blog",
-      "destination": "/api/seo?ep=blog"
-    },
-    {
-      "source": "/blog/:slug",
-      "destination": "/api/seo?ep=blog&slug=:slug"
-    },
-    {
-      "source": "/sitemap.xml",
-      "destination": "/api/seo?ep=sitemap"
-    },
-    {
-      "source": "/rss.xml",
-      "destination": "/api/seo?ep=rss"
-    },
-    {
-      "source": "/llms.txt",
-      "destination": "/api/seo?ep=llms"
-    },
-    {
-      "source": "/llms-full.txt",
-      "destination": "/api/seo?ep=llms&full=1"
-    },
-    {
-      "source": "/.well-known/ai.txt",
-      "destination": "/api/seo?ep=llms"
-    },
-    {
-      "source": "/miznaoraiptv2026mizanoraseokey.txt",
-      "destination": "/api/seo?ep=indexnow&verify=1"
-    },
-    {
-      "source": "/api/seo/indexnow",
-      "destination": "/api/seo?ep=indexnow"
     },
     {
       "source": "/api/embed",
@@ -243,15 +135,23 @@
     {
       "source": "/admin",
       "destination": "/admin.html"
+    },
+    {
+      "source": "/",
+      "destination": "/admin.html"
     }
   ],
   "headers": [
     {
-      "source": "/sw.js",
+      "source": "/",
       "headers": [
         {
           "key": "Cache-Control",
           "value": "no-cache"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
         }
       ]
     },
@@ -261,20 +161,15 @@
         {
           "key": "Cache-Control",
           "value": "no-cache"
-        }
-      ]
-    },
-    {
-      "source": "/index.html",
-      "headers": [
+        },
         {
-          "key": "Cache-Control",
-          "value": "no-cache"
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
         }
       ]
     },
     {
-      "source": "/admin",
+      "source": "/admin.html",
       "headers": [
         {
           "key": "Cache-Control",

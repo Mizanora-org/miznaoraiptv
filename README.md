@@ -1,14 +1,13 @@
 <div align="center">
 
-<img src="public/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora IPTV Logo" width="160px" />
+<img src="public/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora IPTV Logo" width="150px" />
 
-# 📺 Mizanora IPTV (`miznaoraiptv`)
+# 🛡️ Mizanora IPTV — Private Admin Panel (`miznaoraiptv`)
 
-**Mizanora Projects ka flagship IPTV platform — Live TV, Movies & Series (IMDb), Xtream Codes, MAG/Stalker Portal, Reseller Panel aur Embeddable API. Ek hi professional admin panel.**
+**Sirf admin panel.** Public website hata di gayi hai — `/` seedha locked admin panel par jata hai. Poora IPTV service system (Live TV channels, Xtream users, MAG/Stalker MAC clients, Movies/Series, Playlists, Resellers, Orders, Analytics, API Keys) is admin panel mein manage hota hai.
 
-[![Live Website](https://img.shields.io/badge/Live-miznaoraiptv.vercel.app-10b981?style=for-the-badge&logo=vercel)](https://miznaoraiptv.vercel.app)
-[![Parent Ecosystem](https://img.shields.io/badge/Ecosystem-Mizanora%20Projects-d4af37?style=for-the-badge)](https://mizanora.vercel.app)
-[![Founder](https://img.shields.io/badge/Founder%20%26%20Developer-Muaaz%20Iqbal-22c55e?style=for-the-badge)](https://github.com/muaaziqbalvip)
+[![Ecosystem](https://img.shields.io/badge/Ecosystem-Mizanora%20Projects-d4af37?style=for-the-badge)](https://mizanora.vercel.app)
+[![Founder](https://img.shields.io/badge/Founder-Muaaz%20Iqbal-22c55e?style=for-the-badge)](https://github.com/muaaziqbalvip)
 [![Firebase](https://img.shields.io/badge/Firebase-mizanoranet-ffca28?style=for-the-badge&logo=firebase)](https://console.firebase.google.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
@@ -16,166 +15,83 @@
 
 ---
 
-## 🌟 Kya hai ye? (English + Roman Urdu)
+## 🔒 Access — locked, sirf owner ke liye
 
-**Mizanora IPTV** ek full-stack IPTV ecosystem hai jo Firebase (**project `mizanoranet`**) par chalta hai:
+- Panel open hote hi **full-screen lock screen** dikhta hai: Mizanora logo + **🔒 LOCKED • Owner access only** + **Sign in with Google** button.
+- Google login ke baad **sirf `muaaziqbal.vip@gmail.com` (email verified)** allow hota hai. Koi aur account → `⛔ Access denied` + automatic sign-out.
+- Fallback: **Owner PIN** (bootstrap `03062015326`, foran change karo) — `mzp_…` session 12h.
+- Panel `noindex` hai (robots.txt `Disallow: /`, `X-Robots-Tag` header) — **public ke liye band**.
 
-| Module | Kya karta hai |
+## 🧰 Admin panel mein kya kya hai (poora IPTV system)
+
+| Tab | Kaam |
 | --- | --- |
-| **📺 Live TV (HLS Studio Player)** | Browser mein `hls.js` player — quality selector, multi-audio, PiP, theater mode, welcome intro video, channel-offline standby video. |
-| **🎬 IMDb Movies & Series (VOD)** | IMDb ID (`tt…`) se 1-click/bulk load — rating, poster, cast, plot. Library build hoti hai to har item **"Coming Soon"** video chalata hai. 1,570+ titles ka catalog included. |
-| **🔐 Firebase Auth (Google + Email)** | Google Sign-In aur Gmail/Email+Password dono. Har user ko **1 FREE personal Xtream Codes server**. |
-| **🛰️ Xtream Codes API** | `/player_api.php`, `/get.php` (M3U Plus), `/xmltv.php` (EPG) — IPTV Smarters, TiviMate, XCIPTV, VLC sab mein chalta hai. |
-| **📱 MAG / Stalker Portal** | `/portal.php`, `/stalker_portal/server/load.php` — MAC-based boxes (Infomir MAG, Enigma2) direct connect. |
-| **🏪 Reseller Panel + API** | `/reseller` — self-serve signup, credits (PKR 100/user), clients (Xtream + MAC), renew/suspend, revenue. API key `mzr_…` se kisi bhi apni website/backend se panel control. |
-| **🔌 Embed API (koi bhi website mein)** | `/api/embed` (CORS `*`) + `/embed.js` widget — plans, live channels, order form, free trial — kisi bhi site mein 2 lines mein embed. Docs: [`/embed.html`](public/embed.html). |
-| **🛡️ Admin Panel (locked)** | `/admin` — **sirf `muaaziqbal.vip@gmail.com` Google login (email_verified) se Super Admin**. Channels, users, Xtream accounts, resellers, orders, credits, analytics, audit log, settings, PIN fallback — sab kuch. |
-| **⚡ Fast & smooth** | Local cache + background refresh, 2.5–3.5s read ceilings, idle-time catalog import, HLS prefetch — page kabhi hang nahi hota. |
-| **🎨 Mizanora Brand** | Official gold-M icon (PWA icons 192/512/maskable, apple-touch, favicon, OG image), emerald + gold themes, 6 light/dark broadcast themes. |
+| 📊 Dashboard | KPIs — channels, playlists, Xtream users, revenue, live status |
+| 📺 Channels | Add/edit/delete/reorder, priority groups, tier (free/PRO), stream test, M3U import/export |
+| 📋 Playlists | Cloud M3U8 playlists |
+| ⚡ Xtream Accounts | Create/renew/suspend/activate/delete users, expiry, max connections, **MAC field (Stalker bind)** |
+| 🎬 Movies / 📺 Series | IMDb VOD catalog (1,570+ titles) |
+| 👤 Users | Registered Firebase users |
+| 📈 Live Analytics | Online visitors, play log |
+| 🏪 Resellers | Dealer codes, `mzr_` keys, credits, +10 top-up |
+| 🧾 Orders | JazzCash orders — approve → auto-provision |
+| 🛰️ Stalker / MAG | Saare MAC-bound clients (Xtream + panel), expiry ke saath |
+| 🔑 API Keys | `mzk_…` keys create/revoke — apna external panel chalao |
+| ⚙️ Settings | Welcome/offline/coming-soon/PRO videos, ticker, PRO WhatsApp |
 
----
+UI naye **admin-luxe.css** theme se beautiful hai: emerald+gold glass, animated lock screen, glowing sidebar, glass cards, smooth tables/modals/toasts, light/dark toggle, responsive.
 
-## 🚀 Run karo (local)
+## 🚀 Run
 
 ```bash
-npm run dev        # http://0.0.0.0:3000  (scripts/dev-server.mjs)
-npm test           # module checks + 25+ self-tests + DOM smoke test
+npm run dev     # http://0.0.0.0:3000  -> locked admin panel
+npm test        # module graph + full admin-only test suite (HTTP smoke included)
 ```
 
-## ☁️ Deploy (Vercel) + Firebase setup
+## ☁️ Deploy (Vercel) + Firebase `mizanoranet`
 
-1. **Firebase Console (`mizanoranet`)** — Authentication → Google **aur** Email/Password enable karo; Authorized domains mein apna domain add karo (`miznaoraiptv.vercel.app` + previews). Realtime Database rules: [`firebase/database.rules.json`](firebase/database.rules.json) publish karo.
-2. **Web config** already set hai `public/assets/js/firebase-client.js` mein (project `mizanoranet`):
+1. Firebase Console (`mizanoranet`): Authentication → **Google + Email/Password** enable; **Authorized domains** mein apna domain add karo; RTDB rules publish karo: [`firebase/database.rules.json`](firebase/database.rules.json) (admin lock: `muaaziqbal.vip@gmail.com` + `email_verified`).
+2. Web config already set: `public/assets/js/firebase-client.js` (project `mizanoranet`, RTDB `mizanoranet-default-rtdb`).
+3. Vercel mein repo import karo — `vercel.json` mein `/` → `/admin.html`, saare Xtream/MAG/API rewrites ready.
+4. `/admin` kholo → **Google se `muaaziqbal.vip@gmail.com` sign in karo** → Super Admin.
 
-```js
-const firebaseConfig = {
-  apiKey: "AIzaSyA4PWELrMHQrRA29EZzfRx1iZkXtJkKh9M",
-  authDomain: "mizanoranet.firebaseapp.com",
-  databaseURL: "https://mizanoranet-default-rtdb.firebaseio.com",
-  projectId: "mizanoranet",
-  storageBucket: "mizanoranet.firebasestorage.app",
-  messagingSenderId: "1047231858393",
-  appId: "1:1047231858393:web:7e9fa18b59172f806da0c8",
-  measurementId: "G-8R6RGY3RLV"
-};
-```
-
-3. Vercel mein ye repo import karo — `public/` static + `api/` serverless (zero build step).
-4. `/admin` kholo aur **`muaaziqbal.vip@gmail.com` se Google login karo** — tum automatically Super Admin ban jaoge.
-
-### 🔑 Env vars (Vercel → Settings → Environment Variables)
+### Env vars
 
 ```bash
 PUBLIC_BASE_URL=https://miznaoraiptv.vercel.app
 FIREBASE_DATABASE_URL=https://mizanoranet-default-rtdb.firebaseio.com
 FIREBASE_API_KEY=AIzaSyA4PWELrMHQrRA29EZzfRx1iZkXtJkKh9M
-FIREBASE_DATABASE_SECRET=...        # RTDB server-side read/write ke liye (panel persist karne ke liye zaroori)
-MIZANORA_SIGNING_SECRET=...         # HMAC signed links + PIN sessions (openssl rand -hex 32)
-MIZANORA_ADMIN_PIN=...              # optional; bootstrap PIN 03062015326
-MIZANORA_ADMIN_TOKEN=...            # optional script/CI token
-MZ_OWNER_EMAIL=muaaziqbal.vip@gmail.com   # admin lock (default already set)
-MZ_LINK_TTL_SEC=900                 # signed playback link TTL
+FIREBASE_DATABASE_SECRET=...     # RTDB server-side access (panel persist)
+MIZANORA_SIGNING_SECRET=...      # HMAC signed links + PIN sessions (openssl rand -hex 32)
+MIZANORA_ADMIN_PIN=...           # optional (bootstrap 03062015326)
+MIZANORA_ADMIN_TOKEN=...         # optional CI token
+MZ_OWNER_EMAIL=muaaziqbal.vip@gmail.com
+MZ_LINK_TTL_SEC=900
 ```
 
-Without `FIREBASE_DATABASE_SECRET` panel local in-process mirror par bhi chalega (dev/test ke liye fine).
+## 🔌 APIs (backend panel se hi manage hota hai)
 
----
+- **Admin API** `/api/panel` with `mzk_…` key (Bearer or `x-api-key`): `admin/xtream-*`, `admin/stalker/list`, `admin/resellers`, `admin/credits-topup`, `admin/orders`, `admin/order-review`, `admin/api-keys|api-key-create|api-key-revoke`, `admin/settings|settings-set`, `admin/channels`, `admin/clients`, `admin/analytics|audit`, `admin/pin-login|pin-set`, `admin/me`.
+  - Convention: `GET → ?action=…`, `POST → {"action":"…", …}` in JSON body.
+- **Reseller API**: `mzr_…` key → `reseller/clients`, `reseller/client-create` (with `mac` → Stalker client), `client-renew|suspend|block`, `secure-link`, `stats`, `finance`.
+- **Public Embed API** `/api/embed?action=config|channels|movies|series|order|trial|health` (CORS `*`) + `/embed.js` widget — kisi bhi apni website mein plans/channels/order/trial embed karo.
+- **Xtream Codes protocol**: `/player_api.php`, `/get.php` (M3U plus), `/xmltv.php` (EPG), `/live|movie|series/:u/:p/:f`.
+- **MAG/Stalker portal**: `/portal.php` (+ `/stalker_portal/server/load.php`, `/c/…`) — MAC auth; demo MAC `00:1A:79:00:00:01`.
+- **Signed links**: `/s/<token>` (HMAC-SHA256, 15 min TTL).
 
-## 🛰️ IPTV protocols (apps/STB setup)
-
-| Field | Value |
-| --- | --- |
-| Server URL | `https://miznaoraiptv.vercel.app` (port 443) |
-| M3U Plus | `/get.php?username=USER&password=PASS&type=m3u_plus&output=m3u8` |
-| EPG XMLTV | `/xmltv.php?username=USER&password=PASS` |
-| Player API | `/player_api.php?username=USER&password=PASS` |
-| MAG/Stalker | Portal `/portal.php` + MAC register (panel client `mac` field) |
-
-Free Xtream credentials claim karo: site par login karo → **Xtream Vault**.
-
----
-
-## 🔌 Embed API — kisi bhi website mein lagao
-
-```html
-<div id="mizanora-widget"></div>
-<script src="https://miznaoraiptv.vercel.app/embed.js"
-        data-mz-target="#mizanora-widget"
-        data-mz-widget="plans"        <!-- plans | channels | order | trial -->
-        data-mz-api="https://miznaoraiptv.vercel.app"
-        data-mz-theme="dark" defer></script>
-```
-
-REST (CORS open):
+## 🗂️ Structure
 
 ```
-GET  /api/embed?action=config|channels|movies|series|order-status|health
-POST /api/embed?action=order   {name, whatsapp, planId, audience, txnId}
-POST /api/embed?action=trial   {email, whatsapp}
-POST /api/embed?action=reseller/register {name, email, password, whatsapp}
+public/admin.html          # the ONLY page — locked private admin panel (+ admin-luxe.css theme)
+public/assets/             # admin js/css, Mizanora logo+icons, firebase-sdk vendor
+public/media/              # welcome / offline / coming-soon / pro-unlock broadcast videos
+api/                       # serverless: xtream (player_api/get/xmltv/MAG portal), media, admin (panel/embed/analytics/sync/imdb), seo
+data/                      # catalog (channels/brands/blogs), panel (plans/pricing), IMDb seed + streams
+firebase/database.rules.json
+scripts/dev-server.mjs     # 0.0.0.0:3000 dev server (rewrites from vercel.json)
+vercel.json                # "/" -> /admin.html + all IPTV protocol rewrites
 ```
-
-Poori docs + live demo: **`/embed.html`** • Full API reference: **`/api.html`** • Admin step-by-step: **`/admin-guide.html`**.
-
-### 🔑 API keys — apna panel banao hamari APIs par
-
-| Key | Role | Kaise milegi |
-| --- | --- | --- |
-| `mzk_…` | **Admin API key** — Xtream users, Stalker/MAG MACs, channels, resellers, orders, settings sab manage via API | Admin Panel → API Keys, ya `POST /api/panel {"action":"admin/api-key-create","label":"my-panel"}` (PIN/Google session chahiye). Ek baar hi dikhti hai; sirf hash store hota hai. Revoke: `admin/api-key-revoke` (foran block). |
-| `mzr_…` | **Reseller key** — apne clients (Xtream + MAC), credits, finance | `reseller/register` par auto milti hai |
-| `mzp_…` | Owner PIN session (12h HMAC) | `admin/pin-login` |
-
-```bash
-# Convention: GET → ?action=… ; POST → body mein {"action":"…", ...}
-# Admin key se Xtream user renew:
-curl -X POST "https://miznaoraiptv.vercel.app/api/panel" -H "x-api-key: mzk_YOUR_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"admin/xtream/renew","username":"user1","days":30}'
-
-# Stalker/MAG: MAC bind karo (portal /portal.php se MAC login karega):
-curl -X POST "https://miznaoraiptv.vercel.app/api/panel" -H "x-api-key: mzk_YOUR_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"admin/xtream/update","username":"user1","mac":"00:1A:79:AA:BB:CC"}'
-
-# Stalker clients list:
-curl "https://miznaoraiptv.vercel.app/api/panel?action=admin/stalker/list" -H "x-api-key: mzk_YOUR_KEY"
-```
-
-Admin API actions: `admin/xtream-accounts|create|update|renew|suspend|activate|delete` • `admin/stalker/list` • `admin/channels|channel/create|update|delete` • `admin/clients|client-create|renew|suspend|delete` • `admin/resellers|reseller-create|update|credits-topup` • `admin/orders|order-review|payments|trials` • `admin/api-keys|api-key-create|api-key-revoke` • `admin/settings|settings-set` • `admin/analytics|audit|errors` • `admin/pin-login|pin-set` • `admin/me`.
-
----
-
-## 🏪 Reseller business (self-serve)
-
-- Reseller khud `/reseller` se signup karta hai → `mzr_…` API key + 3 starter credits.
-- Client create = 1 credit = 30 din (Xtream user/pass auto + M3U/EPG links + optional MAC).
-- Dealer rate **PKR 100/user/month**, direct client **PKR 200/month**, trial **1 din FREE**.
-- Payment: JazzCash `0306-2015326` (Muaaz Iqbal) → screenshot WhatsApp → admin approve → auto-provision.
-- Expiry par auto-block; client ko apne reseller ka recharge number dikhta hai.
-- Detail: [`RESELLER-BUSINESS.md`](RESELLER-BUSINESS.md), [`PANEL-GUIDE.md`](PANEL-GUIDE.md)
-
-### Panel API actions (`/api/panel`)
-
-`config • plans • order • order-status • trial • resolve • reseller/login|register|clients|client-create|client-renew|client-suspend|secure-link|stats|finance|ledger • admin/* (analytics, orders, order-review, resellers, reseller-create, credits-topup, clients, audit, pin-login, pin-set)`
-
----
-
-## 🗂️ Project structure
-
-```
-public/            # web app (index), admin.html, reseller.html, embed.html, assets, media (welcome/offline/coming-soon/pro-unlock videos)
-api/               # serverless: xtream.js (player_api/get/xmltv/MAG portal), media.js, admin.js (panel/analytics/sync/imdb), embed.js (public embed API)
-data/              # catalog.js (BRAND + channels + blogs), panel.js (plans/pricing/legal), imdb-seed + imdb-catalog-2000, streams/*.m3u8
-firebase/          # database.rules.json — admin = muaaziqbal.vip@gmail.com (email_verified)
-scripts/           # dev-server.mjs (0.0.0.0:3000), self-test.mjs, generate-streams.mjs
-vercel.json        # rewrites: /get.php /xmltv.php /player_api.php /portal.php /live/:u/:p/:f /s/:token /pricing …
-```
-
----
 
 ## 👤 Credits
 
-- **Founder, Lead Developer & Architect:** **Muaaz Iqbal** — Kasur, Punjab, Pakistan
-- **Ecosystem:** [Mizanora Projects](https://mizanora.vercel.app) • Org: [github.com/Mizanora-org](https://github.com/Mizanora-org)
-- **PRO VIP / Support:** 0306-2015326 ([WhatsApp](https://wa.me/923062015326))
-- System architecture inspired by the sibling project `BarakatWave-TV` (same owner), rebuilt & rebranded as **Mizanora IPTV** on Firebase project `mizanoranet`.
+**Muaaz Iqbal** — Founder & Lead Developer, Kasur, Punjab, Pakistan • [Mizanora Projects](https://mizanora.vercel.app) • [github.com/Mizanora-org](https://github.com/Mizanora-org) • Support: 0306-2015326 ([WhatsApp](https://wa.me/923062015326))

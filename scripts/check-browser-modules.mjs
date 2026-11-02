@@ -18,7 +18,7 @@ async function load(url) {
   }
   return modules.get(url);
 }
-for (const name of ['admin', 'app']) {
+for (const name of ['admin-modern']) {
   const entry = await load(pathToFileURL(path.join(root, `assets/js/${name}.js`)).href);
   await entry.link(async (specifier, importer) => load(new URL(specifier, importer.identifier).href));
   console.log(`Linked ${name} browser module graph`);

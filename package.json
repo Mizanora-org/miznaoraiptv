@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Mizanora IPTV — Live TV, IMDb Movies & Series, Xtream Codes, MAG/Stalker Portal, Reseller Panel & Embeddable API. Firebase project: mizanoranet. A Mizanora Project by Muaaz Iqbal.",
+  "description": "Mizanora IPTV — Private Admin Panel (IPTV service control: channels, Xtream, MAG/Stalker, resellers, orders, API keys). Firebase project mizanoranet. Admin-only: muaaziqbal.vip@gmail.com (Google, verified).",
   "author": "Muaaz Iqbal <muaaziqbal.vip@gmail.com> (Mizanora Projects)",
   "homepage": "https://miznaoraiptv.vercel.app",
   "repository": {
@@ -15,9 +15,8 @@
     "dev": "node scripts/dev-server.mjs",
     "start": "node scripts/dev-server.mjs",
     "generate:m3u": "node scripts/generate-streams.mjs",
-    "test": "node scripts/check-module-exports.mjs && node scripts/self-test.mjs && node scripts/smoke-dom.mjs",
+    "test": "node scripts/check-module-exports.mjs && node scripts/self-test.mjs",
     "check": "node scripts/self-test.mjs",
-    "check:modules": "node scripts/check-module-exports.mjs",
-    "check:dom": "node scripts/smoke-dom.mjs --experimental-vm-modules"
+    "check:modules": "node scripts/check-module-exports.mjs"
   }
 }
