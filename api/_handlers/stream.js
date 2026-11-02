@@ -42,17 +42,10 @@ export default async function streamHandler(req, res) {
     }
     const target = /^https?:\/\//i.test(media.url) ? media.url : base + (media.url.startsWith("/") ? media.url : "/" + media.url);
 
-    // HLS playlists must be nested as variants, not disguised as TS segments.
-    if (/\.m3u8(?:$|\?)/i.test(target)) {
-      const body = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-INDEPENDENT-SEGMENTS\n#EXT-X-STREAM-INF:BANDWIDTH=2500000,AVERAGE-BANDWIDTH=1800000,RESOLUTION=1920x1080\n${target}\n`;
-      res.writeHead(200, {
-        "Content-Type": "application/vnd.apple.mpegurl; charset=utf-8",
-        "Content-Length": Buffer.byteLength(body), "Cache-Control": "no-store", ...corsHeaders()
-      });
-      return res.end(req.method === "HEAD" ? undefined : body);
-    }
-
-    // MP4, MPEG-DASH and other direct files should be followed by the player.
+    // Redirect to the actual source instead of wrapping it in a synthetic HLS
+    // master playlist. The source may itself be a master playlist (which cannot
+    // be used as a variant), and its relative segments/keys must resolve against
+    // the provider's final URL. This also preserves the real media format.
     res.writeHead(302, { Location: target, "Cache-Control": "no-store", ...corsHeaders() });
     return res.end();
   } catch (error) {

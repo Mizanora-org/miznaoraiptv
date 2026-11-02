@@ -778,8 +778,13 @@ export async function resolveMedia(kind, reference) {
   };
   if (kind === "live") {
     const ref = stripExt(parts[parts.length - 1]);
-    const channel = (await listChannels()).find((c, i) => matches(c, ref, ["id", "streamId", "slug"]) || String(i + 1) === ref);
-    if (!channel || channel.status === "inactive") return null;
+    const channels = (await listChannels()).filter((c) => c.status !== "inactive");
+    // Resolve explicit IDs before legacy positional IDs. Otherwise a request for
+    // stream 2 can accidentally select the second channel even when streamId 2
+    // belongs to another channel. Positions match the active Xtream listing.
+    const channel = channels.find((c) => matches(c, ref, ["id", "streamId", "slug"]))
+      || channels.find((c, i) => !Number(c.streamId) && String(i + 1) === ref);
+    if (!channel) return null;
     let url = channel.url;
     if (/\.mpd(?:$|\?)/i.test(url) && !/\.mpd$/i.test(raw)) {
       url = asArray(channel.backupUrls).find((u) => /\.m3u8(?:$|\?)/i.test(u)) || url;
