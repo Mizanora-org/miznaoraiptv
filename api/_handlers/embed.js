@@ -1,206 +1,53 @@
-import {
-  getRequestBaseUrl,
-  handleOptions,
-  parseBody,
-  parseQuery,
-  sendJson
-} from "../_lib/origin.js";
-import { checkRateLimit } from "../_lib/security.js";
-import { getChannels, getMovies, getSeries } from "../_lib/rtdb.js";
-import { BRAND } from "../../data/catalog.js";
-import { PLANS, PANEL, SELF_SERVE, PAYMENT } from "../../data/panel.js";
-import panelHandler from "./panel.js";
-
 /**
- * Mizanora IPTV — Public Embed API (CORS: *)
- * ---------------------------------------------------------------
- * Ye woh API hai jo KISI BHI website mein lag sakti hai:
- *
- *   GET  /api/embed?action=config         -> brand, plans, prices, support, links
- *   GET  /api/embed?action=channels       -> live channel list + play URLs (/ch/:slug)
- *   GET  /api/embed?action=movies         -> IMDb VOD catalog sample
- *   GET  /api/embed?action=series         -> IMDb series catalog sample
- *   POST /api/embed?action=order          -> create order (delegates to panel engine)
- *   POST /api/embed?action=trial          -> free 1-day PRO trial (delegates)
- *   POST /api/embed?action=reseller/register -> self-serve reseller signup
- *   GET  /api/embed?action=order-status&id=ORDER_ID
- *   GET  /api/embed?action=health
- *
- * Browser widget:  <script src="/embed.js" data-mz-widget="plans|channels|order|trial">
- * Docs page:       /embed.html
+ * Mizanora IPTV — public embeddable API (CORS *), fresh rebuild.
+ * /api/embed?action=config|channels|movies|series|order|trial|order-status|health
+ * Widget: /embed.js  (any website: <script src="…/embed.js" data-mizanora-embed></script>)
  */
+import { handleOptions, parseQuery, parseBody, sendJson, getRequestBaseUrl, corsHeaders, checkRateLimit, WA_LINK } from "../_lib/util.js";
+import { rtdbGet } from "../_lib/rtdb.js";
+import * as S from "../_lib/store.js";
 
-const DELEGATED_POST = new Set(["order", "trial", "reseller/register", "recharge/contact"]);
-const DELEGATED_GET = new Set(["order-status", "status"]);
-
-export default async function handler(req, res) {
+export default async function embedHandler(req, res) {
   if (handleOptions(req, res)) return;
-
-  const rl = checkRateLimit(req, "mizanora_embed", 180, 60_000);
-  if (!rl.allowed) {
-    return sendJson(res, 429, { ok: false, error: "Too many requests. Please slow down." });
-  }
-
+  const rl = checkRateLimit(req, "embed", 240, 60_000);
+  if (!rl.allowed) return sendJson(res, 429, { ok: false, error: "Rate limit" });
   const q = parseQuery(req);
-  let ep = String(q.action || q.ep || "config").trim().toLowerCase();
-  if (ep === "embed") ep = "config";
   const base = getRequestBaseUrl(req);
-  const isPost = req.method === "POST" || req.method === "PUT";
+  const action = String(q.action || "config").toLowerCase();
+  const isPost = req.method === "POST";
+  const body = isPost ? await parseBody(req) : {};
 
-  /* ------------------------------ HEALTH ------------------------------ */
-  if (ep === "health" || ep === "ping") {
-    return sendJson(res, 200, { ok: true, brand: BRAND.name, time: new Date().toISOString() });
-  }
-
-  /* --------------------- PUBLIC CONFIG / PLANS / BRAND --------------------- */
-  if (!isPost && (ep === "config" || ep === "brand" || ep === "plans" || ep === "pricing")) {
-    return sendJson(
-      res,
-      200,
-      {
-        ok: true,
-        brand: {
-          name: BRAND.name,
-          tagline: BRAND.tagline,
-          site: BRAND.siteUrl,
-          logo: `${base}${BRAND.logoPrimary}`,
-          logoSvg: `${base}/assets/img/brand/miznaoraiptv-logo.svg`,
-          parent: BRAND.parentProject,
-          parentUrl: BRAND.parentUrl,
-          founder: BRAND.founder,
-          location: BRAND.founderLocation
-        },
-        plans: PLANS.map((p) => ({
-          id: p.id,
-          name: p.name,
-          urdu: p.urdu,
-          days: p.days,
-          months: p.months,
-          direct: p.direct,
-          reseller: p.reseller,
-          badge: p.badge,
-          tagline: p.tagline
-        })),
-        pricing: {
-          currency: PANEL.currency,
-          directPerUserMonthly: PANEL.directPerUserMonthly,
-          resellerPerUserMonthly: PANEL.resellerPerUserMonthly,
-          trialDays: PANEL.trialDays,
-          minResellerCredits: PANEL.minResellerCredits
-        },
-        selfServe: {
-          enabled: SELF_SERVE.enabled,
-          signupCredits: SELF_SERVE.signupCredits,
-          unitCost: SELF_SERVE.unitCost,
-          allowMacClients: SELF_SERVE.allowMacClients
-        },
-        payment: {
-          method: PAYMENT.method,
-          number: PAYMENT.accountNumber,
-          title: PAYMENT.accountTitle,
-          whatsappProof: PAYMENT.whatsappProof
-        },
-        support: { phone: PANEL.supportPhoneDisplay, whatsapp: PANEL.supportWhatsapp },
-        player: { name: PANEL.recommendedPlayerName, url: PANEL.recommendedPlayer },
-        links: {
-          site: base,
-          widget: `${base}/embed.js`,
-          api: `${base}/api/embed`,
-          docs: `${base}/embed.html`,
-          panel: `${base}/reseller`,
-          admin: `${base}/admin`
-        },
-        protocols: {
-          xtreamPlayerApi: `${base}/player_api.php`,
-          getPhp: `${base}/get.php`,
-          xmltv: `${base}/xmltv.php`,
-          magPortal: `${base}/portal.php`
-        },
-        generatedAt: new Date().toISOString()
-      },
-      "public, max-age=120"
-    );
-  }
-
-  /* --------------------------- LIVE CHANNEL LIST --------------------------- */
-  if (!isPost && ep === "channels") {
-    const channels = await getChannels();
-    const limit = Math.min(300, Math.max(1, Number(q.limit) || 80));
-    const freeOnly = String(q.tier || "") === "free";
-    const list = channels
-      .filter((c) => (freeOnly ? c.tier !== "pro" : true))
-      .slice(0, limit)
-      .map((c) => ({
-        id: c.streamId,
-        slug: c.slug,
-        name: c.name,
-        logo: c.logo || `${base}${BRAND.logoPrimary}`,
-        category: c.category,
-        tier: c.tier || "free",
-        hd: /4k|uhd/i.test(c.name || "") ? 4 : /hd/i.test(c.name || "") ? 1 : 0,
-        playUrl: `${base}/ch/${c.slug}`
-      }));
-    return sendJson(
-      res,
-      200,
-      { ok: true, brand: BRAND.name, count: list.length, total: channels.length, channels: list },
-      "public, max-age=60"
-    );
-  }
-
-  /* ------------------------------ VOD CATALOG ------------------------------ */
-  if (!isPost && (ep === "movies" || ep === "vod")) {
-    const movies = await getMovies();
-    const limit = Math.min(200, Math.max(1, Number(q.limit) || 48));
-    const list = movies.slice(0, limit).map((m) => ({
-      id: m.id || m.imdbId,
-      imdbId: m.imdbId,
-      title: m.title,
-      year: m.year,
-      rating: m.rating,
-      genres: m.genres || [],
-      category: m.category,
-      poster: m.poster,
-      backdrop: m.backdrop,
-      type: "movie"
-    }));
-    return sendJson(res, 200, { ok: true, count: list.length, total: movies.length, items: list }, "public, max-age=300");
-  }
-
-  if (!isPost && ep === "series") {
-    const series = await getSeries();
-    const limit = Math.min(200, Math.max(1, Number(q.limit) || 36));
-    const list = series.slice(0, limit).map((s) => ({
-      id: s.id || s.imdbId,
-      imdbId: s.imdbId,
-      title: s.title,
-      year: s.year,
-      rating: s.rating,
-      genres: s.genres || [],
-      category: s.category,
-      poster: s.poster,
-      backdrop: s.backdrop,
-      type: "series"
-    }));
-    return sendJson(res, 200, { ok: true, count: list.length, total: series.length, items: list }, "public, max-age=300");
-  }
-
-  /* ------------- DELEGATE TO THE PANEL ENGINE (single source) ------------- */
-  if ((isPost && DELEGATED_POST.has(ep)) || (!isPost && DELEGATED_GET.has(ep))) {
-    const body = isPost ? await parseBody(req) : {};
-    req.body = { ...body, action: ep };
-    const passthrough = {};
-    for (const [k, v] of Object.entries(q)) {
-      if (k !== "ep" && k !== "action") passthrough[k] = v;
+  try {
+    if (action === "health") return sendJson(res, 200, { ok: true, brand: "Mizanora IPTV", ts: Date.now() });
+    if (action === "config") {
+      return sendJson(res, 200, { ...S.publicConfig(base), embed: true }, "public, max-age=60");
     }
-    req.query = { ep: "panel", action: ep, ...passthrough };
-    req.url = `/api/admin?ep=panel&action=${encodeURIComponent(ep)}`;
-    return panelHandler(req, res);
+    if (action === "channels") {
+      const list = (await S.listChannels()).map((c) => ({ id: c.id, name: c.name, logo: c.logo, category: c.category, group: c.category }));
+      return sendJson(res, 200, { ok: true, count: list.length, channels: list }, "public, max-age=60");
+    }
+    if (action === "movies" || action === "series") {
+      const node = action === "movies" ? "movies" : "series";
+      const raw = (await rtdbGet(node)) || {};
+      const list = (Array.isArray(raw) ? raw : Object.values(raw)).slice(0, Number(q.limit) || 60)
+        .map((m) => ({ id: m.id || m.tmdbId, title: m.title || m.name, poster: m.poster || m.poster_path, year: m.year || (m.release_date || "").slice(0, 4), rating: m.rating || m.vote_average }));
+      return sendJson(res, 200, { ok: true, count: list.length, [action]: list }, "public, max-age=300");
+    }
+    if (action === "order" && isPost) {
+      const o = await S.createOrder(body);
+      return sendJson(res, 201, { ok: true, orderId: o.id, whatsapp: WA_LINK, message: "Order receive hua — WhatsApp par screenshot bhejein." });
+    }
+    if (action === "trial" && isPost) {
+      const r = await S.claimTrial(body);
+      if (!r.ok) return sendJson(res, 409, r);
+      return sendJson(res, 201, { ok: true, username: r.client.username, password: r.client.password, expDate: r.client.expDate, links: { m3u: `${base}/get.php?username=${r.client.username}&password=${r.client.password}` } });
+    }
+    if (action === "order-status") {
+      const o = await S.getOrder(String(body.id || q.id || "").toUpperCase());
+      return o ? sendJson(res, 200, { ok: true, order: o }) : sendJson(res, 404, { ok: false, error: "Not found" });
+    }
+    return sendJson(res, 400, { ok: false, error: "Unknown embed action" });
+  } catch (err) {
+    return sendJson(res, 500, { ok: false, error: String(err?.message || err) });
   }
-
-  return sendJson(res, 404, {
-    ok: false,
-    error: `Unknown embed endpoint '${ep}'.`,
-    endpoints: ["config", "channels", "movies", "series", "order", "trial", "order-status", "reseller/register", "health"]
-  });
 }
