@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:NASA Space & Earth Live HD — Mizanora IPTV (FREE HD)
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.channel",VALUE="nasa-space-live-hd"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="nasa.public" tvg-name="NASA Space & Earth Live HD" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🧸 📚 KIDS, KNOWLEDGE & DOCS",NASA Space & Earth Live HD
+https://miznaoraiptv.vercel.app/ch/nasa-space-live-hd.m3u8

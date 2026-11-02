@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:DW World News HD — Mizanora IPTV (FREE HD)
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.channel",VALUE="dw-news-english-hd"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="dw.english" tvg-name="DW World News HD" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="📰 🔴 LIVE NEWS NETWORKS",DW World News HD
+https://miznaoraiptv.vercel.app/ch/dw-news-english-hd.m3u8

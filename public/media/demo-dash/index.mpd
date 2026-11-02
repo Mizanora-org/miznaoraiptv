@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mizanora IPTV — Universal MPEG-DASH Studio Broadcast (Mizanora Projects • Muaaz Iqbal) -->
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="urn:mpeg:dash:schema:mpd:2011 DASH-MPD.xsd"
+     profiles="urn:mpeg:dash:profile:isoff-live:2011"
+     type="static"
+     mediaPresentationDuration="PT8S"
+     minBufferTime="PT2S">
+  <Period id="p0" start="PT0S" duration="PT8S">
+    <AdaptationSet id="video" contentType="video" mimeType="video/mp4" segmentAlignment="true" startWithSAP="1" subsegmentAlignment="true">
+      <Representation id="video-hd" codecs="avc1.4D401F" bandwidth="257318" width="1280" height="720" frameRate="30">
+        <SegmentTemplate timescale="90000" duration="720000" startNumber="1" initialization="video-init.mp4" media="video-seg$Number$.m4s"/>
+      </Representation>
+    </AdaptationSet>
+    <AdaptationSet id="audio" contentType="audio" mimeType="audio/mp4" segmentAlignment="true" startWithSAP="1">
+      <Representation id="audio-hd" codecs="mp4a.40.2" bandwidth="128000">
+        <SegmentTemplate timescale="90000" duration="720000" startNumber="1" initialization="audio-init.mp4" media="audio-seg$Number$.m4s"/>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>

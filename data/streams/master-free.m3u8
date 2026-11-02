@@ -1,0 +1,28 @@
+#EXTM3U x-tvg-url="https://miznaoraiptv.vercel.app/xmltv.php"
+#PLAYLIST:Mizanora IPTV (Free Channels) — Mizanora Projects by Muaaz Iqbal
+#EXTINF:-1 tvg-id="miznaoraiptv.promo.pk" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🇵🇰 ⭐ PAKISTAN TOP CHANNELS",Mizanora Pakistan Flagship HD
+https://miznaoraiptv.vercel.app/ch/miznaoraiptv-official-hd.m3u8
+#EXTINF:-1 tvg-id="quran.makkah.sa" tvg-logo="https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/Kaaba_icon.svg/240px-Kaaba_icon.svg.png" group-title="🕌 🌙 ISLAMIC & SPIRITUAL HD",Makkah Al-Quran Al-Kareem TV HD
+https://miznaoraiptv.vercel.app/ch/makkah-al-quran-al-kareem-hd.m3u8
+#EXTINF:-1 tvg-id="sunnah.madinah.sa" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🕌 🌙 ISLAMIC & SPIRITUAL HD",Madinah Al-Sunnah TV HD
+https://miznaoraiptv.vercel.app/ch/madinah-al-sunnah-al-nabawiyah-hd.m3u8
+#EXTINF:-1 tvg-id="mizanora.drama.pk" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🎭 📺 DRAMA & ENTERTAINMENT HD",Mizanora Urdu Drama & Family HD
+https://miznaoraiptv.vercel.app/ch/mizanora-urdu-drama-entertainment-hd.m3u8
+#EXTINF:-1 tvg-id="miznaoraiptv.dash.hd" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🇵🇰 ⭐ PAKISTAN TOP CHANNELS",Mizanora DASH MPD Studio HD
+https://miznaoraiptv.vercel.app/ch/miznaoraiptv-dash-mpd-studio-hd.m3u8
+#EXTINF:-1 tvg-id="aljazeera.en" tvg-logo="https://upload.wikimedia.org/wikipedia/en/thumb/f/f2/Aljazeera_eng.svg/240px-Aljazeera_eng.svg.png" group-title="📰 🔴 LIVE NEWS NETWORKS",Al Jazeera English HD
+https://miznaoraiptv.vercel.app/ch/al-jazeera-english-hd.m3u8
+#EXTINF:-1 tvg-id="trtworld.hd" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="📰 🔴 LIVE NEWS NETWORKS",TRT World News HD
+https://miznaoraiptv.vercel.app/ch/trt-world-hd.m3u8
+#EXTINF:-1 tvg-id="dw.english" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="📰 🔴 LIVE NEWS NETWORKS",DW World News HD
+https://miznaoraiptv.vercel.app/ch/dw-news-english-hd.m3u8
+#EXTINF:-1 tvg-id="france24.en" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="📰 🔴 LIVE NEWS NETWORKS",France 24 Live News HD
+https://miznaoraiptv.vercel.app/ch/france-24-english-hd.m3u8
+#EXTINF:-1 tvg-id="mizanora.cinema.pk" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🎬 🍿 MOVIES & CINEMA HD",Mizanora Cinema & Telefilms HD
+https://miznaoraiptv.vercel.app/ch/mizanora-cinema-movies-hd.m3u8
+#EXTINF:-1 tvg-id="redbull.tv" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🏏 🏆 LIVE SPORTS & CRICKET 4K",Red Bull Action Sports TV HD
+https://miznaoraiptv.vercel.app/ch/red-bull-sports-tv-hd.m3u8
+#EXTINF:-1 tvg-id="nasa.public" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🧸 📚 KIDS, KNOWLEDGE & DOCS",NASA Space & Earth Live HD
+https://miznaoraiptv.vercel.app/ch/nasa-space-live-hd.m3u8
+#EXTINF:-1 tvg-id="nhk.world" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🧸 📚 KIDS, KNOWLEDGE & DOCS",NHK World Knowledge & Docs HD
+https://miznaoraiptv.vercel.app/ch/nhk-world-japan-hd.m3u8

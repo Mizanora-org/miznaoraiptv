@@ -1,0 +1,647 @@
+/**
+ * Mizanora IPTV — Firebase 13.1.0 Auth + Realtime Database + Analytics Client
+ * Supports BOTH:
+ *   1) Google Sign-In (GoogleAuthProvider)
+ *   2) Gmail / Email + Password Sign Up, Sign In & Password Reset
+ * Connected to Firebase Realtime Database (project: mizanoranet).
+ */
+
+import {
+  initializeApp,
+  getApps,
+  getApp,
+  getAnalytics,
+  isAnalyticsSupported,
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
+  onAuthStateChanged,
+  signOut,
+  getDatabase,
+  ref,
+  get,
+  set,
+  update,
+  push,
+  remove,
+  onValue
+} from "../vendor/firebase-sdk.js";
+
+// Official Firebase Configuration for Mizanora IPTV (project: mizanoranet)
+// Google Sign-In + Email/Password + Realtime Database + Analytics
+export const firebaseConfig = {
+  apiKey: "AIzaSyA4PWELrMHQrRA29EZzfRx1iZkXtJkKh9M",
+  authDomain: "mizanoranet.firebaseapp.com",
+  databaseURL: "https://mizanoranet-default-rtdb.firebaseio.com",
+  projectId: "mizanoranet",
+  storageBucket: "mizanoranet.firebasestorage.app",
+  messagingSenderId: "1047231858393",
+  appId: "1:1047231858393:web:7e9fa18b59172f806da0c8",
+  measurementId: "G-8R6RGY3RLV"
+};
+
+/** Super-admin lock: ONLY this Google account can open the admin panel. */
+export const ADMIN_EMAIL = "muaaziqbal.vip@gmail.com";
+export const isAdminEmail = (email) => String(email || "").trim().toLowerCase() === ADMIN_EMAIL;
+
+
+export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getDatabase(app);
+
+// Safely initialize Firebase Analytics in supported browser contexts
+isAnalyticsSupported()
+  .then((yes) => {
+    if (yes) getAnalytics(app);
+  })
+  .catch(() => {});
+
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: "select_account" });
+
+const LOCAL_STORE_PREFIX = "mz_rtdb_cache_";
+const PREVIEW_USER_KEY = "mz_preview_session_user";
+
+// Handle Google Redirect result if mobile browser fell back to redirect
+getRedirectResult(auth).catch(() => {});
+
+export function isSandboxPreviewHost() {
+  const h = String(window.location.hostname || "").toLowerCase();
+  // Any temporary preview/preview-deployment host: Firebase has NOT whitelisted
+  // these in "Authorized domains", so Google popup login fails there. We surface
+  // the local Owner/Preview mode instead of leaving the user stuck.
+  if (!h) return true;
+  if (h === "localhost" || h === "127.0.0.1" || h.endsWith(".local")) return true;
+  if (h.endsWith(".e2b.app")) return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return true;
+  if (h.endsWith(".vercel.app") && h !== "miznaoraiptv.vercel.app") return true;
+  return false;
+}
+
+/**
+ * Resolves on the first auth state emission OR after `ms` (default 2.5s), so the
+ * UI can never hang waiting for Firebase to restore a session.
+ */
+export function authReady(ms = 2500) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish(auth?.currentUser || null), ms);
+    const unsub = onAuthStateChanged(auth, (u) => {
+      clearTimeout(timer);
+      unsub();
+      finish(u);
+    });
+  });
+}
+
+/**
+ * Subscribe to Auth State (merges real Firebase Auth user with preview fallback session if active)
+ */
+const previewListeners = new Set();
+
+export function subscribeAuth(callback) {
+  let latestFirebaseUser = null;
+
+  const notify = () => {
+    if (latestFirebaseUser) {
+      callback(latestFirebaseUser);
+      return;
+    }
+    const previewRaw = localStorage.getItem(PREVIEW_USER_KEY);
+    if (previewRaw) {
+      try {
+        callback(JSON.parse(previewRaw));
+        return;
+      } catch {
+        localStorage.removeItem(PREVIEW_USER_KEY);
+      }
+    }
+    callback(null);
+  };
+
+  previewListeners.add(notify);
+  const unsub = onAuthStateChanged(auth, (fbUser) => {
+    latestFirebaseUser = fbUser;
+    if (fbUser) {
+      localStorage.removeItem(PREVIEW_USER_KEY);
+    }
+    notify();
+  });
+
+  return () => {
+    previewListeners.delete(notify);
+    unsub();
+  };
+}
+
+/** Detect in-app browsers (WhatsApp / Instagram / Facebook / TikTok webviews). */
+export function isInAppBrowser() {
+  const ua = String(navigator.userAgent || "");
+  return /(FBAN|FBAV|Instagram|Line\/|WhatsApp|Twitter|TikTok|GSA\/|; wv\))/i.test(ua);
+}
+
+/**
+ * Detect hosts where Firebase Auth cannot complete (domain not whitelisted in
+ * Firebase Console -> Authentication -> Settings -> Authorized domains).
+ */
+export function isUnauthorizedDomainError(code) {
+  return code === "auth/unauthorized-domain" || code === "auth/invalid-api-key";
+}
+
+const POPUP_TIMEOUT_MS = 75_000;
+
+function withAuthWatchdog(promise, ms = POPUP_TIMEOUT_MS) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) =>
+      setTimeout(
+        () => resolve({ ok: false, code: "auth/popup-timeout", error: "The Google window did not finish. Please retry, or use Gmail + Password / Redirect sign-in." }),
+        ms
+      )
+    )
+  ]);
+}
+
+/** Explicit redirect flow — works in in-app browsers where popups are blocked. */
+export async function loginWithGoogleRedirect() {
+  try {
+    await signInWithRedirect(auth, googleProvider);
+    return { ok: true, redirecting: true };
+  } catch (err) {
+    return { ok: false, code: err?.code || "", error: formatAuthError(err) };
+  }
+}
+
+export async function loginWithGoogle() {
+  // In-app webviews (very common on WhatsApp links) cannot open popups at all.
+  if (isInAppBrowser()) {
+    return {
+      ok: false,
+      code: "auth/operation-not-supported-in-this-environment",
+      suggestRedirect: true,
+      error:
+        "This in-app browser blocks Google pop-ups. Tap 'Open in Chrome/Safari' or use Google Redirect sign-in below."
+    };
+  }
+
+  try {
+    const cred = await withAuthWatchdog(signInWithPopup(auth, googleProvider));
+    if (cred && cred.ok === false) return cred; // watchdog result
+    void ensureUserProfileInRtdb(cred.user, "google");
+    return { ok: true, user: cred.user };
+  } catch (err) {
+    const code = err?.code || "";
+    // Every popup-related failure can be rescued with the redirect flow.
+    if (
+      code === "auth/popup-blocked" ||
+      code === "auth/popup-closed-by-user" ||
+      code === "auth/cancelled-popup-request" ||
+      code === "auth/operation-not-supported-in-this-environment" ||
+      code === "auth/web-storage-unsupported" ||
+      code === "auth/operation-not-allowed"
+    ) {
+      try {
+        await signInWithRedirect(auth, googleProvider);
+        return { ok: true, redirecting: true };
+      } catch (redirectErr) {
+        return {
+          ok: false,
+          code: redirectErr?.code || code,
+          suggestRedirect: false,
+          error: formatAuthError(redirectErr) || formatAuthError(err)
+        };
+      }
+    }
+    return {
+      ok: false,
+      code,
+      // unauthorized-domain: the fix is a Firebase Console setting, so surface a
+      // clear path (owner still has the Owner PIN / email login available).
+      suggestOwnerPin: isUnauthorizedDomainError(code),
+      error: formatAuthError(err)
+    };
+  }
+}
+
+export async function registerWithEmailPassword(displayName, email, password) {
+  const check = describeLoginIdentifier(email);
+  if (!check.ok) return { ok: false, code: "auth/invalid-email", error: check.error };
+  email = check.value;
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    const cleanName = String(displayName || email.split("@")[0]).trim();
+    if (cleanName) {
+      await updateProfile(cred.user, { displayName: cleanName }).catch(() => {});
+    }
+    void ensureUserProfileInRtdb(
+      { ...cred.user, uid: cred.user.uid, email: cred.user.email, displayName: cleanName },
+      "password"
+    ).catch(() => {});
+    return { ok: true, user: cred.user };
+  } catch (err) {
+    return { ok: false, code: err?.code || "", error: formatAuthError(err) };
+  }
+}
+
+const EMAIL_LOOKS_VALID = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** Treat a bare username like "khashi" as a helpful hint, not a silent failure. */
+export function describeLoginIdentifier(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return { ok: false, error: "Please enter your Gmail / email address." };
+  if (!raw.includes("@")) {
+    return {
+      ok: false,
+      error: `"${raw}" is a username, not an email. Use the full address, e.g. ${raw}@gmail.com — or sign in with Google.`
+    };
+  }
+  if (!EMAIL_LOOKS_VALID.test(raw)) {
+    return { ok: false, error: `"${raw}" does not look like a valid email address.` };
+  }
+  return { ok: true, value: raw.toLowerCase() };
+}
+
+export async function loginWithEmailPassword(email, password) {
+  const check = describeLoginIdentifier(email);
+  if (!check.ok) return { ok: false, code: "auth/invalid-email", error: check.error };
+  email = check.value;
+  if (!password) return { ok: false, code: "auth/missing-password", error: "Please enter your password." };
+  try {
+    const cred = await withAuthWatchdog(
+      signInWithEmailAndPassword(auth, email.trim(), password),
+      30_000
+    );
+    if (cred && cred.ok === false) {
+      return { ok: false, code: cred.code || "auth/timeout", error: cred.error };
+    }
+    // Profile bootstrap runs in the background — the click completes instantly.
+    void ensureUserProfileInRtdb(cred.user, "password").catch(() => {});
+    return { ok: true, user: cred.user };
+  } catch (err) {
+    return { ok: false, code: err?.code || "", error: formatAuthError(err) };
+  }
+}
+
+export async function resetUserPassword(email) {
+  try {
+    await withAuthWatchdog(sendPasswordResetEmail(auth, email.trim()), 30_000);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, code: err?.code || "", error: formatAuthError(err) };
+  }
+}
+
+/**
+ * Only offered on sandbox/localhost preview domains if Firebase Console hasn't had
+ * the temporary preview domain added yet — lets owner test full dashboard immediately!
+ */
+export async function startPreviewSession({ name, email, asAdmin = false }) {
+  const cleanEmail = String(email || "viewer@miznaoraiptv.tv").trim().toLowerCase();
+  const uid = "usr_" + btoa(cleanEmail).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16);
+  const mockUser = {
+    uid,
+    email: cleanEmail,
+    displayName: String(name || cleanEmail.split("@")[0]).trim(),
+    photoURL: "",
+    isPreviewSession: true,
+    isAdminHint: Boolean(asAdmin || isAdminEmail(cleanEmail))
+  };
+  localStorage.setItem(PREVIEW_USER_KEY, JSON.stringify(mockUser));
+  await ensureUserProfileInRtdb(mockUser, "preview");
+  for (const fn of previewListeners) fn();
+  return { ok: true, user: mockUser };
+}
+
+/** Current Firebase ID token (used by the panel/admin APIs as a Bearer token). */
+export async function getFirebaseIdToken(forceRefresh = false) {
+  try {
+    if (!auth || !auth.currentUser) return "";
+    return (await auth.currentUser.getIdToken(forceRefresh)) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function getCurrentUserSnapshot() {
+  const u = auth?.currentUser;
+  if (u) {
+    return {
+      uid: u.uid,
+      email: String(u.email || "").toLowerCase(),
+      displayName: u.displayName || "",
+      photoURL: u.photoURL || "",
+      isPreviewSession: false
+    };
+  }
+  try {
+    const raw = localStorage.getItem(PREVIEW_USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function logoutUser() {
+  localStorage.removeItem(PREVIEW_USER_KEY);
+  try {
+    await signOut(auth);
+  } catch {
+    // ignore
+  }
+  for (const fn of previewListeners) fn();
+}
+
+function formatAuthError(err) {
+  const code = err?.code || "";
+  switch (code) {
+    case "auth/invalid-credential":
+    case "auth/wrong-password":
+    case "auth/user-not-found":
+      return "Incorrect Gmail/Email or Password. Please check your credentials or create a new account.";
+    case "auth/email-already-in-use":
+      return "This email is already registered! Switch to the 'Sign In' tab or login with Google.";
+    case "auth/weak-password":
+      return "Password should be at least 6 characters long.";
+    case "auth/invalid-email":
+      return "Please enter a valid Gmail or email address.";
+    case "auth/unauthorized-domain":
+      return `Domain (${window.location.hostname}) needs to be added in Firebase Console -> Authentication -> Settings -> Authorized domains (add miznaoraiptv.vercel.app).`;
+    case "auth/operation-not-allowed":
+      return "Enable 'Google' and 'Email/Password' Sign-in providers in Firebase Console -> Authentication -> Sign-in method.";
+    case "auth/popup-closed-by-user":
+      return "Sign-in popup was closed before completing login.";
+    case "auth/cancelled-popup-request":
+      return "Another sign-in window is already open. Close it and try again.";
+    case "auth/popup-blocked":
+      return "Your browser blocked the Google pop-up. Use the Redirect button below, or allow pop-ups for this site.";
+    case "auth/network-request-failed":
+      return "Network problem reaching Google/Firebase. Check your internet and try again.";
+    case "auth/too-many-requests":
+      return "Too many attempts from this device. Please wait a few minutes and try again, or use the Owner PIN.";
+    case "auth/user-disabled":
+      return "This account has been disabled. Contact the owner on WhatsApp 0306-2015326.";
+    case "auth/missing-password":
+      return "Please enter your password.";
+    case "auth/missing-email":
+      return "Please enter your Gmail / email address.";
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+      return "Firebase API key is missing or invalid on this deployment. Add FIREBASE_API_KEY and redeploy.";
+    case "auth/operation-not-supported-in-this-environment":
+      return "This in-app browser cannot open Google sign-in. Tap 'Open in Chrome/Safari', or use Gmail + Password below.";
+    default:
+      return err?.message || "Authentication failed. Please try again.";
+  }
+}
+
+/**
+ * Realtime Database Read/Write Helpers with instant local cache + server API mirror
+ */
+// Sensitive dashboards must not silently fall back to another user's local cache.
+export async function dbReadStrict(path, timeoutMs = 3500) {
+  const clean = path.replace(/^\/+|\/+$/g, "");
+  try {
+    const snap = await withTimeout(get(ref(db, clean)), timeoutMs);
+    if (snap && snap.exists()) {
+      const val = snap.val();
+      saveLocalCache(clean, val);
+      return val;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+const inflightReads = new Map();
+
+function refreshInBackground(clean) {
+  if (inflightReads.has(clean)) return inflightReads.get(clean);
+  const p = withTimeout(get(ref(db, clean)), 3000)
+    .then((snap) => {
+      if (snap && snap.exists()) saveLocalCache(clean, snap.val());
+      return snap;
+    })
+    .catch(() => null)
+    .finally(() => inflightReads.delete(clean));
+  inflightReads.set(clean, p);
+  return p;
+}
+
+/**
+ * Stale-while-revalidate read: when a local snapshot exists we return it
+ * synchronously and refresh in the background, so no click ever waits on the
+ * network. `{ force: true }` restores strict read-through behaviour.
+ */
+export async function dbRead(path, fallback = null, opts = {}) {
+  const clean = path.replace(/^\/+|\/+$/g, "");
+  const cached = loadLocalCache(clean);
+
+  if (cached !== undefined && !opts.force) {
+    refreshInBackground(clean);
+    return cached;
+  }
+
+  try {
+    const snap = await withTimeout(get(ref(db, clean)), opts.timeoutMs || 2500);
+    if (snap && snap.exists()) {
+      const val = snap.val();
+      saveLocalCache(clean, val);
+      return val;
+    }
+  } catch {
+    // Offline / rules not published yet -> keep local cache or fallback
+  }
+  return cached !== undefined ? cached : fallback;
+}
+
+export function dbWatch(path, callback, fallback = null) {
+  const clean = path.replace(/^\/+|\/+$/g, "");
+  let emitted = false;
+  const cached = loadLocalCache(clean);
+  if (cached !== undefined) {
+    emitted = true;
+    callback(cached);
+  }
+
+  let unsub = () => {};
+  try {
+    unsub = onValue(
+      ref(db, clean),
+      (snap) => {
+        if (snap.exists()) {
+          const val = snap.val();
+          saveLocalCache(clean, val);
+          emitted = true;
+          callback(val);
+        } else if (!emitted) {
+          emitted = true;
+          callback(fallback);
+        }
+      },
+      () => {
+        if (!emitted) {
+          emitted = true;
+          callback(cached !== undefined ? cached : fallback);
+        }
+      }
+    );
+  } catch {
+    if (!emitted) callback(fallback);
+  }
+
+  return unsub;
+}
+
+// Writes that must be durable (billing/entitlement changes) fail rather than
+// reporting a successful local-only save.
+export async function dbWriteStrict(path, value) {
+  const clean = path.replace(/^\/+|\/+$/g, "");
+  await withTimeout(set(ref(db, clean), value), 5000);
+  saveLocalCache(clean, value);
+  mirrorToServer(clean, value);
+  return { ok: true, syncedRemote: true };
+}
+
+export async function dbWrite(path, value) {
+  const clean = path.replace(/^\/+|\/+$/g, "");
+  saveLocalCache(clean, value);
+  mirrorToServer(clean, value);
+  try {
+    await withTimeout(set(ref(db, clean), value), 3500);
+    return { ok: true, syncedRemote: true };
+  } catch (err) {
+    return { ok: true, syncedRemote: false, warning: err?.message || "Saved locally & synced to server" };
+  }
+}
+
+export async function dbMerge(path, partial) {
+  const clean = path.replace(/^\/+|\/+$/g, "");
+  const existing = (await dbRead(clean, {})) || {};
+  const merged = { ...existing, ...partial };
+  saveLocalCache(clean, merged);
+  mirrorToServer(clean, merged);
+  try {
+    await withTimeout(update(ref(db, clean), partial), 3500);
+    return { ok: true, syncedRemote: true, data: merged };
+  } catch (err) {
+    return { ok: true, syncedRemote: false, data: merged, warning: err?.message };
+  }
+}
+
+export async function dbDelete(path) {
+  const clean = path.replace(/^\/+|\/+$/g, "");
+  removeLocalCache(clean);
+  mirrorToServer(clean, null);
+  try {
+    await withTimeout(remove(ref(db, clean)), 3000);
+    return { ok: true };
+  } catch {
+    return { ok: true };
+  }
+}
+
+export async function dbPushItem(collectionPath, item) {
+  const clean = collectionPath.replace(/^\/+|\/+$/g, "");
+  const genId = "item_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6);
+  try {
+    const newRef = push(ref(db, clean));
+    const id = newRef.key || genId;
+    const payload = { id, ...item };
+    saveLocalChild(clean, id, payload);
+    await withTimeout(set(newRef, payload), 3000);
+    return { ok: true, id, item: payload };
+  } catch {
+    const payload = { id: genId, ...item };
+    saveLocalChild(clean, genId, payload);
+    return { ok: true, id: genId, item: payload };
+  }
+}
+
+async function ensureUserProfileInRtdb(user, providerName) {
+  if (!user || !user.uid) return;
+  const existing = await dbRead(`users/${user.uid}`, null);
+  const now = new Date().toISOString();
+  const isOwner = isAdminEmail(user.email);
+  const profile = {
+    uid: user.uid,
+    email: user.email || "",
+    displayName: user.displayName || (user.email ? user.email.split("@")[0] : "Mizanora Viewer"),
+    photoURL: user.photoURL || "",
+    provider: existing?.provider || providerName,
+    plan: existing?.plan || (isOwner ? "pro" : "free"),
+    role: existing?.role || (isOwner ? "admin" : "user"),
+    xtreamUsername: existing?.xtreamUsername || "",
+    playlistId: existing?.playlistId || "",
+    favorites: existing?.favorites || [],
+    createdAt: existing?.createdAt || now,
+    lastLoginAt: now
+  };
+  // Never block the sign-in click on a network write: UI updates instantly and
+  // the profile lands in the background (cache is already updated synchronously).
+  void dbMerge(`users/${user.uid}`, profile).catch(() => {});
+  if (isOwner) {
+    void dbWrite(`admins/${user.uid}`, true).catch(() => {});
+  }
+  return profile;
+}
+
+async function mirrorToServer(path, value) {
+  const token = await auth.currentUser?.getIdToken().catch(() => "");
+  if (!token) return;
+  fetch("/api/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ path, value })
+  }).catch(() => {});
+}
+
+function saveLocalCache(path, val) {
+  try {
+    localStorage.setItem(LOCAL_STORE_PREFIX + path, JSON.stringify(val));
+  } catch {
+    // ignore storage quota
+  }
+}
+
+function saveLocalChild(collectionPath, id, val) {
+  const existing = loadLocalCache(collectionPath) || {};
+  existing[id] = val;
+  saveLocalCache(collectionPath, existing);
+  mirrorToServer(collectionPath, existing);
+}
+
+function loadLocalCache(path) {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORE_PREFIX + path);
+    return raw ? JSON.parse(raw) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function removeLocalCache(path) {
+  try {
+    localStorage.removeItem(LOCAL_STORE_PREFIX + path);
+  } catch {
+    // ignore
+  }
+}
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("RTDB timeout")), ms))
+  ]);
+}

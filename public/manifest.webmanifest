@@ -1,0 +1,72 @@
+{
+  "id": "/",
+  "name": "Mizanora IPTV — 3D Broadcast & Cinema",
+  "short_name": "Mizanora IPTV",
+  "description": "3D Live HD TV, Universal DASH/MPD + HLS + MPEG-TS Studio Player, 1,570+ IMDb Movies & Series (2000–2026) & Free Personal Xtream Server. A Mizanora Project by Muaaz Iqbal.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#06120d",
+  "theme_color": "#0b6b45",
+  "orientation": "any",
+  "categories": ["entertainment", "video", "news", "sports"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/assets/logo-fallback.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Watch Live HD TV",
+      "short_name": "Live TV",
+      "description": "Open Mizanora 3D Live TV Studio",
+      "url": "/?source=pwa",
+      "icons": [{ "src": "/assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "IMDb Movies & Series (2000–2026)",
+      "short_name": "Cinema",
+      "description": "Browse 1,570+ auto-loaded IMDb Movies & TV Series",
+      "url": "/#cinema",
+      "icons": [{ "src": "/assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Free Xtream Server",
+      "short_name": "Xtream Key",
+      "description": "Open your Personal Cloud Xtream Codes Vault",
+      "url": "/#xtream",
+      "icons": [{ "src": "/assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "PRO VIP Unlock (0306-2015326)",
+      "short_name": "PRO VIP",
+      "description": "Upgrade to Mizanora IPTV PRO VIP",
+      "url": "/#pro",
+      "icons": [{ "src": "/assets/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:Mizanora DASH MPD Studio HD — Mizanora IPTV (FREE HD)
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.channel",VALUE="miznaoraiptv-dash-mpd-studio-hd"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="miznaoraiptv.dash.hd" tvg-name="Mizanora DASH MPD Studio HD" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🇵🇰 ⭐ PAKISTAN TOP CHANNELS",Mizanora DASH MPD Studio HD
+https://miznaoraiptv.vercel.app/ch/miznaoraiptv-dash-mpd-studio-hd.m3u8
