@@ -107,6 +107,7 @@ window.fetch = async (url, options = {}) => {
   if (action === "admin/channel-update") {
     const channel = db.channels.find((c) => c.id === body.id); Object.assign(channel, body.patch); return J({ ok: true, channel });
   }
+  if (action === "admin/channel-move") { const i = db.channels.findIndex((c) => c.id === body.id); const [item] = db.channels.splice(i, 1); db.channels.splice(body.position - 1, 0, item); return J({ ok: true, channels: db.channels }); }
   if (action === "admin/channel-delete") { db.channels = db.channels.filter((c) => c.id !== body.id); return J({ ok: true }); }
   if (action === "admin/playlists") return J({ ok: true, playlists: db.playlists });
   if (action === "admin/playlist-save") {
@@ -196,6 +197,8 @@ check("quick Add Channel opens functional dialog", $("appDialog").hasAttribute("
 await submitDialog({ name: "DOM Channel", url: "/media/demo-live/index.m3u8", category: "Testing", tier: "free" });
 check("channel create updates API state and table", db.channels.some((c) => c.id === "ch_dom") && $("chBody").textContent.includes("DOM Channel"));
 await clickTab("channels");
+document.querySelector("[data-ch-move='ch_dom'][data-direction='-1']").click(); await sleep();
+check("channel move control persists order", db.channels[0].id === "ch_dom" && $("chBody").querySelector("tr b").textContent === "DOM Channel");
 document.querySelector("[data-ch-edit='ch_dom']").click(); await sleep(30);
 await submitDialog({ name: "DOM Channel Edited", url: "/media/demo-live/index.m3u8", category: "Testing", tier: "pro" });
 check("channel edit persists", db.channels.find((c) => c.id === "ch_dom")?.name === "DOM Channel Edited" && $("chBody").textContent.includes("PRO"));

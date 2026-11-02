@@ -30,7 +30,7 @@ const ADMIN_ACTIONS = new Set([
   "admin/me", "admin/pin-login",
   "admin/xtream-accounts", "admin/xtream/create", "admin/xtream/update", "admin/xtream/renew",
   "admin/xtream/suspend", "admin/xtream/activate", "admin/xtream/delete",
-  "admin/stalker/list", "admin/channels", "admin/channel-create", "admin/channel-update", "admin/channel-delete", "admin/channels/import",
+  "admin/stalker/list", "admin/channels", "admin/channel-create", "admin/channel-update", "admin/channel-delete", "admin/channel-move", "admin/channels/import",
   "admin/epg-sources", "admin/epg-import", "admin/epg-refresh", "admin/epg-delete",
   "admin/playlists", "admin/playlist-save", "admin/playlist-delete", "admin/movie-update", "admin/series-update",
   "admin/clients", "admin/client-create", "admin/client-renew", "admin/client-suspend", "admin/client-delete",
@@ -431,6 +431,10 @@ export default async function panelHandler(req, res) {
       }
       if (action === "admin/channel-create") return sendJson(res, 201, { ok: true, channel: await S.createChannel(body) });
       if (action === "admin/channel-update") return sendJson(res, 200, { ok: true, channel: await S.updateChannel(body.id, body.patch || body) });
+      if (action === "admin/channel-move") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        return sendJson(res, 200, { ok: true, channels: await S.moveChannel(body.id, Number(body.position)) });
+      }
       if (action === "admin/channel-delete") { await S.deleteChannel(body.id); return sendJson(res, 200, { ok: true, deleted: body.id }); }
       if (action === "admin/playlists") return sendJson(res, 200, { ok: true, playlists: await S.listPlaylists() });
       if (action === "admin/playlist-save") return sendJson(res, 200, { ok: true, playlist: await S.savePlaylist(body) });
@@ -555,7 +559,7 @@ function helpDoc(base) {
     actions: {
       public: ["config", "plans", "help", "order", "order-status", "trial", "resolve {username,password}", "track {sessionId,event,route}", "reseller/register", "reseller/login-password", "recharge/contact"],
       reseller: ["reseller/login {code,password}", "reseller/me|stats", "reseller/clients", "reseller/client-create {name,planId?,mac?,collectAmount?,via?} — plan months = credit cost", "reseller/credentials {username}", "reseller/client-update {username,…}", "reseller/client-renew {username,planId?} — plan months = credit cost", "reseller/client-suspend|client-block {username}", "reseller/client-delete {username}", "reseller/secure-link {username,file?,kind?}", "reseller/key-rotate", "reseller/pricing-set {pricing}", "reseller/payment-record {username,amount,months,via} — one credit per extension month", "reseller/finance", "reseller/ledger", "reseller/report", "reseller/activity"],
-      admin: ["admin/me", "admin/pin-login {pin}", "admin/xtream-accounts", "admin/xtream/create|update|renew|suspend|activate|delete {username,…}", "admin/stalker/list", "admin/channels", "admin/channel-create|channel-update|channel-delete", "admin/channels/import {url|content,name?,defaultTier?,importEpg?}", "admin/epg-sources|epg-import|epg-refresh|epg-delete", "admin/playlists", "admin/playlist-save|playlist-delete", "admin/movie-update|series-update", "admin/clients", "admin/client-create|renew|suspend|delete", "admin/resellers", "admin/reseller-report {code}", "admin/reseller-create|reseller-update", "admin/credits-topup {code,credits}", "admin/orders", "admin/order-review {id,approve}", "admin/payments", "admin/trials", "admin/api-keys", "admin/api-key-create {label,expiresDays?}", "admin/api-key-revoke {id|hash}", "admin/settings|settings-set", "admin/analytics", "admin/audit", "admin/errors", "admin/secure-link {username}"]
+      admin: ["admin/me", "admin/pin-login {pin}", "admin/xtream-accounts", "admin/xtream/create|update|renew|suspend|activate|delete {username,…}", "admin/stalker/list", "admin/channels", "admin/channel-create|channel-update|channel-delete", "admin/channel-move {id,position}", "admin/channels/import {url|content,name?,defaultTier?,importEpg?}", "admin/epg-sources|epg-import|epg-refresh|epg-delete", "admin/playlists", "admin/playlist-save|playlist-delete", "admin/movie-update|series-update", "admin/clients", "admin/client-create|renew|suspend|delete", "admin/resellers", "admin/reseller-report {code}", "admin/reseller-create|reseller-update", "admin/credits-topup {code,credits}", "admin/orders", "admin/order-review {id,approve}", "admin/payments", "admin/trials", "admin/api-keys", "admin/api-key-create {label,expiresDays?}", "admin/api-key-revoke {id|hash}", "admin/settings|settings-set", "admin/analytics", "admin/audit", "admin/errors", "admin/secure-link {username}"]
     },
     protocols: {
       xtreamPlayerApi: `${base}/player_api.php?username=U&password=P`,

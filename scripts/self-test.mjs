@@ -115,7 +115,7 @@ try {
   r = await request("/api/embed?action=help"); check("embed help is not a dead link", r.status === 200 && r.body.ok && r.body.actions);
   r = await request("/api/embed?action=health"); check("health reports storage diagnostics", r.status === 200 && r.body.ok && r.body.storage && typeof r.body.storage.durableServerWrites === "boolean");
   r = await request("/api/panel?action=config"); check("public config and endpoints", r.status === 200 && r.body.brand === "Mizanora IPTV" && r.body.endpoints.magPortal.endsWith("/portal.php") && r.body.version === "5.1.0");
-  r = await request("/api/embed?action=config"); check("public intro, recharge and developer settings are available", r.status === 200 && r.body.experience?.intro?.url === "/media/welcome/video.mp4" && r.body.links?.resellerPanel.endsWith("/reseller") && r.body.links?.developers.endsWith("/developers"));
+  r = await request("/api/embed?action=config"); check("public intro, recharge and developer settings are available", r.status === 200 && r.body.experience?.intro?.url === "/media/welcome/video.mp4" && r.body.experience.intro.durationSec === 8 && r.body.experience.intro.skippable === false && r.body.experience.videos.offline.includes("channel-offline") && r.body.experience.videos.comingSoon.includes("coming-soon") && r.body.links?.resellerPanel.endsWith("/reseller") && r.body.links?.developers.endsWith("/developers"));
   r = await request("/api/embed?action=channels"); check("default live catalog and welcome promo are available", r.status === 200 && r.body.count >= 18 && r.body.channels.some((c) => c.id === "ch_mz_promo" && /Welcome/i.test(c.name)));
   const firstChannel = r.body.channels[0];
   const proChannel = r.body.channels.find((c) => c.tier === "pro");
@@ -150,7 +150,12 @@ try {
   r = await request(`/player_api.php?username=${U}&password=${P}&action=get_series_categories`); check("get_series_categories works", Array.isArray(r.body) && r.body.length > 3);
   r = await request(`/player_api.php?username=${U}&password=${P}&action=get_series`); check("get_series works", Array.isArray(r.body) && r.body.length > 400);
   r = await request(`/player_api.php?username=${U}&password=${P}&action=get_series_info&series_id=${firstSeries.streamId}`); check("get_series_info returns seasons + episodes", r.status === 200 && r.body.seasons?.length && Object.keys(r.body.episodes || {}).length > 0);
-  r = await request(`/get.php?username=${U}&password=${P}&type=m3u_plus&output=m3u8`); check("M3U uses actual live stream IDs", r.status === 200 && r.text.startsWith("#EXTM3U") && r.text.includes(`/live/${U}/${P}/${liveStreams[0].stream_id}.m3u8`));
+  r = await request(`/player_api.php?username=${U}&password=${P}&action=get_vod_info&vod_id=${firstMovie.streamId}`); check("metadata-only movie advertises coming-soon HLS", r.body.movie_data?.container_extension === "m3u8" && r.body.movie_data?.stream_available === 0);
+  r = await request(`/movie/${U}/${P}/${firstMovie.streamId}.m3u8`); check("unconfigured movie plays coming-soon playlist", r.status === 200 && r.text.includes("#EXTM3U"));
+  const placeholderEpisode = firstSeries.episodes[0];
+  r = await request(`/series/${U}/${P}/${firstSeries.streamId}/${placeholderEpisode.id}.m3u8`); check("unconfigured series episode plays coming-soon playlist", r.status === 200 && r.text.includes("#EXTM3U"));
+  r = await request(`/series/${U}/${P}/999999999/unknown.m3u8`); check("unknown episode does not show a fake title", r.status === 404);
+  r = await request(`/get.php?username=${U}&password=${P}&type=m3u_plus&output=m3u8`); check("M3U uses actual live stream IDs and includes coming-soon VOD", r.status === 200 && r.text.startsWith("#EXTM3U") && r.text.includes(`/live/${U}/${P}/${liveStreams[0].stream_id}.m3u8`) && r.text.includes(`/movie/${U}/${P}/${firstMovie.streamId}.m3u8`));
   check("M3U linked XMLTV URL preserves query authentication", r.text.split("\n")[0].includes(`xmltv.php?username=${U}&password=${P}`) && !r.text.split("\n")[0].includes("&amp;"));
   r = await request(`/xmltv.php?username=${U}&password=${P}`); check("XMLTV contains escaped channels", r.status === 200 && r.text.includes("<tv") && r.text.includes("<display-name>"));
   r = await request(`/live/${U}/${P}/${liveStreams[0].stream_id}.m3u8`, { redirect: "manual" }); check("live URL redirects to signed /s/", r.status === 302 && r.headers.get("location")?.includes("/s/"));
@@ -222,6 +227,10 @@ try {
   const channelId = r.body.channel.id;
   r = await panelPost({ action: "admin/channel-update", id: channelId, patch: { name: "Selftest Channel Updated", url: "/media/demo-live/index.m3u8", category: "Test", tier: "pro" } }, keyHeaders); check("channel update works", r.status === 200 && r.body.channel?.name.endsWith("Updated") && r.body.channel?.tier === "pro");
   r = await request("/api/embed?action=channels"); check("channel update appears in public API", r.body.channels.some((c) => c.id === channelId && c.name.endsWith("Updated")));
+  r = await panelPost({ action: "admin/channel-move", id: channelId, position: 1 }, keyHeaders); check("owner can reorder channels", r.status === 200 && r.body.channels[0].id === channelId);
+  r = await request("/api/embed?action=channels"); check("public catalog respects saved ordering", r.body.channels[0]?.id === channelId);
+  r = await request(`/player_api.php?username=${U}&password=${P}&action=get_live_streams`); check("Xtream respects saved channel ordering", r.body[0]?.name === "Selftest Channel Updated");
+  r = await panelPost({ action: "admin/channel-move", id: channelId, position: 0 }, keyHeaders); check("channel reorder rejects invalid position", r.status === 400);
   r = await panelPost({ action: "admin/channel-delete", id: channelId }, keyHeaders); check("channel delete works", r.status === 200 && r.body.ok);
   r = await panelPost({ action: "admin/playlist-save", name: "Selftest Playlist", url: "/media/demo-live/index.m3u8" }, keyHeaders); check("playlist create works", r.status === 200 && r.body.playlist?.id);
   const playlistId = r.body.playlist.id;
@@ -237,7 +246,11 @@ try {
   const seriesSigned = r.headers.get("location");
   r = await request(seriesSigned, { redirect: "manual" }); check("signed episode redirects to actual media file", r.status === 302 && r.headers.get("location")?.endsWith("/media/welcome/video.mp4"));
   r = await panelPost({ action: "admin/xtream/create", username: "selftest_x", name: "Selftest", mac: "00:1A:79:00:00:01", days: 30 }, keyHeaders); check("Xtream create binds MAC", r.status === 200 && r.body.client?.mac === "00:1A:79:00:00:01");
-  const XU = r.body.client.username;
+  const XU = r.body.client.username, XP = r.body.client.password;
+  r = await panelPost({ action: "admin/xtream/update", username: XU, expDate: Math.floor(Date.now() / 1000) - 60 }, keyHeaders);
+  r = await request(`/live/${XU}/${XP}/1001.m3u8`, { redirect: "manual" }); check("expired authenticated live link redirects to recharge video", r.status === 302 && r.headers.get("location")?.endsWith("/media/pro-unlock/index.m3u8"));
+  r = await request(`/live/${XU}/wrong/1001.m3u8`, { redirect: "manual" }); check("expired account with wrong password is not given access", r.status === 401);
+  r = await panelPost({ action: "admin/xtream/update", username: XU, expDate: Math.floor(Date.now() / 1000) + 30 * 86400 }, keyHeaders);
   r = await panelPost({ action: "admin/xtream/create", username: "selftest_x", name: "Duplicate" }, keyHeaders); check("duplicate username cannot overwrite client", r.status === 409);
   r = await panelPost({ action: "admin/xtream/create", username: "selftest_mac_clash", mac: "00:1A:79:00:00:01" }, keyHeaders); check("duplicate MAC is rejected centrally", r.status === 409);
   r = await panelPost({ action: "admin/xtream/renew", username: XU, planId: "monthly" }, keyHeaders); check("Xtream renew works", r.status === 200 && r.body.client?.expDate > Date.now() / 1000);

@@ -384,7 +384,7 @@ export async function setSettings(patch = {}) {
     else if (boolFields.has(key)) clean[key] = value === true || value === "true";
     else if (textFields.has(key)) clean[key] = String(value ?? "").slice(0, key === "siteAnnouncement" || key.endsWith("Note") ? 500 : 1000);
   }
-  if (patch.welcomeDurationSec !== undefined) clean.welcomeDurationSec = Math.max(1, Math.min(30, Number(patch.welcomeDurationSec) || 4));
+  if (patch.welcomeDurationSec !== undefined) clean.welcomeDurationSec = Math.max(1, Math.min(30, Number(patch.welcomeDurationSec) || 8));
   const next = { ...cur, ...clean, updatedAt: nowIso() };
   await rtdbSet("settings/defaults", next);
   return next;
@@ -396,9 +396,10 @@ export async function getPublicExperience() {
     intro: {
       enabled: settings.welcomeVideoEnabled !== false && !!settings.welcomeVideoUrl,
       url: settings.welcomeVideoUrl || "",
-      durationSec: Math.max(1, Math.min(30, Number(settings.welcomeDurationSec) || 4)),
+      durationSec: Math.max(1, Math.min(30, Number(settings.welcomeDurationSec) || 8)),
       skippable: settings.welcomeSkippable !== false
     },
+    videos: { offline: settings.channelOfflineVideoUrl || "", comingSoon: settings.comingSoonVideoUrl || "", recharge: settings.proUnlockVideoEnabled !== false ? (settings.proUnlockVideoUrl || "") : "" },
     announcement: settings.siteAnnouncement || "",
     rechargeNote: settings.rechargeNote || "JazzCash / EasyPaisa / WhatsApp se recharge karein.",
     resellerContactNote: settings.resellerContactNote || "Reseller account aur credit top-up ke liye support se rabta karein.",
@@ -517,7 +518,7 @@ export async function revokeApiKeyByHash(hashOrId) {
 /* ---------------- channels / playlists / VOD catalogs ---------------- */
 export async function listChannels() {
   const arr = asArray(await rtdbGet("channels"));
-  return arr.length ? arr : DEFAULT_CHANNELS;
+  return [...(arr.length ? arr : DEFAULT_CHANNELS)].sort((a, b) => (Number(a.order) || 999999) - (Number(b.order) || 999999));
 }
 
 function channelPatch(input = {}, existing = {}) {
@@ -557,6 +558,19 @@ export async function updateChannel(id, input = {}) {
   await rtdbSet("channels", channels);
   await pushAudit("channel.updated", { id });
   return channels[index];
+}
+
+export async function moveChannel(id, position) {
+  const channels = await listChannels();
+  const index = channels.findIndex((channel) => String(channel.id) === String(id));
+  if (index < 0) throw fail("Channel not found.", 404);
+  if (!Number.isInteger(position) || position < 1 || position > channels.length) throw fail("Invalid channel position.");
+  const [channel] = channels.splice(index, 1);
+  channels.splice(position - 1, 0, channel);
+  const ordered = channels.map((item, i) => ({ ...item, order: i + 1 }));
+  await rtdbSet("channels", ordered);
+  await pushAudit("channel.reordered", { id: channel.id, position });
+  return ordered;
 }
 
 export async function deleteChannel(id) {
@@ -802,7 +816,7 @@ export async function getXmlTvProgrammes() {
 export async function resolveMedia(kind, reference) {
   const raw = String(reference || "").replace(/^\/+|\/+$/g, "");
   const parts = raw.split("/").filter(Boolean);
-  const stripExt = (v) => String(v || "").replace(/\.(m3u8|mp4|m2ts|ts|mpd)$/i, "");
+  const stripExt = (v) => String(v || "").replace(/\.(m3u8|mp4|mkv|avi|mov|m4v|m2ts|ts|mpd)$/i, "");
   const matches = (item, ref, keys) => {
     const target = stripExt(ref).toLowerCase();
     return keys.some((key) => String(item[key] ?? "").toLowerCase() === target);
@@ -825,7 +839,9 @@ export async function resolveMedia(kind, reference) {
   if (kind === "movie") {
     const ref = stripExt(parts[parts.length - 1]);
     const movie = (await listMovies()).find((m) => matches(m, ref, ["id", "streamId", "imdbId"]));
-    return movie?.streamUrl ? { kind, id: movie.id, title: movie.title, url: movie.streamUrl, logo: movie.poster || "" } : null;
+    if (!movie) return null;
+    const url = movie.streamUrl || (await getSettings()).comingSoonVideoUrl;
+    return url ? { kind, id: movie.id, title: movie.title, url, logo: movie.poster || "", comingSoon: !movie.streamUrl } : null;
   }
   if (kind === "series") {
     const seriesRef = stripExt(parts.length > 1 ? parts[0] : parts[parts.length - 1]);
@@ -834,13 +850,17 @@ export async function resolveMedia(kind, reference) {
     const series = all.find((s) => matches(s, seriesRef, ["id", "seriesId", "imdbId"]));
     if (series) {
       const episode = asArray(series.episodes).find((ep) => String(ep.id) === episodeRef || `${ep.season}x${ep.episode}` === episodeRef);
-      if (episode?.streamUrl) return { kind, id: episode.id, title: episode.title, url: episode.streamUrl, logo: series.poster || "" };
-      return null;
+      if (!episode) return null;
+      const url = episode.streamUrl || (await getSettings()).comingSoonVideoUrl;
+      return url ? { kind, id: episode.id, title: episode.title, url, logo: series.poster || "", comingSoon: !episode.streamUrl } : null;
     }
     // Also accept /series/user/pass/<episodeId>.mp4 links emitted by some players.
     for (const s of all) {
       const episode = asArray(s.episodes).find((ep) => String(ep.id) === episodeRef);
-      if (episode?.streamUrl) return { kind, id: episode.id, title: episode.title, url: episode.streamUrl, logo: s.poster || "" };
+      if (episode) {
+        const url = episode.streamUrl || (await getSettings()).comingSoonVideoUrl;
+        return url ? { kind, id: episode.id, title: episode.title, url, logo: s.poster || "", comingSoon: !episode.streamUrl } : null;
+      }
     }
   }
   return null;

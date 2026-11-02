@@ -233,7 +233,7 @@ function renderChannels() {
   const list = STATE.channels.filter((c) => matches(c, query, ["name", "category", "url", "id"]));
   body.innerHTML = list.map((channel) => {
     const index = STATE.channels.indexOf(channel) + 1;
-    return `<tr data-row><td>${index}</td><td>${channel.logo ? `<img src="${esc(channel.logo)}" alt="" style="width:28px;height:28px;border-radius:6px;object-fit:cover">` : "📺"}</td><td><b>${esc(channel.name)}</b><br><span class="cell-sub mono">${esc(channel.url || "")}</span><span class="cell-sub">EPG: ${esc(channel.epgId || "not mapped")}</span></td><td>${esc(channel.category || "")}</td><td><span class="pill ${channel.tier === "pro" ? "warn" : "ok"}">${channel.tier === "pro" ? "PRO" : "FREE"}</span></td><td class="actions"><button class="btn btn-ghost btn-sm" data-ch-edit="${esc(channel.id)}" title="Edit channel">✏️</button><button class="btn btn-danger btn-sm" data-ch-del="${esc(channel.id)}" title="Delete channel">🗑</button></td></tr>`;
+    return `<tr data-row><td>${index}</td><td>${channel.logo ? `<img src="${esc(channel.logo)}" alt="" style="width:28px;height:28px;border-radius:6px;object-fit:cover">` : "📺"}</td><td><b>${esc(channel.name)}</b><br><span class="cell-sub mono">${esc(channel.url || "")}</span><span class="cell-sub">EPG: ${esc(channel.epgId || "not mapped")}</span></td><td>${esc(channel.category || "")}</td><td><span class="pill ${channel.tier === "pro" ? "warn" : "ok"}">${channel.tier === "pro" ? "PRO" : "FREE"}</span></td><td class="actions"><button class="btn btn-ghost btn-sm" data-ch-move="${esc(channel.id)}" data-direction="-1" title="Move up" ${index === 1 ? "disabled" : ""}>↑</button><button class="btn btn-ghost btn-sm" data-ch-move="${esc(channel.id)}" data-direction="1" title="Move down" ${index === STATE.channels.length ? "disabled" : ""}>↓</button><button class="btn btn-ghost btn-sm" data-ch-edit="${esc(channel.id)}" title="Edit channel">✏️</button><button class="btn btn-danger btn-sm" data-ch-del="${esc(channel.id)}" title="Delete channel">🗑</button></td></tr>`;
   }).join("") || '<tr><td colspan="6" class="empty">No matching channels.</td></tr>';
 }
 async function loadPlaylists() {
@@ -431,6 +431,8 @@ function channelForm(channel) {
     { name: "url", label: "Licensed HLS / MP4 / DASH URL", value: existing.url, required: true, placeholder: "https://…/playlist.m3u8 or /media/…" },
     { name: "category", label: "Category", value: existing.category || "General", required: true },
     { name: "logo", label: "Logo URL (optional)", value: existing.logo, placeholder: "https://…/logo.png" },
+    { name: "epgId", label: "XMLTV EPG ID", value: existing.epgId || "" },
+    { name: "status", label: "Visibility", value: existing.status || "active", options: [["active", "Active"], ["inactive", "Inactive"]] },
     { name: "tier", label: "Access", value: existing.tier || "free", options: [["free", "Free preview"], ["pro", "PRO subscribers"]] }
   ], async (values) => {
     await apiPost(existing.id ? "admin/channel-update" : "admin/channel-create", existing.id ? { id: existing.id, patch: values } : values);
@@ -669,9 +671,17 @@ function appInit() {
   $("keyCopyBtn")?.addEventListener("click", async () => toast(await copyText($("keyNewValue")?.textContent || "") ? "API key copied" : "Clipboard unavailable — key manually select karein", "ok"));
 
   document.addEventListener("click", async (event) => {
-    const el = event.target.closest("[data-rs-topup],[data-rs-report],[data-rs-toggle],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-toggle],[data-xt-del],[data-ch-edit],[data-ch-del],[data-pl-edit],[data-pl-del],[data-epg-refresh],[data-epg-delete],[data-mv-stream],[data-sr-episodes],[data-user-copy]");
+    const el = event.target.closest("[data-rs-topup],[data-rs-report],[data-rs-toggle],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-toggle],[data-xt-del],[data-ch-move],[data-ch-edit],[data-ch-del],[data-pl-edit],[data-pl-del],[data-epg-refresh],[data-epg-delete],[data-mv-stream],[data-sr-episodes],[data-user-copy]");
     if (!el) return;
     try {
+      if (el.dataset.chMove) {
+        const index = STATE.channels.findIndex((channel) => String(channel.id) === el.dataset.chMove);
+        const position = index + 1 + Number(el.dataset.direction);
+        if (index < 0 || position < 1 || position > STATE.channels.length) return;
+        el.disabled = true;
+        await apiPost("admin/channel-move", { id: el.dataset.chMove, position });
+        toast("Channel order updated"); await loadChannels(); return;
+      }
       if (el.dataset.chEdit) return channelForm(STATE.channels.find((c) => c.id === el.dataset.chEdit));
       if (el.dataset.plEdit) return playlistForm(STATE.playlists.find((p) => p.id === el.dataset.plEdit));
       if (el.dataset.epgRefresh) {

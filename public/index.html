@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.ico">
 <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
-<link rel="stylesheet" href="/assets/css/site.css?v=5.1.0">
+<link rel="stylesheet" href="/assets/css/site.css?v=5.1.1">
 </head>
 <body data-bw-app="site">
 <header>
@@ -75,6 +75,11 @@
     <div class="guide-tools"><select id="guideChannel" aria-label="Select guide channel"><option value="">All channels</option></select><button class="btn btn-ghost btn-sm" id="guideRefresh" type="button">↻ Refresh guide</button></div>
     <div id="guideStatus" class="guide-status" role="status">Loading guide…</div>
     <div class="guide-grid" id="guideGrid"></div>
+  </div></section>
+
+  <section id="cinema"><div class="wrap">
+    <div class="sec-head"><h2>🎬 Movies &amp; Series</h2><p>Our cinema service is being prepared. Licensed titles will be added as they become available.</p></div>
+    <div class="card"><h3>Coming soon</h3><p>Watch the Mizanora coming-soon announcement while the movie and series catalog is being built.</p><button id="cinemaPreview" class="btn btn-gold" type="button">▶ Play coming-soon video</button></div>
   </div></section>
 
   <section id="pricing"><div class="wrap">
@@ -147,7 +152,7 @@
   <div class="player-head"><div><h2 id="playerTitle">Live TV</h2><span id="playerGroup"></span></div><button class="btn btn-ghost btn-sm" id="playerClose" type="button" aria-label="Close player">✕</button></div>
   <div class="player-stage">
     <video id="liveVideo" controls playsinline preload="metadata"></video>
-    <div id="introOverlay" class="intro-overlay" hidden><div class="intro-rings"><i></i><i></i><img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora"></div><b>WELCOME TO MIZANORA IPTV</b><span>Premium entertainment is loading…</span><div class="intro-progress"><i></i></div></div>
+    <div id="introOverlay" class="intro-overlay" hidden><div class="intro-rings"><i></i><i></i><img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora"></div><b>WELCOME TO MIZANORA IPTV</b><span id="introChannel"></span><span>Channel loading…</span><div class="intro-progress"><i></i></div></div>
   </div>
   <button class="btn btn-ghost btn-sm" id="playerSkip" type="button" hidden>Skip intro →</button>
   <div id="playerStatus" class="player-status" role="status">Loading stream…</div>
@@ -156,6 +161,6 @@
 </dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/assets/vendor/hls.min.js?v=1.7.4" defer></script>
-<script src="/assets/js/site.js?v=5.1.0" defer></script>
+<script src="/assets/js/site.js?v=5.1.1" defer></script>
 </body>
 </html>

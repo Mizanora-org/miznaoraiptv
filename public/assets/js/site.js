@@ -29,7 +29,8 @@
 
   /* ---------- public experience / animated channel catalog ---------- */
   let experience = {
-    intro: { enabled: true, url: "/media/welcome/video.mp4", durationSec: 4, skippable: true },
+    intro: { enabled: true, url: "/media/welcome/video.mp4", durationSec: 8, skippable: false },
+    videos: { offline: "/media/channel-offline/index.m3u8", comingSoon: "/media/coming-soon/index.m3u8", recharge: "/media/pro-unlock/index.m3u8" },
     announcement: "", rechargeNote: "Apne reseller ya Mizanora support se recharge karein.", resellerContactNote: ""
   };
   let channels = [];
@@ -43,6 +44,7 @@
       experience = {
         ...experience, ...(data.experience || {}),
         intro: { ...experience.intro, ...(data.experience?.intro || {}) },
+        videos: { ...experience.videos, ...(data.experience?.videos || {}) },
         pro: { ...(data.experience?.pro || {}) }
       };
       setText("announcementText", experience.announcement || "");
@@ -122,6 +124,7 @@
   let playerRequest = 0;
   let introFinish = null;
   let introActive = false;
+  let playerMode = "idle";
   const video = $("liveVideo");
   function playerStatus(message, error = false) {
     const status = $("playerStatus");
@@ -131,13 +134,14 @@
   }
   function destroyVideo() {
     if (hls) { try { hls.destroy(); } catch {} hls = null; }
-    if (video) { video.pause(); video.removeAttribute("src"); video.load(); }
+    if (video) { video.pause(); video.loop = false; video.removeAttribute("src"); video.load(); }
   }
   function closePlayer() {
     playerRequest++;
     if (introFinish) introFinish();
     destroyVideo();
     introActive = false;
+    playerMode = "idle";
     if ($("introOverlay")) $("introOverlay").hidden = true;
     if ($("playerSkip")) $("playerSkip").hidden = true;
     const dialog = $("playerDialog");
@@ -149,8 +153,11 @@
   function playIntro(request) {
     const intro = experience.intro || {};
     if (!intro.enabled || !intro.url || request !== playerRequest || !video) return Promise.resolve();
-    const durationSec = Math.max(1, Math.min(30, Number(intro.durationSec) || 4));
+    const durationSec = Math.max(1, Math.min(30, Number(intro.durationSec) || 8));
     introActive = true;
+    playerMode = "intro";
+    video.loop = true;
+    setText("introChannel", currentChannel?.name || "Live TV");
     if ($("introOverlay")) {
       $("introOverlay").hidden = false;
       $("introOverlay").style.setProperty("--intro-duration", `${durationSec}s`);
@@ -159,7 +166,7 @@
     playerStatus("✨ Mizanora welcome intro — your channel is next…");
     return new Promise((resolve) => {
       let settled = false;
-      const onEnded = () => finish();
+      const onEnded = () => { if (request === playerRequest) { video.currentTime = 0; video.play().catch(() => {}); } };
       const onError = () => finish();
       const timer = setTimeout(() => finish(), durationSec * 1000);
       function cleanup() {
@@ -195,29 +202,50 @@
       }
     });
   }
+  function showFallback(kind, message, request) {
+    if (!video || request !== playerRequest) return;
+    destroyVideo();
+    playerMode = "fallback";
+    const url = experience.videos?.[kind];
+    playerStatus(message, kind !== "comingSoon");
+    if ($("playerRetry")) $("playerRetry").hidden = kind !== "offline";
+    video.hidden = !url;
+    if (!url) return;
+    video.loop = true;
+    if (/\.m3u8(?:$|\?)/i.test(url) && window.Hls?.isSupported()) {
+      hls = new window.Hls({ enableWorker: true, manifestLoadingTimeOut: 8000 });
+      hls.on(window.Hls.Events.MANIFEST_PARSED, () => { if (request === playerRequest) video.play().catch(() => {}); });
+      hls.on(window.Hls.Events.ERROR, (_event, data) => {
+        if (data?.fatal && request === playerRequest && playerMode === "fallback") playerStatus(message + " Fallback video unavailable.", true);
+      });
+      hls.loadSource(url); hls.attachMedia(video);
+    } else {
+      video.src = url; video.load(); video.play().catch(() => {});
+    }
+  }
   function attachStream(url, request) {
     if (!video || request !== playerRequest) return;
     destroyVideo();
+    playerMode = "live";
     playerStatus("Loading secure live stream…");
     const isHls = /\.m3u8(?:$|\?)/i.test(url) || url.includes("/s/");
     if (isHls && window.Hls?.isSupported()) {
       hls = new window.Hls({ enableWorker: true, backBufferLength: 30, manifestLoadingTimeOut: 15000, levelLoadingTimeOut: 15000 });
       hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
-        if (request !== playerRequest) return;
+        if (request !== playerRequest || playerMode !== "live") return;
         playerStatus("Ready — press play if your browser paused autoplay.");
         video.play().catch(() => {});
       });
       hls.on(window.Hls.Events.ERROR, (_event, data) => {
-        if (!data?.fatal || request !== playerRequest) return;
-        playerStatus("Stream could not load. The source may be offline or blocking cross-origin playback.", true);
-        if ($("playerRetry")) $("playerRetry").hidden = false;
+        if (!data?.fatal || request !== playerRequest || playerMode !== "live") return;
+        showFallback("offline", "Channel is offline or cannot be loaded. Retry when available.", request);
       });
       hls.loadSource(url);
       hls.attachMedia(video);
     } else {
       video.src = url;
       video.load();
-      video.play().catch(() => playerStatus("Ready — press play to start."));
+      video.play().catch(() => { if (request === playerRequest && playerMode === "live") playerStatus("Ready — press play to start."); });
     }
   }
   async function fetchChannel(request) {
@@ -227,10 +255,8 @@
       if (request !== playerRequest) return;
       if (!response.ok || !data.ok) {
         if (response.status === 403) {
-          destroyVideo();
-          if (video) video.hidden = true;
           if ($("playerPro")) $("playerPro").hidden = false;
-          playerStatus("PRO subscription required", true);
+          showFallback("recharge", "PRO subscription required — recharge or start a trial.", request);
           return;
         }
         throw new Error(data.error || "Stream unavailable");
@@ -239,8 +265,7 @@
       track("stream_play", "/channel/" + currentChannel.id);
     } catch (error) {
       if (request !== playerRequest) return;
-      playerStatus(error.message || "Stream failed", true);
-      if ($("playerRetry")) $("playerRetry").hidden = false;
+      showFallback("offline", error.message || "Stream unavailable", request);
     }
   }
   async function openChannel(id, { skipIntro = false } = {}) {
@@ -266,6 +291,22 @@
     await fetchChannel(request);
   }
 
+  function openCinemaPreview() {
+    const request = ++playerRequest;
+    if (introFinish) introFinish();
+    destroyVideo();
+    currentChannel = null;
+    setText("playerTitle", "Movies & Series");
+    setText("playerGroup", "Coming soon");
+    if ($("playerPro")) $("playerPro").hidden = true;
+    const dialog = $("playerDialog");
+    if (dialog && !dialog.hasAttribute("open")) {
+      if (typeof dialog.showModal === "function") dialog.showModal();
+      else dialog.setAttribute("open", "");
+    }
+    showFallback("comingSoon", "Movies & Series — coming soon.", request);
+  }
+
   /* ---------- forms / recharge ---------- */
   function deviceId() {
     try {
@@ -286,6 +327,7 @@
   }
 
   /* ---------- controls ---------- */
+  $("cinemaPreview")?.addEventListener("click", openCinemaPreview);
   $("chGrid")?.addEventListener("click", (event) => { const button = event.target.closest("[data-channel]"); if (button) openChannel(button.dataset.channel); });
   $("channelSearch")?.addEventListener("input", () => { visibleChannels = 36; renderChannels(); });
   $("channelCategory")?.addEventListener("change", () => { visibleChannels = 36; renderChannels(); });
@@ -299,14 +341,13 @@
   $("playerTrial")?.addEventListener("click", closePlayer);
   $("playerDialog")?.addEventListener("click", (event) => { if (event.target === $("playerDialog")) closePlayer(); });
   video?.addEventListener("playing", () => {
-    if (introActive) playerStatus("✨ Welcome intro playing…");
-    else { playerStatus("● Live — playing"); if ($("playerRetry")) $("playerRetry").hidden = true; }
+    if (introActive) playerStatus("✨ Welcome intro — " + (currentChannel?.name || "channel") + " is loading…");
+    else if (playerMode === "live") { playerStatus("● Live — playing"); if ($("playerRetry")) $("playerRetry").hidden = true; }
   });
-  video?.addEventListener("waiting", () => playerStatus(introActive ? "Intro buffering…" : "Buffering…"));
+  video?.addEventListener("waiting", () => { if (playerMode === "intro") playerStatus("Intro buffering…"); else if (playerMode === "live") playerStatus("Buffering…"); });
   video?.addEventListener("error", () => {
-    if (introActive || !video || video.hidden) return;
-    playerStatus("Playback failed. Check the source or retry.", true);
-    if ($("playerRetry")) $("playerRetry").hidden = false;
+    if (introActive || !video || video.hidden || playerMode !== "live") return;
+    showFallback("offline", "Playback failed. Check the source or retry.", playerRequest);
   });
   $("trialForm")?.addEventListener("submit", async (event) => {
     event.preventDefault();
