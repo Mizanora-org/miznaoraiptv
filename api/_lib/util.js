@@ -58,7 +58,7 @@ export function parseQuery(req) {
   }
 }
 
-export function parseBody(req) {
+export function parseBody(req, { maxBytes = 1_000_000 } = {}) {
   // Vercel may pre-parse JSON while the local Node server exposes a stream.
   if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body)) return Promise.resolve(req.body);
   if (typeof req.body === "string") {
@@ -72,7 +72,7 @@ export function parseBody(req) {
     let raw = "";
     req.on("data", (c) => {
       raw += c;
-      if (raw.length > 1_000_000) req.destroy();
+      if (raw.length > maxBytes) req.destroy();
     });
     req.on("end", () => {
       if (!raw) return resolve({});

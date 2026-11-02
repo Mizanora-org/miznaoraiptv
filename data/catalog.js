@@ -28,7 +28,7 @@ export const BRAND = {
 };
 
 export const DEFAULT_SETTINGS = {
-  welcomeVideoUrl: "/media/welcome/index.m3u8",
+  welcomeVideoUrl: "/media/welcome/video.mp4",
   welcomeVideoEnabled: true,
   welcomeDurationSec: 4,
   welcomeSkippable: true,
@@ -41,7 +41,9 @@ export const DEFAULT_SETTINGS = {
   proBannerTitle: "Unlock Mizanora IPTV PRO VIP",
   proBannerSubtitle: "Get 24/7 access to all Premium Sports, 4K Entertainment, Pakistani & Indian VIP Channels, plus IMDb Movies & Series on Web + Xtream Apps!",
   proPriceNote: "Instant VIP Activation on WhatsApp: 0306-2015326",
-  siteAnnouncement: "Mizanora IPTV + IMDb Cinema — A Mizanora Project by Muaaz Iqbal | Login with Google or Gmail to claim your FREE Personal Xtream Codes Server! For PRO VIP contact 0306-2015326",
+  siteAnnouncement: "Mizanora IPTV + IMDb Cinema — A Mizanora Project by Muaaz Iqbal | Claim your FREE 1-day Xtream trial on the homepage! For PRO VIP contact 0306-2015326",
+  rechargeNote: "Apna Xtream username enter karein aur apne reseller ya Mizanora support se JazzCash / EasyPaisa / WhatsApp recharge karein.",
+  resellerContactNote: "Reseller account, API access aur credit top-up ke liye WhatsApp 0306-2015326 par rabta karein.",
   githubRepo: "Mizanora-org/miznaoraiptv",
   githubBranch: "main",
   githubFolder: "data/streams",
@@ -407,7 +409,7 @@ export const DEFAULT_CHANNELS = [
     id: "ch_mz_promo",
     streamId: 1001,
     slug: "miznaoraiptv-official-hd",
-    name: "Mizanora Pakistan Flagship HD",
+    name: "Mizanora Welcome & Promo Live",
     category: "🇵🇰 ⭐ Pakistan Top Channels",
     categoryId: "1",
     country: "PK",
@@ -416,10 +418,10 @@ export const DEFAULT_CHANNELS = [
     pinned: true,
     featured: true,
     status: "active",
-    logo: "https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png",
+    logo: "/assets/img/brand/miznaoraiptv-logo.png",
     epgId: "miznaoraiptv.promo.pk",
-    nowPlaying: "24/7 Flagship Network • Mizanora Projects by Muaaz Iqbal",
-    url: "/media/demo-live/index.m3u8",
+    nowPlaying: "Mizanora Welcome • Features, Packages & Premium Promo",
+    url: "/media/welcome/index.m3u8",
     backupUrls: [],
     order: 1
   },

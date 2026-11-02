@@ -6,8 +6,14 @@
 import { handleOptions, parseBody, parseQuery, sendJson, getRequestBaseUrl, checkRateLimit, normalizeMac, isValidEmail, WA_LINK, WA_NUMBER, OWNER_EMAIL } from "../_lib/util.js";
 import { authenticateAdmin, authorizeReseller, createPinSession, verifyBootstrapPin } from "../_lib/auth.js";
 import * as S from "../_lib/store.js";
+import { fetchRemoteText } from "../_lib/remote.js";
 
 const portFor = (base) => Number(new URL(base).port || (new URL(base).protocol === "https:" ? 443 : 80));
+async function importDocument(body, maxBytes) {
+  const remoteUrl = String(body.url || "").trim();
+  if (remoteUrl) return fetchRemoteText(remoteUrl, { maxBytes });
+  return { text: String(body.content ?? body.text ?? ""), url: "", contentType: "text/plain" };
+}
 
 const PUBLIC_ACTIONS = new Set([
   "config", "plans", "help", "order", "order-status", "trial", "resolve", "track",
@@ -24,7 +30,8 @@ const ADMIN_ACTIONS = new Set([
   "admin/me", "admin/pin-login",
   "admin/xtream-accounts", "admin/xtream/create", "admin/xtream/update", "admin/xtream/renew",
   "admin/xtream/suspend", "admin/xtream/activate", "admin/xtream/delete",
-  "admin/stalker/list", "admin/channels", "admin/channel-create", "admin/channel-update", "admin/channel-delete",
+  "admin/stalker/list", "admin/channels", "admin/channel-create", "admin/channel-update", "admin/channel-delete", "admin/channels/import",
+  "admin/epg-sources", "admin/epg-import", "admin/epg-refresh", "admin/epg-delete",
   "admin/playlists", "admin/playlist-save", "admin/playlist-delete", "admin/movie-update", "admin/series-update",
   "admin/clients", "admin/client-create", "admin/client-renew", "admin/client-suspend", "admin/client-delete",
   "admin/resellers", "admin/reseller-create", "admin/reseller-update", "admin/credits-topup",
@@ -42,7 +49,9 @@ export default async function panelHandler(req, res) {
   const q = parseQuery(req);
   const isPost = req.method === "POST";
   if (!isPost && req.method !== "GET") return sendJson(res, 405, { ok: false, error: "Method not allowed" });
-  const body = isPost ? await parseBody(req) : {};
+  // The action may exist only in the JSON body. Allow a bounded envelope for
+  // documented file imports; M3U/XMLTV parsers still enforce 5 MB / 8 MB content.
+  const body = isPost ? await parseBody(req, { maxBytes: 10_000_000 }) : {};
   const action = String(body.action || q.action || "").toLowerCase().trim();
   if (!action) return sendJson(res, 400, { ok: false, error: "Missing action" });
   const base = getRequestBaseUrl(req);
@@ -132,7 +141,8 @@ export default async function panelHandler(req, res) {
         return sendJson(res, 201, {
           ok: true,
           message: `Welcome ${created.name || "Dealer"}! Aapka reseller panel ready hai — ${created.credits} free starter credits mile.`,
-          reseller: { ...S.resellerPublic(created), apiKey: created.apiKey, code: created.code }
+          reseller: { ...S.resellerPublic(created), apiKey: created.apiKey, code: created.code },
+          panelUrl: `${base}/reseller`
         });
       }
       if (action === "reseller/login-password") {
@@ -140,7 +150,7 @@ export default async function panelHandler(req, res) {
         const r = await authorizeReseller(req, body);
         if (!r.ok) return sendJson(res, r.status, { ok: false, error: r.error });
         await S.updateReseller(r.reseller.code, { lastLoginAt: new Date().toISOString() });
-        return sendJson(res, 200, { ok: true, reseller: S.resellerPublic(r.reseller) });
+        return sendJson(res, 200, { ok: true, reseller: S.resellerPublic(r.reseller), panelUrl: `${base}/reseller` });
       }
       if (action === "recharge/contact") {
         const username = String(body.username || q.username || "").toLowerCase();
@@ -372,6 +382,45 @@ export default async function panelHandler(req, res) {
         const channels = await S.listChannels();
         return sendJson(res, 200, { ok: true, count: channels.length, channels });
       }
+      if (action === "admin/channels/import") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const importRl = checkRateLimit(req, "m3u_import", 20, 60_000);
+        if (!importRl.allowed) return sendJson(res, 429, { ok: false, error: "Too many imports. Please retry shortly." });
+        const document = await importDocument(body, 5_000_000);
+        const result = await S.importChannels({ ...body, content: document.text, sourceUrl: document.url, name: body.name || body.filename });
+        const epgImports = [];
+        const epgErrors = [];
+        if (body.importEpg === true || body.importEpg === "true") {
+          for (const epgUrl of result.epgUrls.slice(0, 2)) {
+            try {
+              const epgDocument = await fetchRemoteText(epgUrl, { maxBytes: 8_000_000 });
+              epgImports.push(await S.importEpg({ content: epgDocument.text, sourceUrl: epgDocument.url }));
+            } catch (error) { epgErrors.push({ url: epgUrl, error: error.message }); }
+          }
+        }
+        return sendJson(res, 200, { ok: true, ...result, epgImports, epgErrors });
+      }
+      if (action === "admin/epg-sources") return sendJson(res, 200, { ok: true, sources: await S.listEpgSources() });
+      if (action === "admin/epg-import") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const importRl = checkRateLimit(req, "epg_import", 20, 60_000);
+        if (!importRl.allowed) return sendJson(res, 429, { ok: false, error: "Too many imports. Please retry shortly." });
+        const document = await importDocument(body, 8_000_000);
+        return sendJson(res, 200, { ok: true, ...await S.importEpg({ ...body, content: document.text, sourceUrl: document.url, name: body.name || body.filename }) });
+      }
+      if (action === "admin/epg-refresh") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const source = (await S.listEpgSources()).find((item) => item.id === body.id);
+        if (!source) return sendJson(res, 404, { ok: false, error: "EPG source not found" });
+        if (!source.url) return sendJson(res, 400, { ok: false, error: "Uploaded EPG has no remote URL to refresh." });
+        const document = await fetchRemoteText(source.url, { maxBytes: 8_000_000 });
+        return sendJson(res, 200, { ok: true, ...await S.importEpg({ content: document.text, sourceUrl: document.url, sourceId: source.id, name: source.name }) });
+      }
+      if (action === "admin/epg-delete") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        await S.deleteEpgSource(String(body.id || ""));
+        return sendJson(res, 200, { ok: true, deleted: body.id });
+      }
       if (action === "admin/channel-create") return sendJson(res, 201, { ok: true, channel: await S.createChannel(body) });
       if (action === "admin/channel-update") return sendJson(res, 200, { ok: true, channel: await S.updateChannel(body.id, body.patch || body) });
       if (action === "admin/channel-delete") { await S.deleteChannel(body.id); return sendJson(res, 200, { ok: true, deleted: body.id }); }
@@ -467,8 +516,10 @@ export default async function panelHandler(req, res) {
 function helpDoc(base) {
   return {
     ok: true,
+    version: "5.0.0",
     brand: "Mizanora IPTV",
     base,
+    links: { site: `${base}/`, resellerPanel: `${base}/reseller`, developers: `${base}/developers` },
     convention: "GET → ?action=NAME · POST → JSON body {\"action\":\"NAME\", …}",
     auth: {
       public: "no key",
@@ -478,7 +529,7 @@ function helpDoc(base) {
     actions: {
       public: ["config", "plans", "help", "order", "order-status", "trial", "resolve {username,password}", "track {sessionId,event,route}", "reseller/register", "reseller/login-password", "recharge/contact"],
       reseller: ["reseller/login {code,password}", "reseller/me|stats", "reseller/clients", "reseller/client-create {name,planId?,mac?,collectAmount?,via?} — plan months = credit cost", "reseller/credentials {username}", "reseller/client-update {username,…}", "reseller/client-renew {username,planId?} — plan months = credit cost", "reseller/client-suspend|client-block {username}", "reseller/client-delete {username}", "reseller/secure-link {username,file?,kind?}", "reseller/key-rotate", "reseller/pricing-set {pricing}", "reseller/payment-record {username,amount,months,via} — one credit per extension month", "reseller/finance", "reseller/ledger"],
-      admin: ["admin/me", "admin/pin-login {pin}", "admin/xtream-accounts", "admin/xtream/create|update|renew|suspend|activate|delete {username,…}", "admin/stalker/list", "admin/channels", "admin/channel-create|channel-update|channel-delete", "admin/playlists", "admin/playlist-save|playlist-delete", "admin/movie-update|series-update", "admin/clients", "admin/client-create|renew|suspend|delete", "admin/resellers", "admin/reseller-create|reseller-update", "admin/credits-topup {code,credits}", "admin/orders", "admin/order-review {id,approve}", "admin/payments", "admin/trials", "admin/api-keys", "admin/api-key-create {label,expiresDays?}", "admin/api-key-revoke {id|hash}", "admin/settings|settings-set", "admin/analytics", "admin/audit", "admin/errors", "admin/secure-link {username}"]
+      admin: ["admin/me", "admin/pin-login {pin}", "admin/xtream-accounts", "admin/xtream/create|update|renew|suspend|activate|delete {username,…}", "admin/stalker/list", "admin/channels", "admin/channel-create|channel-update|channel-delete", "admin/channels/import {url|content,name?,defaultTier?,importEpg?}", "admin/epg-sources|epg-import|epg-refresh|epg-delete", "admin/playlists", "admin/playlist-save|playlist-delete", "admin/movie-update|series-update", "admin/clients", "admin/client-create|renew|suspend|delete", "admin/resellers", "admin/reseller-create|reseller-update", "admin/credits-topup {code,credits}", "admin/orders", "admin/order-review {id,approve}", "admin/payments", "admin/trials", "admin/api-keys", "admin/api-key-create {label,expiresDays?}", "admin/api-key-revoke {id|hash}", "admin/settings|settings-set", "admin/analytics", "admin/audit", "admin/errors", "admin/secure-link {username}"]
     },
     protocols: {
       xtreamPlayerApi: `${base}/player_api.php?username=U&password=P`,
@@ -487,6 +538,6 @@ function helpDoc(base) {
       live: `${base}/live/U/P/<id>.m3u8`, movie: `${base}/movie/U/P/<id>.mp4`, series: `${base}/series/U/P/<id>/<ep>.mp4`,
       magPortal: `${base}/portal.php`, signedLink: `${base}/s/<token>`
     },
-    embedApi: `${base}/api/embed?action=config|channels|movies|series|order|trial|order-status|health  (+ widget ${base}/embed.js — CORS *)`
+    embedApi: `${base}/api/embed?action=config|channels|guide|movies|series|order|trial|order-status|health  (+ widget ${base}/embed.js — CORS *)`
   };
 }

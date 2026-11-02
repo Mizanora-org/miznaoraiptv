@@ -29,7 +29,7 @@ export async function finishRedirect(){return{ok:false}}
 export async function logoutUser(){current=null;listeners.forEach(cb=>cb(null))}
 export async function getFirebaseIdToken(){return null}
 `);
-fs.writeFileSync(path.join(tmp, "src/admin.mjs"), adminJs.replace(/"\/assets\/js\/firebase-client\.js\?v=\d+"/, '"./firebase-stub.mjs"'));
+fs.writeFileSync(path.join(tmp, "src/admin.mjs"), adminJs.replace(/"\/assets\/js\/firebase-client\.js\?v=[\d.]+"/, '"./firebase-stub.mjs"'));
 const bundlePath = path.join(tmp, "bundle.js");
 await esbuild.build({ entryPoints: [path.join(tmp, "src/admin.mjs")], bundle: true, format: "iife", outfile: bundlePath, logLevel: "silent" });
 const bundle = fs.readFileSync(bundlePath, "utf-8");
@@ -52,7 +52,7 @@ window.addEventListener("unhandledrejection", (event) => errors.push("unhandledr
 
 const db = {
   channels: [{ id: "ch_bbc", streamId: 1001, name: "BBC World News", url: "/media/demo-live/index.m3u8", category: "News", tier: "free", status: "active" }],
-  playlists: [],
+  playlists: [], epgSources: [], lastImport: null,
   accounts: [], clients: [], stalker: [],
   movies: [{ id: "mov_test", streamId: 5001, title: "Test Movie", year: "2025", rating: "8.1", category: "Drama", streamAvailable: false }],
   series: [{ id: "ser_test", streamId: 10001, title: "Test Series", year: "2024", rating: "8.4", category: "Drama", episodeCount: 9, streamAvailable: false }],
@@ -86,6 +86,19 @@ window.fetch = async (url, options = {}) => {
     const ok = body.pin === "03062015326";
     return J(ok ? { ok: true, token: "mzp_dom", expiresIn: 43200 } : { ok: false, error: "Invalid Owner PIN" }, ok ? 200 : 401);
   }
+  if (action === "admin/channels/import") {
+    db.lastImport = body;
+    const id = body.content ? "ch_file" : "ch_imported";
+    if (!db.channels.some((c) => c.id === id)) db.channels.push({ id, streamId: 1002, name: body.content ? "File Channel" : "URL Channel", url: "/media/demo-live/index.m3u8", category: "Imports", tier: body.defaultTier || "free", status: "active", epgId: "dom.guide" });
+    return J({ ok: true, imported: 1, created: 1, updated: 0, skipped: 0, total: db.channels.length, playlistId: "pl_import", epgImports: body.importEpg ? [{ programmes: 2 }] : [] });
+  }
+  if (action === "admin/epg-sources") return J({ ok: true, sources: db.epgSources });
+  if (action === "admin/epg-import") {
+    db.epgSources = [{ id: "epg_dom", name: body.name || "DOM Guide", sourceType: body.url ? "remote" : "upload", sourceUrl: body.url || "", url: body.url || "", programmeCount: 2, channelCount: 1, status: "ready" }];
+    return J({ ok: true, id: "epg_dom", channels: 1, programmes: 2, skipped: 0 });
+  }
+  if (action === "admin/epg-refresh") { db.lastEpgRefresh = body; return J({ ok: true, id: body.id, channels: 1, programmes: 2, skipped: 0 }); }
+  if (action === "admin/epg-delete") { db.epgSources = db.epgSources.filter((s) => s.id !== body.id); return J({ ok: true }); }
   if (action === "admin/channels") return J({ ok: true, channels: db.channels });
   if (action === "admin/channel-create") {
     const channel = { ...body, id: "ch_dom", streamId: 2000, status: "active" }; delete channel.action;
@@ -159,7 +172,7 @@ async function submitDialog(values = {}) {
   $("dialogForm").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
   await sleep(260);
 }
-const VIEWMAP = { dashboard:"viewDashboard", channels:"viewChannels", playlists:"viewPlaylists", xtream:"viewXtream", movies:"viewMovies", series:"viewSeries", analytics:"viewAnalytics", users:"viewUsers", settings:"viewSettings", resellers:"viewResellers", orders:"viewOrders", stalker:"viewStalker", apikeys:"viewApiKeys" };
+const VIEWMAP = { dashboard:"viewDashboard", channels:"viewChannels", playlists:"viewPlaylists", epg:"viewEpg", xtream:"viewXtream", movies:"viewMovies", series:"viewSeries", analytics:"viewAnalytics", users:"viewUsers", settings:"viewSettings", resellers:"viewResellers", orders:"viewOrders", stalker:"viewStalker", apikeys:"viewApiKeys" };
 
 window.eval(bundle);
 await sleep(350);
@@ -169,7 +182,7 @@ check("wrong PIN stays locked", $("adminLock").classList.contains("show"));
 $("lockPinIn").value = "03062015326"; $("lockPinBtn").click(); await sleep(650);
 check("owner PIN unlocks and loads dashboard", !$("adminLock").classList.contains("show") && $("viewDashboard").hidden === false && $("userName").textContent.includes("Owner"));
 const navs = [...document.querySelectorAll(".nav-btn")].map((b) => b.dataset.tab);
-check("all 13 navigation tabs exist", navs.length === 13);
+check("all 14 navigation tabs exist", navs.length === 14);
 for (const tab of navs) {
   const button = document.querySelector(`.nav-btn[data-tab="${tab}"]`); button.click(); await sleep(25);
   check(`tab ${tab} switches view`, $(VIEWMAP[tab]).hidden === false && button.classList.contains("active"));
@@ -186,6 +199,23 @@ await submitDialog({ name: "DOM Channel Edited", url: "/media/demo-live/index.m3
 check("channel edit persists", db.channels.find((c) => c.id === "ch_dom")?.name === "DOM Channel Edited" && $("chBody").textContent.includes("PRO"));
 document.querySelector("[data-ch-del='ch_dom']").click(); await sleep();
 check("channel delete removes row", !db.channels.some((c) => c.id === "ch_dom") && !$("chBody").textContent.includes("DOM Channel Edited"));
+
+$("m3uUrl").value = "https://example.test/channels.m3u"; $("m3uTier").value = "pro"; $("m3uImportEpg").checked = true;
+$("m3uUrlBtn").click(); await sleep(320);
+check("remote M3U import sends URL and updates channel table", db.lastImport?.url === "https://example.test/channels.m3u" && db.lastImport?.defaultTier === "pro" && $("chBody").textContent.includes("URL Channel") && $("m3uImportStatus").textContent.includes("1 created"));
+const uploadFile = new window.File(["#EXTM3U\n#EXTINF:-1,File Channel\nhttps://example.test/live.m3u8\n"], "dom.m3u", { type: "audio/mpegurl" });
+Object.defineProperty(uploadFile, "text", { value: async () => "#EXTM3U\n#EXTINF:-1 tvg-id=\"dom.guide\",File Channel\nhttps://example.test/live.m3u8\n" });
+Object.defineProperty($("m3uFile"), "files", { value: [uploadFile], configurable: true });
+$("m3uFileBtn").click(); await sleep(320);
+check("M3U file input uploads parsed text to real import action", db.lastImport?.content?.includes("tvg-id=\"dom.guide\"") && db.channels.some((c) => c.id === "ch_file") && $("chBody").textContent.includes("File Channel"));
+
+await clickTab("epg"); $("epgUrl").value = "https://example.test/guide.xml"; $("epgName").value = "DOM Guide";
+$("epgUrlBtn").click(); await sleep(320);
+check("EPG URL import updates source manager", db.epgSources.length === 1 && $("epgBody").textContent.includes("DOM Guide") && $("epgImportStatus").textContent.includes("2 programmes"));
+document.querySelector("[data-epg-refresh='epg_dom']").click(); await sleep(260);
+check("EPG refresh control calls backend", db.lastEpgRefresh?.id === "epg_dom");
+document.querySelector("[data-epg-delete='epg_dom']").click(); await sleep(260);
+check("EPG delete removes source", db.epgSources.length === 0 && !$("epgBody").textContent.includes("DOM Guide"));
 
 await clickTab("playlists"); $("plAddBtn").click();
 await submitDialog({ name: "DOM Playlist", url: "/media/demo-live/index.m3u8" });

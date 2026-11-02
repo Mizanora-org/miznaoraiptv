@@ -2,7 +2,7 @@
 import {
   subscribeAuth, loginWithGoogle, loginWithGoogleRedirect, finishRedirect,
   logoutUser, getFirebaseIdToken, isAdminEmail, ADMIN_EMAIL
-} from "/assets/js/firebase-client.js?v=5";
+} from "/assets/js/firebase-client.js?v=5.0.0";
 
 const $ = (id) => document.getElementById(id);
 const setText = (id, value) => { const el = $(id); if (el) el.textContent = String(value ?? ""); };
@@ -32,10 +32,10 @@ const STATE = {
   user: null, tab: "dashboard", global: "", loaded: false, entering: null,
   filters: { channels: "", xtream: "", users: "", resellers: "" },
   channels: [], playlists: [], xtream: [], movies: [], series: [],
-  clients: [], resellers: [], orders: [], stalker: [], keys: [], audit: []
+  clients: [], resellers: [], orders: [], stalker: [], keys: [], audit: [], epgSources: []
 };
 const TAB_VIEWS = {
-  dashboard: "viewDashboard", channels: "viewChannels", playlists: "viewPlaylists",
+  dashboard: "viewDashboard", channels: "viewChannels", playlists: "viewPlaylists", epg: "viewEpg",
   xtream: "viewXtream", movies: "viewMovies", series: "viewSeries",
   analytics: "viewAnalytics", users: "viewUsers", settings: "viewSettings",
   resellers: "viewResellers", orders: "viewOrders", stalker: "viewStalker", apikeys: "viewApiKeys"
@@ -43,7 +43,8 @@ const TAB_VIEWS = {
 const TAB_TITLES = {
   dashboard: ["📊 Dashboard", "Real-time IPTV server overview"],
   channels: ["📺 Channel Manager", "Add, edit and remove live channels"],
-  playlists: ["📋 Playlists", "Cloud M3U playlists"],
+  playlists: ["📋 Playlists", "Cloud M3U playlists and import history"],
+  epg: ["🗓️ EPG Manager", "XMLTV sources, programmes and public TV guide"],
   xtream: ["⚡ Xtream Accounts", "Create, renew, suspend and delete users"],
   movies: ["🎬 Movies", "Search the full IMDb catalog and configure playback"],
   series: ["📺 Series", "IMDb series and episode catalog"],
@@ -86,7 +87,7 @@ async function authHeaders(extra = {}) {
 async function apiRequest(action, { method = "GET", params = {}, payload } = {}) {
   const query = new URLSearchParams({ action });
   for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== null) query.set(key, value);
-  const response = await fetch(method === "GET" ? "/api/panel?" + query : "/api/panel", {
+  const response = await fetch(method === "GET" ? "/api/panel?" + query : "/api/panel?action=" + encodeURIComponent(action), {
     method, headers: await authHeaders(method === "POST" ? { "Content-Type": "application/json" } : {}),
     body: method === "POST" ? JSON.stringify({ action, ...(payload || {}) }) : undefined
   });
@@ -187,7 +188,7 @@ async function loadAll() {
   const refresh = $("btnRefresh");
   if (refresh) refresh.disabled = true;
   loadingPromise = (async () => {
-    const jobs = [loadSystemHealth, loadChannels, loadPlaylists, loadXtream, loadMovies, loadSeries, loadUsers, loadSettings, loadAnalytics, loadResellers, loadOrders, loadStalker, loadApiKeys, loadAudit];
+    const jobs = [loadSystemHealth, loadChannels, loadPlaylists, loadEpgSources, loadXtream, loadMovies, loadSeries, loadUsers, loadSettings, loadAnalytics, loadResellers, loadOrders, loadStalker, loadApiKeys, loadAudit];
     const results = await Promise.allSettled(jobs.map((job) => job()));
     const failed = results.filter((result) => result.status === "rejected");
     STATE.loaded = true;
@@ -232,7 +233,7 @@ function renderChannels() {
   const list = STATE.channels.filter((c) => matches(c, query, ["name", "category", "url", "id"]));
   body.innerHTML = list.map((channel) => {
     const index = STATE.channels.indexOf(channel) + 1;
-    return `<tr data-row><td>${index}</td><td>${channel.logo ? `<img src="${esc(channel.logo)}" alt="" style="width:28px;height:28px;border-radius:6px;object-fit:cover">` : "📺"}</td><td><b>${esc(channel.name)}</b><br><span class="cell-sub mono">${esc(channel.url || "")}</span></td><td>${esc(channel.category || "")}</td><td><span class="pill ${channel.tier === "pro" ? "warn" : "ok"}">${channel.tier === "pro" ? "PRO" : "FREE"}</span></td><td class="actions"><button class="btn btn-ghost btn-sm" data-ch-edit="${esc(channel.id)}" title="Edit channel">✏️</button><button class="btn btn-danger btn-sm" data-ch-del="${esc(channel.id)}" title="Delete channel">🗑</button></td></tr>`;
+    return `<tr data-row><td>${index}</td><td>${channel.logo ? `<img src="${esc(channel.logo)}" alt="" style="width:28px;height:28px;border-radius:6px;object-fit:cover">` : "📺"}</td><td><b>${esc(channel.name)}</b><br><span class="cell-sub mono">${esc(channel.url || "")}</span><span class="cell-sub">EPG: ${esc(channel.epgId || "not mapped")}</span></td><td>${esc(channel.category || "")}</td><td><span class="pill ${channel.tier === "pro" ? "warn" : "ok"}">${channel.tier === "pro" ? "PRO" : "FREE"}</span></td><td class="actions"><button class="btn btn-ghost btn-sm" data-ch-edit="${esc(channel.id)}" title="Edit channel">✏️</button><button class="btn btn-danger btn-sm" data-ch-del="${esc(channel.id)}" title="Delete channel">🗑</button></td></tr>`;
   }).join("") || '<tr><td colspan="6" class="empty">No matching channels.</td></tr>';
 }
 async function loadPlaylists() {
@@ -243,6 +244,14 @@ async function loadPlaylists() {
   const body = $("plBody");
   if (!body) return;
   body.innerHTML = STATE.playlists.map((p) => `<tr data-row><td><b>${esc(p.name || "Playlist")}</b><br><span class="cell-sub mono">${esc(p.url || "")}</span></td><td>${esc(p.type || "m3u")}</td><td>${esc(String(p.updatedAt || "").replace("T", " ").slice(0, 19) || "—")}</td><td class="actions"><button class="btn btn-ghost btn-sm" data-pl-edit="${esc(p.id)}">✏️</button><button class="btn btn-danger btn-sm" data-pl-del="${esc(p.id)}">🗑</button></td></tr>`).join("") || '<tr><td colspan="4" class="empty">No playlists yet. Add one above.</td></tr>';
+}
+async function loadEpgSources() {
+  const data = await apiGet("admin/epg-sources");
+  STATE.epgSources = data.sources || [];
+  setText("badgeEpg", STATE.epgSources.length);
+  const body = $("epgBody");
+  if (!body) return;
+  body.innerHTML = STATE.epgSources.map((source) => `<tr><td><b>${esc(source.name || source.id)}</b><span class="cell-sub mono">${esc(source.url || "Uploaded file")}</span></td><td>${Number(source.channelCount || 0)}</td><td>${Number(source.programmeCount || 0)}</td><td>${esc(String(source.updatedAt || "").replace("T", " ").slice(0, 19))}</td><td class="actions">${source.url ? `<button class="btn btn-ghost btn-sm" data-epg-refresh="${esc(source.id)}" title="Refresh remote EPG">↻</button>` : ""}<button class="btn btn-danger btn-sm" data-epg-delete="${esc(source.id)}" title="Delete source">🗑</button></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No EPG sources. Import XMLTV above.</td></tr>';
 }
 async function loadXtream() {
   const data = await apiGet("admin/xtream-accounts");
@@ -312,8 +321,10 @@ function renderUsers() {
 async function loadSettings() {
   const data = await apiGet("admin/settings");
   const settings = data.settings || {};
-  const map = { stWelcome: "welcomeVideoUrl", stOffline: "channelOfflineVideoUrl", stComing: "comingSoonVideoUrl", stPro: "proUnlockVideoUrl", stWa: "proWhatsapp", stTicker: "siteAnnouncement" };
+  const map = { stWelcome: "welcomeVideoUrl", stOffline: "channelOfflineVideoUrl", stComing: "comingSoonVideoUrl", stPro: "proUnlockVideoUrl", stWa: "proWhatsapp", stWaIntl: "proWhatsappIntl", stTicker: "siteAnnouncement", stWelcomeDuration: "welcomeDurationSec", stRechargeNote: "rechargeNote", stResellerNote: "resellerContactNote" };
   for (const [id, key] of Object.entries(map)) if ($(id)) $(id).value = settings[key] || "";
+  if ($("stWelcomeEnabled")) $("stWelcomeEnabled").checked = settings.welcomeVideoEnabled !== false;
+  if ($("stWelcomeSkippable")) $("stWelcomeSkippable").checked = settings.welcomeSkippable !== false;
 }
 async function loadAnalytics() {
   const [data, errors] = await Promise.all([apiGet("admin/analytics"), apiGet("admin/errors", { limit: 20 })]);
@@ -455,6 +466,23 @@ function xtreamCreateForm() {
     await Promise.all([loadXtream(), loadUsers(), loadStalker(), loadAudit()]);
   }, "Create client");
 }
+function resellerCreateForm() {
+  openForm("Create reseller", [
+    { name: "name", label: "Dealer name", required: true },
+    { name: "code", label: "Dealer code (optional)", placeholder: "AUTO" },
+    { name: "email", label: "Email", type: "email", required: true },
+    { name: "password", label: "Panel password", type: "password", required: true, help: "Minimum 6 characters; dealer can also use the API key." },
+    { name: "whatsapp", label: "WhatsApp" },
+    { name: "credits", label: "Starter credits", type: "number", value: 10, min: 0, max: 10000 }
+  ], async (values) => {
+    const result = await apiPost("admin/reseller-create", values);
+    const reseller = result.reseller;
+    if ($("resellerNewCard")) $("resellerNewCard").hidden = false;
+    setText("resellerNewValue", `Panel: ${location.origin}/reseller\nCode: ${reseller.code}\nAPI key: ${reseller.apiKey}`);
+    toast("🏪 Reseller created — copy credentials now");
+    await loadResellers();
+  }, "Create reseller");
+}
 async function copyText(text) {
   try {
     if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; }
@@ -465,6 +493,70 @@ async function copyText(text) {
     area.remove();
     return !!copied;
   } catch { return false; }
+}
+
+/* ---------- M3U + XMLTV imports ---------- */
+function importStatus(id, message, tone = "") {
+  const el = $(id);
+  if (el) { el.textContent = String(message || ""); el.className = "import-status" + (tone ? " " + tone : ""); }
+}
+async function fileText(file, maxBytes) {
+  if (!file) throw new Error("Please choose a file first.");
+  if (file.size > maxBytes) throw new Error(`File is too large (maximum ${Math.round(maxBytes / 1_000_000)} MB).`);
+  if (typeof file.text === "function") return file.text();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("File could not be read."));
+    reader.readAsText(file);
+  });
+}
+async function importM3u(source) {
+  const buttons = [$("m3uUrlBtn"), $("m3uFileBtn")].filter(Boolean);
+  buttons.forEach((button) => { button.disabled = true; });
+  importStatus("m3uImportStatus", source === "url" ? "Downloading and validating playlist…" : "Reading and validating playlist…");
+  try {
+    const payload = { name: $("m3uName")?.value.trim(), defaultTier: $("m3uTier")?.value || "free", importEpg: !!$("m3uImportEpg")?.checked };
+    if (source === "url") {
+      payload.url = $("m3uUrl")?.value.trim();
+      if (!payload.url) throw new Error("Enter an M3U URL first.");
+    } else {
+      const file = $("m3uFile")?.files?.[0];
+      payload.filename = file?.name || "upload.m3u";
+      payload.content = await fileText(file, 5_000_000);
+    }
+    const result = await apiPost("admin/channels/import", payload);
+    const epgNote = result.epgErrors?.length ? `\nEPG warning: ${result.epgErrors[0].error}` : result.epgImports?.length ? `\nEPG: ${result.epgImports.reduce((sum, item) => sum + Number(item.programmes || 0), 0)} programmes imported.` : "";
+    importStatus("m3uImportStatus", `✅ ${result.created} created • ${result.updated} updated • ${result.skipped} skipped.${epgNote}`, result.epgErrors?.length ? "err" : "ok");
+    toast(`📥 ${result.imported} channels imported`);
+    if ($("m3uUrl")) $("m3uUrl").value = "";
+    if ($("m3uFile")) $("m3uFile").value = "";
+    await Promise.all([loadChannels(), loadPlaylists(), loadEpgSources(), loadAudit()]);
+  } catch (error) { importStatus("m3uImportStatus", error.message, "err"); toast(error.message, "error"); }
+  finally { buttons.forEach((button) => { button.disabled = false; }); }
+}
+async function importEpg(source) {
+  const buttons = [$("epgUrlBtn"), $("epgFileBtn")].filter(Boolean);
+  buttons.forEach((button) => { button.disabled = true; });
+  importStatus("epgImportStatus", "Parsing XMLTV channels and programmes…");
+  try {
+    const payload = { name: $("epgName")?.value.trim() };
+    if (source === "url") {
+      payload.url = $("epgUrl")?.value.trim();
+      if (!payload.url) throw new Error("Enter an XMLTV URL first.");
+    } else {
+      const file = $("epgFile")?.files?.[0];
+      payload.filename = file?.name || "guide.xml";
+      payload.content = await fileText(file, 8_000_000);
+    }
+    const result = await apiPost("admin/epg-import", payload);
+    importStatus("epgImportStatus", `✅ ${result.channels} channels • ${result.programmes} programmes imported (${result.skipped} skipped).`, "ok");
+    toast("🗓️ EPG guide updated");
+    if ($("epgUrl")) $("epgUrl").value = "";
+    if ($("epgFile")) $("epgFile").value = "";
+    await Promise.all([loadEpgSources(), loadAudit()]);
+  } catch (error) { importStatus("epgImportStatus", error.message, "err"); toast(error.message, "error"); }
+  finally { buttons.forEach((button) => { button.disabled = false; }); }
 }
 
 /* ---------- controls ---------- */
@@ -525,6 +617,13 @@ function appInit() {
   $("chAddBtn")?.addEventListener("click", () => channelForm());
   $("qAddChannel")?.addEventListener("click", () => channelForm());
   $("plAddBtn")?.addEventListener("click", () => playlistForm());
+  $("m3uUrlBtn")?.addEventListener("click", () => importM3u("url"));
+  $("m3uFileBtn")?.addEventListener("click", () => importM3u("file"));
+  $("epgUrlBtn")?.addEventListener("click", () => importEpg("url"));
+  $("epgFileBtn")?.addEventListener("click", () => importEpg("file"));
+  $("epgRefreshList")?.addEventListener("click", () => loadEpgSources().catch((error) => toast(error.message, "error")));
+  $("rsAddBtn")?.addEventListener("click", resellerCreateForm);
+  $("resellerCopyBtn")?.addEventListener("click", async () => toast(await copyText($("resellerNewValue")?.textContent || "") ? "Reseller credentials copied" : "Clipboard unavailable"));
   $("xtAddBtn")?.addEventListener("click", xtreamCreateForm);
   $("qGo")?.addEventListener("click", () => {
     const value = $("qSearch")?.value || "";
@@ -544,7 +643,11 @@ function appInit() {
       await apiPost("admin/settings-set", { patch: {
         welcomeVideoUrl: $("stWelcome")?.value.trim(), channelOfflineVideoUrl: $("stOffline")?.value.trim(),
         comingSoonVideoUrl: $("stComing")?.value.trim(), proUnlockVideoUrl: $("stPro")?.value.trim(),
-        proWhatsapp: $("stWa")?.value.trim(), siteAnnouncement: $("stTicker")?.value.trim()
+        welcomeVideoEnabled: !!$("stWelcomeEnabled")?.checked, welcomeSkippable: !!$("stWelcomeSkippable")?.checked,
+        welcomeDurationSec: Number($("stWelcomeDuration")?.value || 4),
+        proWhatsapp: $("stWa")?.value.trim(), proWhatsappIntl: $("stWaIntl")?.value.trim(),
+        siteAnnouncement: $("stTicker")?.value.trim(), rechargeNote: $("stRechargeNote")?.value.trim(),
+        resellerContactNote: $("stResellerNote")?.value.trim()
       } });
       toast("💾 Settings saved");
       await loadAudit();
@@ -566,11 +669,21 @@ function appInit() {
   $("keyCopyBtn")?.addEventListener("click", async () => toast(await copyText($("keyNewValue")?.textContent || "") ? "API key copied" : "Clipboard unavailable — key manually select karein", "ok"));
 
   document.addEventListener("click", async (event) => {
-    const el = event.target.closest("[data-rs-topup],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-toggle],[data-xt-del],[data-ch-edit],[data-ch-del],[data-pl-edit],[data-pl-del],[data-mv-stream],[data-sr-episodes],[data-user-copy]");
+    const el = event.target.closest("[data-rs-topup],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-toggle],[data-xt-del],[data-ch-edit],[data-ch-del],[data-pl-edit],[data-pl-del],[data-epg-refresh],[data-epg-delete],[data-mv-stream],[data-sr-episodes],[data-user-copy]");
     if (!el) return;
     try {
       if (el.dataset.chEdit) return channelForm(STATE.channels.find((c) => c.id === el.dataset.chEdit));
       if (el.dataset.plEdit) return playlistForm(STATE.playlists.find((p) => p.id === el.dataset.plEdit));
+      if (el.dataset.epgRefresh) {
+        el.disabled = true;
+        await apiPost("admin/epg-refresh", { id: el.dataset.epgRefresh });
+        toast("🗓️ Remote EPG refreshed"); await loadEpgSources(); return;
+      }
+      if (el.dataset.epgDelete) {
+        if (!confirm("Delete this EPG source and all of its programmes?")) return;
+        await apiPost("admin/epg-delete", { id: el.dataset.epgDelete });
+        toast("EPG source deleted"); await loadEpgSources(); return;
+      }
       if (el.dataset.mvStream) {
         const movie = STATE.movies.find((m) => m.id === el.dataset.mvStream);
         return openForm(`Stream URL — ${movie?.title || "Movie"}`, [{ name: "streamUrl", label: "Licensed MP4/HLS URL", placeholder: "https://…/movie.mp4", help: "Only add content you have rights to stream. Blank removes playback." }], async (values) => {

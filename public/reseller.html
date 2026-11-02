@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reseller Panel — Mizanora IPTV</title>
+<meta name="description" content="Mizanora IPTV reseller dashboard for credits, clients, renewals, payments and API integration.">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/assets/css/site.css?v=5.0.0">
+<link rel="stylesheet" href="/assets/css/reseller.css?v=5.0.0">
+</head>
+<body class="dealer-body">
+<header><div class="wrap nav">
+  <img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora IPTV"><div class="brand">Mizanora IPTV<small>RESELLER BUSINESS PANEL</small></div>
+  <nav><a href="/">← Main site</a><a href="/developers" class="hide-m">API guide</a><a href="https://wa.me/923062015326" target="_blank" rel="noopener" class="btn btn-gold btn-sm">💬 Top-up support</a><button class="btn btn-ghost btn-sm" id="dealerLogout" type="button" hidden>Logout</button></nav>
+</div></header>
+<main class="wrap dealer-main">
+  <section id="resellerAuth">
+    <div class="dealer-hero"><span class="eyebrow">MIZANORA PROJECTS · DEALER SUITE</span><h1>Grow your <span class="gold">IPTV business</span></h1><p>Clients, credits, renewals, MAC portal, payments aur API — ek secure dealer workspace.</p></div>
+    <div class="forms auth-grid">
+      <form class="form" id="resellerLoginForm">
+        <h3>🔐 Reseller login</h3>
+        <label for="dealerCode">Dealer code</label><input id="dealerCode" placeholder="ALPHA" autocomplete="username">
+        <label for="dealerPassword">Password</label><input id="dealerPassword" type="password" autocomplete="current-password">
+        <div class="form-divider">or use API key</div>
+        <label for="dealerApiKey">mzr_ API key</label><input id="dealerApiKey" type="password" placeholder="mzr_…" autocomplete="off">
+        <button class="btn btn-primary" type="submit">Open dashboard</button>
+        <div class="note">Credentials sirf is browser session mein rehte hain. Shared computer par logout karein.</div>
+      </form>
+      <form class="form" id="resellerRegisterForm">
+        <h3>🚀 Create reseller account</h3>
+        <label for="regName">Business / name</label><input id="regName" required>
+        <label for="regEmail">Email</label><input id="regEmail" type="email" required>
+        <label for="regWhatsapp">WhatsApp</label><input id="regWhatsapp" required placeholder="0306-XXXXXXX">
+        <label for="regPassword">Password</label><input id="regPassword" type="password" minlength="6" required>
+        <button class="btn btn-gold" type="submit">Register &amp; get starter credits</button>
+        <div class="note">API key ek dafa show hoga—copy karke safe rakhein.</div>
+      </form>
+    </div>
+    <div id="authOutput" aria-live="polite"></div>
+  </section>
+
+  <section id="resellerApp" hidden>
+    <div class="dealer-heading"><div><span class="eyebrow">DEALER DASHBOARD</span><h1 id="dealerName">Reseller</h1><p>Code: <code id="dealerCodeOut">—</code> · <span id="dealerStatus">Active</span></p></div><div class="dealer-toolbar"><a class="btn btn-ghost btn-sm" id="dealerTopup" href="https://wa.me/923062015326" target="_blank" rel="noopener">💳 Buy credits</a><button class="btn btn-ghost btn-sm" id="dealerRefresh" type="button">↻ Refresh</button></div></div>
+    <div class="kpis">
+      <div class="kpi"><b id="kCredits">0</b><span>Credits left</span></div><div class="kpi"><b id="kActive">0</b><span>Active clients</span></div><div class="kpi"><b id="kExpired">0</b><span>Expired / suspended</span></div><div class="kpi"><b id="kCollected">Rs 0</b><span>Collected payments</span></div>
+    </div>
+    <div id="dealerNotice" class="dealer-notice" role="status"></div>
+    <div id="credentialOut" class="credential-box" hidden></div>
+
+    <div class="dealer-grid">
+      <form class="panel-card" id="clientCreateForm">
+        <h2>＋ Create client</h2><p>Plan months = credit cost. Credentials appear after creation.</p>
+        <div class="field-grid">
+          <label>Client name<input id="clientName" required></label><label>WhatsApp<input id="clientWhatsapp" placeholder="0306-XXXXXXX"></label>
+          <label>Plan<select id="clientPlan"><option value="monthly">Monthly · 1 credit</option><option value="quarterly">3 months · 3 credits</option><option value="half-yearly">6 months · 6 credits</option><option value="yearly">Yearly · 12 credits</option></select></label>
+          <label>Connections<input id="clientDevices" type="number" min="1" max="20" value="1"></label>
+          <label class="span-2">MAG MAC (optional)<input id="clientMac" placeholder="00:1A:79:XX:XX:XX"></label>
+          <label>Collected amount (PKR)<input id="clientAmount" type="number" min="0" value="0"></label><label>Payment method<select id="clientVia"><option>cash</option><option>JazzCash</option><option>EasyPaisa</option><option>bank</option></select></label>
+        </div><button class="btn btn-primary" type="submit">Create &amp; provision</button>
+      </form>
+      <form class="panel-card" id="pricingForm">
+        <h2>💰 Your selling prices</h2><p>Retail prices are for your records; plan cost remains server-controlled.</p>
+        <div class="field-grid"><label>Monthly<input id="priceMonthly" type="number" min="0"></label><label>Quarterly<input id="priceQuarterly" type="number" min="0"></label><label>Yearly<input id="priceYearly" type="number" min="0"></label><label>Connection fee<input id="priceConnection" type="number" min="0"></label></div>
+        <button class="btn btn-ghost" type="submit">Save pricing</button>
+        <div class="integration-mini"><h3>🔌 API integration</h3><p>Rotate your key when needed. Keep keys on your backend, never public browser code.</p><a href="/developers" class="btn btn-ghost btn-sm">Open developer guide</a><button class="btn btn-danger btn-sm" id="rotateKeyBtn" type="button">Rotate API key</button></div>
+      </form>
+    </div>
+
+    <div class="panel-card"><div class="section-title"><h2>👥 My clients</h2><input id="dealerClientSearch" type="search" placeholder="Search clients…" aria-label="Search clients"></div><div class="table-wrap"><table><thead><tr><th>User</th><th>Plan</th><th>Status</th><th>Days left</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="dealerClients"></tbody></table></div></div>
+    <div class="dealer-grid">
+      <form class="panel-card" id="paymentForm"><h2>🧾 Record payment / extension</h2><p>Each extension month consumes one credit.</p><div class="field-grid"><label class="span-2">Client username<input id="paymentUsername" required></label><label>Amount PKR<input id="paymentAmount" type="number" min="0" required></label><label>Extension months<input id="paymentMonths" type="number" min="0" max="120" value="0"></label><label>Method<select id="paymentVia"><option>cash</option><option>JazzCash</option><option>EasyPaisa</option><option>bank</option></select></label></div><button class="btn btn-gold" type="submit">Record payment</button></form>
+      <div class="panel-card"><h2>📚 Recent ledger</h2><div class="table-wrap"><table><thead><tr><th>Client</th><th>Amount</th><th>Months</th><th>Date</th></tr></thead><tbody id="dealerLedger"></tbody></table></div></div>
+    </div>
+  </section>
+</main>
+<footer><div class="wrap"><p>Mizanora IPTV Reseller Suite · <a href="/">Main site</a> · <a href="/developers">Developer guide</a> · WhatsApp 0306-2015326</p></div></footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/assets/js/reseller.js?v=5.0.0" defer></script>
+</body></html>

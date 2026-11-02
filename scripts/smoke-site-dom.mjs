@@ -41,7 +41,7 @@ class HlsStub {
 HlsStub.Events = { MANIFEST_PARSED: "manifest", ERROR: "error" };
 window.Hls = HlsStub;
 
-let streamGate = null;
+let streamGate = null, streamRequests = 0;
 const channels = [
   { id: "ch_free", streamId: 1001, name: "Free Demo TV", group: "Demo", tier: "free", logo: "" },
   { id: "ch_pro", streamId: 2001, name: "PRO Sports", group: "Sports", tier: "pro", logo: "" }
@@ -50,8 +50,11 @@ window.fetch = async (url, options = {}) => {
   const raw = String(url);
   const parsed = new URL(raw, "http://localhost:3000");
   const J = (data, status = 200) => new window.Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
+  if (parsed.pathname === "/api/embed" && parsed.searchParams.get("action") === "config") return J({ ok: true, brand: "Mizanora IPTV", plans: [{ id: "monthly", name: "1 Month", price: 200 }], links: { resellerPanel: "/reseller", developers: "/developers" }, experience: { intro: { enabled: true, url: "/media/welcome/video.mp4", durationSec: 5, skippable: true } } });
+  if (parsed.pathname === "/api/embed" && parsed.searchParams.get("action") === "guide") return J({ ok: true, guide: [{ channel: channels[0], now: { title: "Morning News", start: Date.now() - 60000, stop: Date.now() + 60000 }, next: { title: "Next Show", start: Date.now() + 60000 } }] });
   if (parsed.pathname === "/api/embed" && parsed.searchParams.get("action") === "channels") return J({ ok: true, count: channels.length, channels });
   if (parsed.pathname === "/api/embed" && parsed.searchParams.get("action") === "stream") {
+    streamRequests += 1;
     const id = parsed.searchParams.get("id");
     if (id === "ch_pro") return J({ ok: false, error: "PRO required" }, 403);
     if (streamGate) await streamGate;
@@ -75,27 +78,41 @@ const $ = (id) => document.getElementById(id);
 window.eval(siteJs);
 await sleep(250);
 check("live channels render as playable buttons", document.querySelectorAll("[data-channel]").length === 2 && $("stChannels").textContent === "2");
+check("public now/next guide renders imported-style programme data", $("guideGrid").textContent.includes("Morning News") && $("guideGrid").textContent.includes("Next Show"));
 
-document.querySelector("[data-channel='ch_free']").click(); await sleep();
-check("free channel opens dialog and attaches signed HLS", $("playerDialog").hasAttribute("open") && latestHls?.url.includes("/s/") && latestHls?.video === $("liveVideo"));
+const requestsBeforeIntro = streamRequests;
+document.querySelector("[data-channel='ch_free']").click(); await sleep(30);
+check("intro gates secure stream fetching", $("playerDialog").hasAttribute("open") && !$("introOverlay").hidden && $("introOverlay").style.getPropertyValue("--intro-duration") === "5s" && streamRequests === requestsBeforeIntro && latestHls === null);
+$("playerSkip").click(); await sleep();
+check("skipping intro attaches signed HLS", latestHls?.url.includes("/s/") && latestHls?.video === $("liveVideo") && streamRequests === requestsBeforeIntro + 1);
 latestHls.handlers.error(null, { fatal: true });
 check("fatal stream error is visible with retry", $("playerStatus").classList.contains("err") && !$("playerRetry").hidden);
 const previousHls = latestHls;
 $("playerRetry").click(); await sleep();
-check("retry requests a fresh player", latestHls !== previousHls && !latestHls.destroyed);
+check("retry skips repeated intro and creates a fresh player", $("introOverlay").hidden && latestHls !== previousHls && !latestHls.destroyed);
 $("playerClose").click();
 check("closing player destroys HLS instance", latestHls.destroyed && !$("playerDialog").hasAttribute("open"));
 
-document.querySelector("[data-channel='ch_pro']").click(); await sleep();
+document.querySelector("[data-channel='ch_free']").click(); await sleep(30); $("playerSkip").click(); await sleep();
+const escapeHls = latestHls;
+$("playerDialog").dispatchEvent(new window.Event("cancel", { bubbles: true, cancelable: true }));
+check("native Escape/cancel also destroys playback and closes dialog", escapeHls.destroyed && !$("playerDialog").hasAttribute("open"));
+
+const requestsBeforeIntroClose = streamRequests;
+document.querySelector("[data-channel='ch_free']").click(); await sleep(30);
+$("playerClose").click(); $("liveVideo").dispatchEvent(new window.Event("ended")); await sleep(30);
+check("closing during intro cancels later playback", streamRequests === requestsBeforeIntroClose && !$("playerDialog").hasAttribute("open") && !$("liveVideo").getAttribute("src"));
+
+document.querySelector("[data-channel='ch_pro']").click(); await sleep(30); $("playerSkip").click(); await sleep();
 check("PRO channel shows trial gate instead of fake playback", !$("playerPro").hidden && $("liveVideo").hidden && $("playerStatus").textContent.includes("PRO"));
 $("playerClose").click();
 
 let releaseSlowStream;
 streamGate = new Promise((resolve) => { releaseSlowStream = resolve; });
 const hlsBeforeCancelledRequest = latestHls;
-document.querySelector("[data-channel='ch_free']").click(); await sleep(30);
+document.querySelector("[data-channel='ch_free']").click(); await sleep(30); $("playerSkip").click(); await sleep(30);
 $("playerClose").click(); streamGate = null; releaseSlowStream(); await sleep();
-check("closing during load prevents late background playback", latestHls === hlsBeforeCancelledRequest && !$("playerDialog").hasAttribute("open"));
+check("closing during delayed secure fetch prevents late background playback", latestHls === hlsBeforeCancelledRequest && !$("playerDialog").hasAttribute("open"));
 
 $("trialEmail").value = "new@test.com";
 $("trialWa").value = "03000000000";

@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.ico">
 <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
-<link rel="stylesheet" href="/assets/css/site.css?v=5">
+<link rel="stylesheet" href="/assets/css/site.css?v=5.0.0">
 </head>
 <body data-bw-app="site">
 <header>
@@ -16,24 +16,27 @@
     <img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora IPTV">
     <div class="brand">Mizanora IPTV<small>MIZANORA PROJECTS</small></div>
     <nav>
-      <a href="#features">Features</a>
+      <a href="#features" class="hide-m">Features</a>
       <a href="#channels" class="hide-m">Channels</a>
-      <a href="#pricing">Pricing</a>
+      <a href="#guide" class="hide-m">TV Guide</a>
+      <a href="#pricing" class="hide-m">Pricing</a>
+      <a href="/reseller" class="hide-m">Reseller</a>
       <a href="#trial">Free Trial</a>
       <a href="/admin" class="btn btn-ghost btn-sm">🛡️ Admin</a>
-      <a href="https://wa.me/923062015326" class="btn btn-gold btn-sm" target="_blank" rel="noopener">💬 WhatsApp</a>
+      <a href="https://wa.me/923062015326" data-pro-whatsapp class="btn btn-gold btn-sm" target="_blank" rel="noopener">💬 WhatsApp</a>
     </nav>
   </div>
 </header>
+<div id="announcementBar" class="announcement" hidden><div class="wrap"><span>📢</span><p id="announcementText"></p></div></div>
 
 <main>
   <div class="wrap hero">
     <img class="logo" src="/assets/img/brand/miznaoraiptv-logo.png" alt="">
     <h1>Premium <span class="gold">IPTV</span> — Live TV, Movies,<br>Series &amp; Xtream in One Panel</h1>
-    <p>4K live channels, IMDb-powered movies &amp; series, free 1-day Xtream trial, MAG/Stalker portal and a full reseller business API — <b>Mizanora IPTV</b>, a Mizanora Projects product by Muaaz Iqbal (Kasur, Punjab, Pakistan).</p>
+    <p>Animated welcome intro, 4K live channels, XMLTV now/next guide, M3U imports, free Xtream trial, MAG/Stalker and a complete reseller panel + API — <b>Mizanora IPTV v5</b>, a Mizanora Projects product by Muaaz Iqbal.</p>
     <div class="cta">
       <a href="#trial" class="btn btn-primary">🎁 Claim FREE 1-Day Trial</a>
-      <a href="https://wa.me/923062015326" class="btn btn-gold" target="_blank" rel="noopener">👑 PRO VIP — WhatsApp 0306-2015326</a>
+      <a href="https://wa.me/923062015326" data-pro-whatsapp class="btn btn-gold" target="_blank" rel="noopener">👑 PRO VIP — WhatsApp 0306-2015326</a>
       <a href="#pricing" class="btn btn-ghost">💰 Pricing</a>
     </div>
     <div class="stats">
@@ -48,10 +51,12 @@
     <div class="sec-head"><h2>Everything in one server</h2><p>One Mizanora panel powers web, Xtream apps, MAG boxes and resellers.</p></div>
     <div class="grid">
       <div class="card"><div class="ic">📺</div><h3>Live TV 4K</h3><p>Sports, news, entertainment &amp; Pakistani/Indian VIP channels in HD/4K.</p></div>
-      <div class="card"><div class="ic">🎬</div><h3>IMDb Movies &amp; Series</h3><p>Thousands of movies &amp; series with posters, ratings and EPG — on web and apps.</p></div>
+      <div class="card"><div class="ic">🎬</div><h3>IMDb Movies &amp; Series</h3><p>Thousands of movies &amp; series with posters, ratings and configurable licensed playback.</p></div>
+      <div class="card"><div class="ic">🗓️</div><h3>XMLTV Now/Next Guide</h3><p>Import EPG sources and use timed programmes on web, Xtream apps and XMLTV.</p></div>
+      <div class="card"><div class="ic">📥</div><h3>M3U File &amp; URL Import</h3><p>Owner-controlled playlist imports with logos, groups, EPG IDs and duplicate-safe updates.</p></div>
       <div class="ic card"><div class="ic">⚡</div><h3>Xtream Codes API</h3><p>Free personal Xtream credentials: player_api, M3U + EPG for any IPTV app.</p></div>
       <div class="card"><div class="ic">🛰️</div><h3>MAG / Stalker Portal</h3><p>Portal URL + MAC — works on MAG 322/349, Formuler and Stalker middleware.</p></div>
-      <div class="card"><div class="ic">🏪</div><h3>Reseller API</h3><p>Self-serve dealers with credits, own pricing, clients, MACs and ledger.</p></div>
+      <div class="card"><div class="ic">🏪</div><h3>Reseller Panel + API</h3><p>Self-serve dealer dashboard with credits, clients, MACs, renewals, payments and ledger.</p></div>
       <div class="card"><div class="ic">🔌</div><h3>Embeddable API</h3><p>Drop a live channel grid on any website with one &lt;script&gt; tag.</p></div>
       <div class="card"><div class="ic">🛡️</div><h3>Owner-Locked Admin</h3><p>Full admin panel behind Google owner login — only muaaziqbal.vip@gmail.com.</p></div>
       <div class="card"><div class="ic">💳</div><h3>Easy Payments</h3><p>JazzCash / EasyPaisa / WhatsApp — instant activation on proof.</p></div>
@@ -59,8 +64,17 @@
   </div></section>
 
   <section id="channels"><div class="wrap">
-    <div class="sec-head"><h2>Live channel preview</h2><p>Served live from our embed API — same list your app gets.</p></div>
+    <div class="sec-head"><h2>Live channels &amp; welcome promo</h2><p>Start with the Mizanora promo channel or choose a network. Intro plays before secure channel fetch.</p></div>
+    <div class="channel-tools"><input id="channelSearch" type="search" placeholder="🔍 Search channels…" aria-label="Search channels"><select id="channelCategory" aria-label="Filter channel category"><option value="">All categories</option></select><span id="channelResultCount">Loading…</span></div>
     <div class="ch-grid" id="chGrid"><div class="ch"><span>Loading channels…</span></div></div>
+    <div class="center"><button class="btn btn-ghost" id="chLoadMore" type="button" hidden>Show more channels</button></div>
+  </div></section>
+
+  <section id="guide"><div class="wrap">
+    <div class="sec-head"><h2>📅 Now / Next TV Guide</h2><p>Live XMLTV programme data, when configured by the owner.</p></div>
+    <div class="guide-tools"><select id="guideChannel" aria-label="Select guide channel"><option value="">All channels</option></select><button class="btn btn-ghost btn-sm" id="guideRefresh" type="button">↻ Refresh guide</button></div>
+    <div id="guideStatus" class="guide-status" role="status">Loading guide…</div>
+    <div class="guide-grid" id="guideGrid"></div>
   </div></section>
 
   <section id="pricing"><div class="wrap">
@@ -71,10 +85,30 @@
         <a href="#trial" class="btn btn-ghost">Claim Trial</a></div>
       <div class="price hot"><span class="tag">MOST POPULAR</span><h3>👑 PRO VIP</h3><div class="amt">Rs 200<small> / month</small></div>
         <ul><li>All 4K channels + Movies/Series</li><li>Xtream Codes + MAG portal</li><li>Priority WhatsApp support</li></ul>
-        <a href="https://wa.me/923062015326" target="_blank" rel="noopener" class="btn btn-gold">Activate on WhatsApp</a></div>
+        <a href="https://wa.me/923062015326" data-pro-whatsapp target="_blank" rel="noopener" class="btn btn-gold">Activate on WhatsApp</a></div>
       <div class="price"><h3>🏪 Reseller</h3><div class="amt">Rs 100<small> / user / month</small></div>
-        <ul><li>Self-serve dealer API</li><li>Own selling price</li><li>Starter credits free</li></ul>
-        <a href="/api/panel?action=help" class="btn btn-ghost">Reseller API docs</a></div>
+        <ul><li>Self-serve dealer panel + API</li><li>Own selling price</li><li>Starter credits free</li></ul>
+        <div class="cta"><a href="/reseller" class="btn btn-gold">Open reseller panel</a><a href="/developers" class="btn btn-ghost">API guide</a></div></div>
+    </div>
+  </div></section>
+
+  <section id="recharge"><div class="wrap">
+    <div class="sec-head"><h2>💳 Premium recharge &amp; reseller contact</h2><p>Existing account recharge ya dealer business — dono yahan se.</p></div>
+    <div class="forms">
+      <form class="form premium-form" id="rechargeForm">
+        <h3>🔄 Recharge existing account</h3>
+        <label for="rechargeUsername">Xtream username</label><input id="rechargeUsername" required placeholder="Your username" autocomplete="username">
+        <button class="btn btn-gold" type="submit">Find recharge contact</button>
+        <div class="note" id="rechargeNote">Apne reseller ya support se recharge karein.</div>
+        <div id="rechargeOut" aria-live="polite"></div>
+      </form>
+      <div class="form reseller-cta">
+        <div class="ic">🏪</div><h3>Reseller panel &amp; credit top-up</h3>
+        <p id="resellerContactNote">Reseller account aur top-up ke liye support se rabta karein.</p>
+        <a class="btn btn-primary" href="/reseller">Open reseller panel</a>
+        <a class="btn btn-ghost" href="https://wa.me/923062015326" data-pro-whatsapp target="_blank" rel="noopener">💬 Contact for reseller account</a>
+        <a class="btn btn-ghost" href="/developers">🔌 Website / API integration guide</a>
+      </div>
     </div>
   </div></section>
 
@@ -106,18 +140,22 @@
 <footer><div class="wrap">
   <img src="/assets/img/brand/miznaoraiptv-logo.png" alt="">
   <p><b>Mizanora IPTV</b> — a Mizanora Projects product · Founder: Muaaz Iqbal · Kasur, Punjab, Pakistan<br>
-  📞 WhatsApp 0306-2015326 · <a href="/admin">🛡️ Admin Panel</a> · <a href="/api/panel?action=help">API Docs</a> · <a href="https://github.com/Mizanora-org/miznaoraiptv">GitHub</a></p>
+  📞 WhatsApp 0306-2015326 · <a href="/reseller">🏪 Reseller Panel</a> · <a href="/admin">🛡️ Admin</a> · <a href="/developers">🔌 Developer Guide</a> · <a href="https://github.com/Mizanora-org/miznaoraiptv">GitHub</a></p>
 </div></footer>
 
 <dialog id="playerDialog" class="player-dialog" aria-labelledby="playerTitle">
   <div class="player-head"><div><h2 id="playerTitle">Live TV</h2><span id="playerGroup"></span></div><button class="btn btn-ghost btn-sm" id="playerClose" type="button" aria-label="Close player">✕</button></div>
-  <video id="liveVideo" controls playsinline preload="metadata"></video>
+  <div class="player-stage">
+    <video id="liveVideo" controls playsinline preload="metadata"></video>
+    <div id="introOverlay" class="intro-overlay" hidden><div class="intro-rings"><i></i><i></i><img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora"></div><b>WELCOME TO MIZANORA IPTV</b><span>Premium entertainment is loading…</span><div class="intro-progress"><i></i></div></div>
+  </div>
+  <button class="btn btn-ghost btn-sm" id="playerSkip" type="button" hidden>Skip intro →</button>
   <div id="playerStatus" class="player-status" role="status">Loading stream…</div>
   <div id="playerPro" class="player-pro" hidden><p>Ye PRO channel hai. Free 1-day trial se tamam PRO channels test karein.</p><a class="btn btn-gold" href="#trial" id="playerTrial">🎁 Get free trial</a></div>
   <button class="btn btn-ghost btn-sm" id="playerRetry" type="button" hidden>↻ Retry stream</button>
 </dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/assets/vendor/hls.min.js?v=1.7.4" defer></script>
-<script src="/assets/js/site.js?v=5" defer></script>
+<script src="/assets/js/site.js?v=5.0.0" defer></script>
 </body>
 </html>
