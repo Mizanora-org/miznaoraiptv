@@ -184,20 +184,127 @@ async function loadAll() {
 }
 async function loadChannels() {
   const d = await apiGet("admin/channels");
-  STATE.channels = d.channels || [];
+  STATE.channels = (d.channels || []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   setText("badgeChannels", STATE.channels.length);
   setText("kpiChannels", STATE.channels.length);
-  const pro = STATE.channels.filter((c) => String(c.tier || "").toLowerCase() === "pro").length;
+  const pro = STATE.channels.filter((c) => String(c.tier || "pro").toLowerCase() === "pro").length;
   setText("kpiChannelsSub", `${STATE.channels.length - pro} Free • ${pro} PRO`);
   renderChannels();
 }
 function renderChannels() {
   const tb = $("chBody"); if (!tb) return;
   const q = STATE.search.toLowerCase();
-  tb.innerHTML = STATE.channels.filter((c) => !q || (c.name || "").toLowerCase().includes(q)).map((c, i) =>
-    `<tr data-row><td>${i + 1}</td><td>${c.logo ? `<img src="${esc(c.logo)}" style="width:26px;height:26px;border-radius:6px">` : "📺"}</td><td>${esc(c.name)}</td><td>${esc(c.category || "")}</td><td class="mono" style="max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(c.url || "")}</td></tr>`
-  ).join("") || '<tr><td colspan="5" style="color:var(--dim)">No channels yet.</td></tr>';
+  const rows = STATE.channels
+    .map((c, i) => ({ c, i }))
+    .filter(({ c }) => !q || (c.name || "").toLowerCase().includes(q) || (c.category || "").toLowerCase().includes(q));
+  tb.innerHTML = rows.map(({ c, i }) => {
+    const tier = String(c.tier || "pro").toLowerCase() === "free" ? '<span class="badge free">FREE</span>' : '<span class="badge pro">👑 PRO</span>';
+    const prev = c.previewVideoUrl
+      ? `<span class="ch-preview">🎬<video muted loop playsinline preload="metadata" src="${esc(c.previewVideoUrl)}"></video></span>`
+      : '<span style="color:var(--dim)">—</span>';
+    return `<tr data-row data-id="${esc(c.id)}" draggable="true">
+      <td class="drag-handle" title="Drag to reorder">⠿</td>
+      <td>${i + 1}</td>
+      <td>${c.logo ? `<img src="${esc(c.logo)}" style="width:28px;height:28px;border-radius:6px;object-fit:cover">` : "📺"}</td>
+      <td><b>${esc(c.name)}</b></td>
+      <td>${esc(c.category || "")}</td>
+      <td>${tier}</td>
+      <td>${prev}</td>
+      <td class="mono" style="max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${esc(c.url)}">${esc(c.url || "")}</td>
+      <td><button class="btn btn-ghost btn-sm" data-ch-edit="${esc(c.id)}">✎</button>
+      <button class="btn btn-danger btn-sm" data-ch-del="${esc(c.id)}">🗑</button></td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="9" style="color:var(--dim)">No channels yet — ＋ Add ya M3U import karo.</td></tr>';
+  bindDragSort(tb);
 }
+
+/* ---- drag & drop sort ---- */
+let dragId = null;
+function bindDragSort(tb) {
+  tb.querySelectorAll("tr[data-id]").forEach((tr) => {
+    tr.addEventListener("dragstart", (e) => { dragId = tr.dataset.id; tr.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; });
+    tr.addEventListener("dragend", () => { tr.classList.remove("dragging"); tb.querySelectorAll(".drag-over").forEach((x) => x.classList.remove("drag-over")); dragId = null; });
+    tr.addEventListener("dragover", (e) => { e.preventDefault(); tr.classList.add("drag-over"); });
+    tr.addEventListener("dragleave", () => tr.classList.remove("drag-over"));
+    tr.addEventListener("drop", (e) => {
+      e.preventDefault();
+      tr.classList.remove("drag-over");
+      if (!dragId || dragId === tr.dataset.id) return;
+      const ids = [...tb.querySelectorAll("tr[data-id]")].map((r) => r.dataset.id);
+      const from = ids.indexOf(dragId), to = ids.indexOf(tr.dataset.id);
+      if (from < 0 || to < 0) return;
+      ids.splice(to, 0, ids.splice(from, 1)[0]);
+      const byId = new Map(STATE.channels.map((c) => [c.id, c]));
+      STATE.channels = ids.map((id) => byId.get(id)).filter(Boolean);
+      renderChannels();
+      toast("Order badla — 💾 Save order dabao");
+    });
+  });
+}
+
+/* ---- channel edit modal ---- */
+function openChannelModal(ch) {
+  const m = $("chModal"); if (!m) return;
+  setText("chModalTitle", ch ? "✎ Edit channel" : "＋ Add channel");
+  $("chId").value = ch?.id || "";
+  $("chName").value = ch?.name || "";
+  $("chUrl").value = ch?.url || "";
+  $("chLogo").value = ch?.logo || "";
+  $("chGroup").value = ch?.category || "";
+  $("chTier").value = String(ch?.tier || "pro").toLowerCase() === "free" ? "free" : "pro";
+  $("chPreview").value = ch?.previewVideoUrl || "";
+  $("chOrder").value = ch?.order ?? STATE.channels.length;
+  m.hidden = false;
+}
+async function saveChannelModal() {
+  try {
+    const id = $("chId").value.trim();
+    const payload = {
+      id: id || undefined,
+      name: $("chName").value.trim(), url: $("chUrl").value.trim(),
+      logo: $("chLogo").value.trim(), category: $("chGroup").value.trim(),
+      tier: $("chTier").value, previewVideoUrl: $("chPreview").value.trim(),
+      order: Number($("chOrder").value) || 0
+    };
+    if (!payload.name || !payload.url) return toast("Name aur URL zaroori hain", "error");
+    const r = await apiPost(id ? "admin/channel/update" : "admin/channel/create", payload);
+    toast(id ? "✎ Channel updated" : "＋ Channel added");
+    $("chModal").hidden = true;
+    await loadChannels();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+/* ---- import modal (M3U / bulk / JSON) ---- */
+function openImportModal(mode) {
+  const m = $("impModal"); if (!m) return;
+  $("impMode").value = mode;
+  setText("impTitle", mode === "m3u" ? "🎵 M3U import" : "📥 Bulk import");
+  $("impResult").textContent = "";
+  m.hidden = false;
+  setTimeout(() => $("impText")?.focus(), 50);
+}
+async function runImport(previewOnly) {
+  const mode = $("impMode").value;
+  const text = $("impText").value;
+  if (!text.trim()) return toast("Pehle data paste karo", "error");
+  const action = mode === "m3u" ? "admin/channel/m3u-import" : "admin/channel/bulk-import";
+  try {
+    const r = await apiPost(action, { text, previewOnly, replace: $("impReplace").checked });
+    const out = $("impResult");
+    if (r.preview) {
+      out.textContent = `👁 Preview: ${r.count} channels parse hue —\n` + r.sample.map((c) => "• " + c.name + "  →  " + c.url.slice(0, 60)).join("\n");
+    } else {
+      out.textContent = r.message || JSON.stringify(r);
+      toast(r.message || "Import done");
+      $("impModal").hidden = true;
+      await loadChannels();
+    }
+  } catch (e) {
+    $("impResult").textContent = "❌ " + e.message;
+    toast(e.message, "error");
+  }
+}
+
 async function loadPlaylists() {
   const list = (await dbRead("playlists", [])) || [];
   STATE.playlists = Array.isArray(list) ? list : Object.values(list);
@@ -248,10 +355,12 @@ async function loadUsers() {
   STATE.clients = d.clients || [];
   const tb = $("usBody"); if (!tb) return;
   const q = STATE.search.toLowerCase();
-  tb.innerHTML = STATE.clients.filter((c) => !q || c.username.includes(q)).map((c) => {
+  tb.innerHTML = STATE.clients.filter((c) => !q || c.username.includes(q) || (c.mac || "").includes(q)).map((c) => {
     const st = c.status === "suspended" ? '<span class="pill bad">Suspended</span>' : c.expired ? '<span class="pill warn">Expired</span>' : '<span class="pill ok">Active</span>';
-    return `<tr data-row><td><b>${esc(c.username)}</b></td><td>${esc(c.whatsapp || "—")}</td><td>${esc(c.resellerCode || "direct")}</td><td>${st}</td><td>${c.daysLeft}</td></tr>`;
-  }).join("") || '<tr><td colspan="5" style="color:var(--dim)">No clients.</td></tr>';
+    const mac = c.mac ? `<span class="mono">${esc(c.mac)}</span> 🛰️` : '<span style="color:var(--dim)">—</span>';
+    return `<tr data-row><td><b>${esc(c.username)}</b></td><td>${esc(c.whatsapp || "—")}</td><td>${mac}</td><td>${esc(c.resellerCode || "direct")}</td><td>${st}</td><td>${c.daysLeft}</td>
+      <td><button class="btn btn-ghost btn-sm" data-bind-mac="${esc(c.username)}">${c.mac ? "🔄 Re-MAC" : "🛰️ Bind MAC"}</button></td></tr>`;
+  }).join("") || '<tr><td colspan="7" style="color:var(--dim)">No clients.</td></tr>';
 }
 async function loadSettings() {
   const d = await apiGet("admin/settings");
@@ -396,7 +505,26 @@ function appInit() {
       safe("loadApiKeys", loadApiKeys);
     } catch (e) { toast(e.message, "error"); }
   });
-  $("chAddBtn")?.addEventListener("click", () => toast("Channel add: seed catalog se hoti hai — /api/panel admin/channels dekhein.", "ok"));
+  $("chAddBtn")?.addEventListener("click", () => openChannelModal(null));
+  $("chBulkBtn")?.addEventListener("click", () => openImportModal("bulk"));
+  $("chM3uBtn")?.addEventListener("click", () => openImportModal("m3u"));
+  $("chSaveOrderBtn")?.addEventListener("click", async () => {
+    try {
+      const ids = STATE.channels.map((c) => c.id);
+      await apiPost("admin/channel/reorder", { ids });
+      toast("💾 Order saved (" + ids.length + " channels)");
+      await loadChannels();
+    } catch (e) { toast(e.message, "error"); }
+  });
+  $("chModalClose")?.addEventListener("click", () => { $("chModal").hidden = true; });
+  $("chModalSave")?.addEventListener("click", () => safe("saveChannelModal", saveChannelModal));
+  $("impClose")?.addEventListener("click", () => { $("impModal").hidden = true; });
+  $("impPreviewBtn")?.addEventListener("click", () => safe("runImport", () => runImport(true)));
+  $("impGoBtn")?.addEventListener("click", () => safe("runImport", () => runImport(false)));
+  $("copyPortalBtn")?.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("portalUrl")?.textContent || location.origin + "/portal.php"); toast("📋 Portal URL copied"); }
+    catch { toast("Copy manually karo: " + ($("portalUrl")?.textContent || ""), "error"); }
+  });
   $("xtAddBtn")?.addEventListener("click", async () => {
     try {
       const r = await apiPost("admin/xtream/create", { name: "user" + Date.now() % 100000, days: 30, planId: "monthly" });
@@ -408,7 +536,7 @@ function appInit() {
 
   // delegated row actions
   document.addEventListener("click", async (e) => {
-    const el = e.target.closest("[data-rs-topup],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-susp],[data-xt-del]");
+    const el = e.target.closest("[data-rs-topup],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-susp],[data-xt-del],[data-ch-edit],[data-ch-del],[data-bind-mac]");
     if (!el) return;
     try {
       if (el.dataset.rsTopup) { await apiPost("admin/credits-topup", { code: el.dataset.rsTopup, credits: 10 }); toast("+10 credits"); safe("loadResellers", loadResellers); }
@@ -418,6 +546,17 @@ function appInit() {
       else if (el.dataset.xtRenew) { await apiPost("admin/xtream/renew", { username: el.dataset.xtRenew }); toast("🔄 renewed"); safe("loadXtream", loadXtream); }
       else if (el.dataset.xtSusp) { await apiPost("admin/xtream/suspend", { username: el.dataset.xtSusp }); toast("⏸ suspended"); safe("loadXtream", loadXtream); }
       else if (el.dataset.xtDel) { await apiPost("admin/xtream/delete", { username: el.dataset.xtDel }); toast("🗑 deleted"); safe("loadXtream", loadXtream); safe("loadUsers", loadUsers); }
+      else if (el.dataset.chEdit) { const ch = STATE.channels.find((c) => c.id === el.dataset.chEdit); openChannelModal(ch); }
+      else if (el.dataset.chDel) {
+        if (!confirm("Channel delete kar dein?")) return;
+        await apiPost("admin/channel/delete", { id: el.dataset.chDel });
+        toast("🗑 Channel deleted"); safe("loadChannels", loadChannels);
+      }
+      else if (el.dataset.bindMac) {
+        const r = await apiPost("admin/client-bind-mac", { username: el.dataset.bindMac });
+        toast(`🛰️ MAC bound: ${r.mac} — portal: ${r.portal}`);
+        safe("loadUsers", loadUsers); safe("loadStalker", loadStalker);
+      }
     } catch (err) { toast(err.message, "error"); }
   });
 }

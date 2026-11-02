@@ -23,7 +23,7 @@ export default async function embedHandler(req, res) {
       return sendJson(res, 200, { ...S.publicConfig(base), embed: true }, "public, max-age=60");
     }
     if (action === "channels") {
-      const list = (await S.listChannels()).map((c) => ({ id: c.id, name: c.name, logo: c.logo, category: c.category, group: c.category }));
+      const list = (await S.getChannels()).map((c) => ({ id: c.id, name: c.name, logo: c.logo, category: c.category, group: c.category, tier: c.tier || "pro", previewVideo: c.previewVideoUrl || "", url: c.url }));
       return sendJson(res, 200, { ok: true, count: list.length, channels: list }, "public, max-age=60");
     }
     if (action === "movies" || action === "series") {

@@ -6,6 +6,7 @@
  */
 import { handleOptions, parseQuery, sendJson, getRequestBaseUrl, normalizeMac, checkRateLimit } from "../_lib/util.js";
 import { stalkerHandshake, stalkerProfile, listStalkerClients } from "../_lib/store.js";
+import { rtdbGet } from "../_lib/rtdb.js";
 import { authenticateAdmin } from "../_lib/auth.js";
 
 export default async function portalHandler(req, res) {
@@ -22,10 +23,14 @@ export default async function portalHandler(req, res) {
     if (action === "handshake") {
       if (!mac) return sendJson(res, 400, { ok: false, error: "MAC required" });
       const s = await stalkerHandshake(mac);
+      const prof = await stalkerProfile(mac, s.token);
       return sendJson(res, 200, {
         js: {
-          token: s.token, stb: { mac, portal: `${base}/stalker_portal/server/load.php`, version: "Mizanora 3.0" },
-          msg: "Mizanora IPTV MAG portal", exp: s.exp
+          token: s.token,
+          stb: { mac, portal: `${base}/stalker_portal/server/load.php`, version: "Mizanora 3.0" },
+          user: { status: prof?.status || "active", username: prof?.username || "" },
+          msg: "Mizanora IPTV MAG portal — " + (prof?.status || "active"),
+          exp: s.exp
         }
       });
     }
@@ -37,11 +42,23 @@ export default async function portalHandler(req, res) {
     const token = String(q.token || "");
     const prof = await stalkerProfile(mac, token);
     if (!prof) return sendJson(res, 403, { ok: false, error: "Invalid/expired token", js: { token: "" } });
+    // Full IPTV logic for the MAG box: Xtream creds + portal + EPG, status-gated
+    const clients = (await rtdbGet("panel/clients")) || {};
+    const client = Object.values(clients).find((c) => c.mac === prof.mac);
     return sendJson(res, 200, {
       js: {
         token, mac: prof.mac,
-        stb: { status: prof.status, username: prof.username },
-        user: { status: prof.status, exp_date: "" },
+        stb: { status: prof.status, username: prof.username, mac: prof.mac },
+        user: {
+          status: prof.status,
+          username: client?.username || "",
+          password: prof.status === "active" ? client?.password || "" : "",
+          exp_date: client?.expDate ? String(client.expDate) : "",
+          max_connections: String(client?.devices || 1)
+        },
+        server: { url: base, port: "443", epg: `${base}/xmltv.php?username=${client?.username || ""}&password=${client?.password || ""}`,
+          m3u: `${base}/get.php?username=${client?.username || ""}&password=${client?.password || ""}`,
+          player_api: `${base}/player_api.php?username=${client?.username || ""}&password=${client?.password || ""}` },
         msg: "Mizanora IPTV — " + prof.status
       }
     });

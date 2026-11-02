@@ -22,7 +22,10 @@ const ADMIN_ACTIONS = new Set([
   "admin/me", "admin/pin-login", "admin/pin-set",
   "admin/xtream-accounts", "admin/xtream/create", "admin/xtream/update", "admin/xtream/renew",
   "admin/xtream/suspend", "admin/xtream/activate", "admin/xtream/delete",
-  "admin/stalker/list", "admin/channels", "admin/clients",
+  "admin/stalker/list", "admin/channels",
+  "admin/channel/create", "admin/channel/update", "admin/channel/delete",
+  "admin/channel/reorder", "admin/channel/bulk-import", "admin/channel/m3u-import",
+  "admin/clients", "admin/client-bind-mac",
   "admin/client-create", "admin/client-renew", "admin/client-suspend", "admin/client-delete",
   "admin/resellers", "admin/reseller-create", "admin/reseller-update", "admin/credits-topup",
   "admin/orders", "admin/order-review", "admin/payments", "admin/trials",
@@ -314,7 +317,17 @@ export default async function panelHandler(req, res) {
         return sendJson(res, 200, { ok: true, count: list.length, accounts: list });
       }
       const xtream = async (fn) => fn(String(body.username || "").toLowerCase());
-      if (action === "admin/xtream/create") return sendJson(res, 200, { ok: true, client: await S.createClient({ ...body, source: "admin" }) });
+      if (action === "admin/xtream/create") {
+        const client = await S.createClient({ ...body, source: "admin" }); // autoMac default ON → Xtream + Stalker dono
+        return sendJson(res, 200, {
+          ok: true, client,
+          stalker: client.mac ? { mac: client.mac, portal: `${base}/c/portal.php` } : undefined,
+          links: {
+            m3u: `${base}/get.php?username=${client.username}&password=${client.password}&type=m3u_plus&output=m3u8`,
+            playerApi: `${base}/player_api.php?username=${client.username}&password=${client.password}`
+          }
+        });
+      }
       if (action === "admin/xtream/update") {
         const t = await S.getClient(body.username);
         if (!t) return sendJson(res, 404, { ok: false, error: "Not found" });
@@ -329,9 +342,49 @@ export default async function panelHandler(req, res) {
       if (action === "admin/xtream/activate") return sendJson(res, 200, { ok: true, client: await S.suspendClient(body.username, false) });
       if (action === "admin/xtream/delete") { await S.deleteClient(body.username); return sendJson(res, 200, { ok: true, deleted: body.username }); }
       if (action === "admin/stalker/list") return sendJson(res, 200, { ok: true, clients: await S.listStalkerClients() });
-      if (action === "admin/channels") return sendJson(res, 200, { ok: true, count: (await S.listChannels()).length, channels: await S.listChannels() });
+      if (action === "admin/channels") {
+        const list = await S.getChannels();
+        return sendJson(res, 200, { ok: true, count: list.length, channels: list });
+      }
+      if (action === "admin/channel/create" || action === "admin/channel/update") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const ch = await S.upsertChannel(body);
+        return sendJson(res, 200, { ok: true, channel: ch });
+      }
+      if (action === "admin/channel/delete") {
+        await S.deleteChannel(String(body.id || ""));
+        return sendJson(res, 200, { ok: true, deleted: body.id });
+      }
+      if (action === "admin/channel/reorder") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const n = await S.reorderChannels(Array.isArray(body.ids) ? body.ids : []);
+        return sendJson(res, 200, { ok: true, count: n });
+      }
+      if (action === "admin/channel/bulk-import" || action === "admin/channel/m3u-import") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const parsed = action.endsWith("m3u-import") ? S.parseM3u(body.text || "") : S.parseBulkLines(body.text || "");
+        if (!parsed.length) return sendJson(res, 400, { ok: false, error: "Kuch parse nahi hua — M3U ya 'name | url | logo | group' format check karein." });
+        if (body.previewOnly) return sendJson(res, 200, { ok: true, preview: true, count: parsed.length, sample: parsed.slice(0, 8) });
+        const r = await S.importChannels(parsed, { replace: body.replace === true });
+        return sendJson(res, 200, { ok: true, ...r, message: `✅ ${r.added} channels import hue${r.skipped ? ` (${r.skipped} duplicate skip)` : ""}` });
+      }
+      if (action === "admin/client-bind-mac") {
+        const t = await S.getClient(String(body.username || "").toLowerCase());
+        if (!t) return sendJson(res, 404, { ok: false, error: "Client not found" });
+        let mac = body.mac ? normalizeMac(body.mac) : "";
+        if (body.mac && !mac) return sendJson(res, 400, { ok: false, error: "Invalid MAC format" });
+        if (mac) {
+          const all = await S.listClients();
+          const clash = all.find((c) => c.username !== t.username && c.mac && c.mac.toUpperCase() === mac);
+          if (clash) return sendJson(res, 409, { ok: false, error: `MAC already bound to ${clash.username}` });
+        }
+        const finalMac = mac || (await S.ensureClientMac(t));
+        const updated = await S.updateClient(t.username, { mac: finalMac });
+        await S.stalkerHandshake(finalMac);
+        return sendJson(res, 200, { ok: true, client: updated, mac: finalMac, portal: `${base}/c/portal.php`, note: "MAG box mein portal URL + ye MAC daalein — Xtream + Stalker dono milenge." });
+      }
       if (action === "admin/clients") return sendJson(res, 200, { ok: true, count: (await S.listClients()).length, clients: await S.listClients() });
-      if (action === "admin/client-create") return sendJson(res, 200, { ok: true, client: await S.createClient({ ...body, source: "admin" }) });
+      if (action === "admin/client-create") return sendJson(res, 200, { ok: true, client: await S.createClient({ ...body, source: "admin" }) }); // autoMac ON
       if (action === "admin/client-renew") return sendJson(res, 200, { ok: true, client: await S.renewClient(body.username, { planId: body.planId || "monthly" }) });
       if (action === "admin/client-suspend") return sendJson(res, 200, { ok: true, client: await S.suspendClient(body.username, body.suspended !== false) });
       if (action === "admin/client-delete") { await S.deleteClient(body.username); return sendJson(res, 200, { ok: true }); }
