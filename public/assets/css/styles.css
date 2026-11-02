@@ -2116,7 +2116,7 @@ tr.drag-over-row td {
 }
 
 /* 3D Player Shell + Real-Time Ambilight Halo */
-.bw-shell-3d {
+.mz-shell-3d {
   position: relative;
   isolation: isolate;
   overflow: visible !important;
@@ -2124,7 +2124,7 @@ tr.drag-over-row td {
   box-shadow: var(--shadow-lg);
 }
 
-.bw-ambilight-canvas {
+.mz-ambilight-canvas {
   position: absolute;
   inset: -14px -14px 44px -14px;
   width: calc(100% + 28px);
@@ -2137,15 +2137,15 @@ tr.drag-over-row td {
   transition: opacity 0.35s ease;
 }
 
-.bw-shell-3d.ambilight-off .bw-ambilight-canvas {
+.mz-shell-3d.ambilight-off .mz-ambilight-canvas {
   opacity: 0;
 }
 
-.bw-shell-3d .player-stage {
+.mz-shell-3d .player-stage {
   border-radius: 20px 20px 0 0;
 }
 
-.bw-shell-3d .player-controls-bar {
+.mz-shell-3d .player-controls-bar {
   background: var(--bg-card);
   border-radius: 0 0 20px 20px;
 }
@@ -2163,17 +2163,17 @@ tr.drag-over-row td {
 }
 
 /* Custom Mizanora Studio Player Chrome */
-.bw-custom-player {
+.mz-custom-player {
   user-select: none;
   cursor: pointer;
 }
 
-.bw-custom-player.bw-controls-autohide {
+.mz-custom-player.mz-controls-autohide {
   cursor: none;
 }
 
-.bw-custom-player:fullscreen,
-.bw-custom-player:-webkit-full-screen {
+.mz-custom-player:fullscreen,
+.mz-custom-player:-webkit-full-screen {
   width: 100vw;
   height: 100vh;
   aspect-ratio: auto;
@@ -2181,7 +2181,7 @@ tr.drag-over-row td {
   background: #000;
 }
 
-.bw-studio-chrome {
+.mz-studio-chrome {
   position: absolute;
   inset: 0;
   z-index: 9;
@@ -2191,7 +2191,7 @@ tr.drag-over-row td {
   justify-content: flex-end;
 }
 
-.bw-buffer-ring {
+.mz-buffer-ring {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -2210,7 +2210,7 @@ tr.drag-over-row td {
   font-weight: 700;
 }
 
-.bw-spinner-orb {
+.mz-spinner-orb {
   width: 38px;
   height: 38px;
   border-radius: 50%;
@@ -2224,7 +2224,7 @@ tr.drag-over-row td {
   to { transform: rotate(360deg); }
 }
 
-.bw-center-play-btn {
+.mz-center-play-btn {
   pointer-events: auto;
   position: absolute;
   top: 50%;
@@ -2245,11 +2245,11 @@ tr.drag-over-row td {
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-.bw-center-play-btn:hover {
+.mz-center-play-btn:hover {
   transform: translate(-50%, -50%) scale(1.08);
 }
 
-.bw-seek-ripple {
+.mz-seek-ripple {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
@@ -2262,29 +2262,29 @@ tr.drag-over-row td {
   font-size: 0.84rem;
 }
 
-.bw-seek-ripple.left { left: 12%; }
-.bw-seek-ripple.right { right: 12%; }
+.mz-seek-ripple.left { left: 12%; }
+.mz-seek-ripple.right { right: 12%; }
 
-.bw-bottom-deck {
+.mz-bottom-deck {
   pointer-events: auto;
   padding: 24px 14px 11px;
   background: linear-gradient(180deg, transparent 0%, rgba(4, 9, 18, 0.76) 42%, rgba(4, 9, 18, 0.94) 100%);
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
-.bw-custom-player.bw-controls-autohide .bw-bottom-deck,
-.bw-custom-player.bw-controls-autohide .player-top-hud {
+.mz-custom-player.mz-controls-autohide .mz-bottom-deck,
+.mz-custom-player.mz-controls-autohide .player-top-hud {
   opacity: 0;
   transform: translateY(6px);
   pointer-events: none;
 }
 
-.bw-timeline-wrap {
+.mz-timeline-wrap {
   padding: 5px 0 8px;
   cursor: pointer;
 }
 
-.bw-timeline-track {
+.mz-timeline-track {
   position: relative;
   width: 100%;
   height: 5px;
@@ -2293,11 +2293,11 @@ tr.drag-over-row td {
   transition: height 0.14s ease;
 }
 
-.bw-timeline-wrap:hover .bw-timeline-track {
+.mz-timeline-wrap:hover .mz-timeline-track {
   height: 8px;
 }
 
-.bw-timeline-buffered {
+.mz-timeline-buffered {
   position: absolute;
   left: 0;
   top: 0;
@@ -2307,7 +2307,7 @@ tr.drag-over-row td {
   background: rgba(255, 255, 255, 0.36);
 }
 
-.bw-timeline-progress {
+.mz-timeline-progress {
   position: absolute;
   left: 0;
   top: 0;
@@ -2317,7 +2317,7 @@ tr.drag-over-row td {
   background: linear-gradient(90deg, #10b981, #34d399, #fbbf24);
 }
 
-.bw-timeline-thumb {
+.mz-timeline-thumb {
   position: absolute;
   right: -6px;
   top: 50%;
@@ -2331,11 +2331,11 @@ tr.drag-over-row td {
   transition: transform 0.14s ease;
 }
 
-.bw-timeline-wrap:hover .bw-timeline-thumb {
+.mz-timeline-wrap:hover .mz-timeline-thumb {
   transform: translateY(-50%) scale(1.15);
 }
 
-.bw-deck-row {
+.mz-deck-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2343,14 +2343,14 @@ tr.drag-over-row td {
   flex-wrap: wrap;
 }
 
-.bw-deck-left,
-.bw-deck-right {
+.mz-deck-left,
+.mz-deck-right {
   display: flex;
   align-items: center;
   gap: 5px;
 }
 
-.bw-ctrl-btn {
+.mz-ctrl-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2368,36 +2368,36 @@ tr.drag-over-row td {
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
 }
 
-.bw-ctrl-btn:hover {
+.mz-ctrl-btn:hover {
   background: rgba(52, 211, 153, 0.26);
   border-color: rgba(52, 211, 153, 0.6);
   transform: translateY(-1px);
 }
 
-.bw-ctrl-btn.active-glow {
+.mz-ctrl-btn.active-glow {
   border-color: rgba(251, 191, 36, 0.65);
   background: rgba(251, 191, 36, 0.18);
 }
 
-.bw-pill-ctrl {
+.mz-pill-ctrl {
   font-size: 0.72rem;
   padding: 0 9px;
 }
 
-.bw-vol-group {
+.mz-vol-group {
   display: inline-flex;
   align-items: center;
   gap: 5px;
 }
 
-.bw-vol-slider {
+.mz-vol-slider {
   width: 68px;
   height: 4px;
   accent-color: #34d399;
   cursor: pointer;
 }
 
-.bw-live-sync-pill {
+.mz-live-sync-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2414,24 +2414,24 @@ tr.drag-over-row td {
   font-family: inherit;
 }
 
-.bw-live-sync-pill .bw-live-dot {
+.mz-live-sync-pill .mz-live-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: #94a3b8;
 }
 
-.bw-live-sync-pill.is-live {
+.mz-live-sync-pill.is-live {
   border-color: rgba(239, 68, 68, 0.55);
   color: #fff;
 }
 
-.bw-live-sync-pill.is-live .bw-live-dot {
+.mz-live-sync-pill.is-live .mz-live-dot {
   background: #ef4444;
   box-shadow: 0 0 8px #ef4444;
 }
 
-.bw-engine-badge {
+.mz-engine-badge {
   padding: 4px 8px;
   border-radius: 7px;
   font-size: 0.67rem;
@@ -2584,17 +2584,17 @@ tr.drag-over-row td {
     z-index: 42;
   }
 
-  .bw-vol-slider,
-  .bw-engine-badge,
+  .mz-vol-slider,
+  .mz-engine-badge,
   #bwSnapBtn {
     display: none;
   }
 
-  .bw-bottom-deck {
+  .mz-bottom-deck {
     padding: 16px 9px 8px;
   }
 
-  .bw-ctrl-btn {
+  .mz-ctrl-btn {
     min-width: 29px;
     height: 29px;
     padding: 0 5px;
@@ -3384,12 +3384,12 @@ img[loading="lazy"] {
   }
 
   /* Bigger, thumb-friendly studio controls */
-  .bw-ctrl-btn {
+  .mz-ctrl-btn {
     min-width: 32px;
     height: 32px;
   }
 
-  .bw-timeline-track {
+  .mz-timeline-track {
     height: 5px;
   }
 
@@ -3403,11 +3403,11 @@ img[loading="lazy"] {
 
 /* ---------- 11. Player shell 3D depth (desktop only, GPU-light) ---------- */
 @media (hover: hover) and (pointer: fine) {
-  .bw-shell-3d {
+  .mz-shell-3d {
     transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s ease;
   }
 
-  .bw-shell-3d:hover {
+  .mz-shell-3d:hover {
     transform: translateY(-2px);
     box-shadow: 0 34px 70px -30px rgba(2, 8, 23, 0.5);
   }
@@ -3498,7 +3498,7 @@ a.btn {
 }
 
 /* Skeleton shimmer for admin/panel dashboards filling in from cache. */
-.bw-skeleton {
+.mz-skeleton {
   border-radius: 10px;
   background: linear-gradient(90deg, var(--bg-soft) 25%, var(--bg-hover) 37%, var(--bg-soft) 63%);
   background-size: 400% 100%;

@@ -9,8 +9,11 @@ import { checkRateLimit, getClientIp } from "../_lib/security.js";
 import { authenticateAdmin, getClientToken, setOwnerPin, verifyOwnerPin } from "../_lib/adminauth.js";
 import {
   deviceFingerprint,
+  generateAdminApiKey,
   generateLicenseKey,
+  hashApiKey,
   hashLicenseKey,
+  maskKey,
   normalizeMac,
   signPlayRequest,
   verifyPlayToken
@@ -51,7 +54,7 @@ import {
 } from "../_lib/panelstore.js";
 import { getChannels, getPlaylistById, getMovies, getSeries, rtdbGet, rtdbSet } from "../_lib/rtdb.js";
 import { PLANS, PANEL, PAYMENT, FEATURE_MATRIX, RESELLER_TIERS, SELF_SERVE, KEYWORDS, priceForPlan } from "../../data/panel.js";
-import { BRAND } from "../../data/catalog.js";
+import { BRAND, DEFAULT_SETTINGS } from "../../data/catalog.js";
 import { getAnalyticsDashboardSnapshot, listClientErrors } from "../_lib/tracker.js";
 
 /**
@@ -105,7 +108,18 @@ const ADMIN_ACTIONS = new Set([
   "admin/playlists",
   "admin/xtream-accounts",
   "admin/xtream/create",
+  "admin/xtream/update",
+  "admin/xtream/renew",
+  "admin/xtream/suspend",
+  "admin/xtream/activate",
   "admin/xtream/delete",
+  "admin/stalker/list",
+  "admin/client-delete",
+  "admin/api-keys",
+  "admin/api-key-create",
+  "admin/api-key-revoke",
+  "admin/settings",
+  "admin/settings-set",
   "admin/catalog"
 ]);
 
@@ -930,7 +944,7 @@ export default async function handler(req, res) {
           const topped = await topUpCredits(reseller.code, creditsToAdd);
           activated = { type: "reseller", resellerCode: topped.code, credits: topped.credits, added: creditsToAdd };
         } else {
-          const username = target.username || ("bw" + Date.now().toString(36).slice(-6));
+          const username = target.username || ("mz" + Date.now().toString(36).slice(-6));
           const existing = await getClient(username);
           if (existing) {
             activated = { type: "client", client: await renewClient(username, { planId: target.planId }) };
@@ -1035,7 +1049,7 @@ export default async function handler(req, res) {
       }
 
       if (action === "admin/keys") {
-        const generated = generateLicenseKey("BW");
+        const generated = generateLicenseKey("MZK");
         return sendJson(res, 200, {
           ok: true,
           licenseKey: generated,
@@ -1167,7 +1181,7 @@ export default async function handler(req, res) {
         const key = String(xt.username).replace(/[.#$[]]/g, "").replace(/[\/]/g, "");
         const record = {
           username: key,
-          password: xt.password || `BW${Math.floor(1000 + Math.random() * 9000)}`,
+          password: xt.password || `MZ${Math.floor(1000 + Math.random() * 9000)}`,
           plan: xt.plan || "free",
           maxConnections: Number(xt.maxConnections) || 1,
           email: xt.email || "",
@@ -1188,6 +1202,212 @@ export default async function handler(req, res) {
         await rtdbSet(`xtreamAccounts/${key}`, null);
         clearPanelCache();
         return sendJson(res, 200, { ok: true, deleted: key });
+      }
+
+      /* ------------- ADMIN: XTREAM update / renew / suspend ------------- */
+      const xtKey = (u) => String(u || "").replace(/[.#$[]]/g, "").replace(/[\/]/g, "");
+
+      if (action === "admin/xtream/update" && isPost) {
+        const key = xtKey(body.username || body.id);
+        if (!key) return sendJson(res, 400, { ok: false, error: "username required." });
+        const existing = await rtdbGet(`xtreamAccounts/${key}`, { ttlMs: 5000 });
+        if (!existing) return sendJson(res, 404, { ok: false, error: `Xtream account '${key}' not found.` });
+        const patch = { ...existing };
+        for (const f of ["password", "plan", "status", "email", "notes", "displayName", "maxConnections", "uid"]) {
+          if (body[f] !== undefined) patch[f] = body[f];
+        }
+        if (body.mac !== undefined) {
+          const mac = normalizeMac(String(body.mac || ""));
+          if (body.mac && !mac) return sendJson(res, 400, { ok: false, error: "Invalid MAC format." });
+          patch.mac = mac || "";
+        }
+        if (body.expDate !== undefined) {
+          patch.expDate = body.expDate
+            ? Math.floor(new Date(body.expDate).getTime() / 1000)
+            : 0;
+        }
+        patch.updatedAt = new Date().toISOString();
+        await rtdbSet(`xtreamAccounts/${key}`, patch);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, xtream: patch });
+      }
+
+      if (action === "admin/xtream/renew" && isPost) {
+        const key = xtKey(body.username || body.id);
+        if (!key) return sendJson(res, 400, { ok: false, error: "username required." });
+        const existing = await rtdbGet(`xtreamAccounts/${key}`, { ttlMs: 5000 });
+        if (!existing) return sendJson(res, 404, { ok: false, error: `Xtream account '${key}' not found.` });
+        const days = Math.max(1, Number(body.days) || 30);
+        const nowSec = Math.floor(Date.now() / 1000);
+        const baseExp = Math.max(nowSec, Number(existing.expDate || 0));
+        const expDate = baseExp + days * 86400;
+        const patch = { ...existing, expDate, status: "Active", updatedAt: new Date().toISOString(), renewedDays: days };
+        await rtdbSet(`xtreamAccounts/${key}`, patch);
+        clearPanelCache();
+        return sendJson(res, 200, {
+          ok: true,
+          xtream: patch,
+          expiresAt: new Date(expDate * 1000).toISOString()
+        });
+      }
+
+      if ((action === "admin/xtream/suspend" || action === "admin/xtream/activate") && isPost) {
+        const key = xtKey(body.username || body.id);
+        if (!key) return sendJson(res, 400, { ok: false, error: "username required." });
+        const existing = await rtdbGet(`xtreamAccounts/${key}`, { ttlMs: 5000 });
+        if (!existing) return sendJson(res, 404, { ok: false, error: `Xtream account '${key}' not found.` });
+        const patch = {
+          ...existing,
+          status: action === "admin/xtream/suspend" ? "Suspended" : "Active",
+          updatedAt: new Date().toISOString()
+        };
+        await rtdbSet(`xtreamAccounts/${key}`, patch);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, xtream: patch });
+      }
+
+      /* ------------- ADMIN: STALKER / MAG (MAC-bound accounts) ------------- */
+      if (action === "admin/stalker/list") {
+        const [xtream, clients] = await Promise.all([
+          rtdbGet("xtreamAccounts", { ttlMs: 5000 }).catch(() => null),
+          listClients().catch(() => [])
+        ]);
+        const stalker = [];
+        if (xtream && typeof xtream === "object") {
+          for (const [k, v] of Object.entries(xtream)) {
+            if (v && v.mac) {
+              stalker.push({
+                source: "xtream",
+                username: v.username || k,
+                mac: v.mac,
+                plan: v.plan || "free",
+                status: v.status || "Active",
+                expDate: v.expDate || 0,
+                expiresAt: v.expDate ? new Date(Number(v.expDate) * 1000).toISOString() : null
+              });
+            }
+          }
+        }
+        for (const c of clients || []) {
+          if (c && c.mac) {
+            stalker.push({
+              source: "panel-client",
+              id: c.id,
+              username: c.username,
+              mac: c.mac,
+              resellerCode: c.resellerCode || "",
+              plan: c.plan || "free",
+              status: c.status || "Active",
+              expDate: c.expDate || 0,
+              expiresAt: c.expDate ? new Date(Number(c.expDate) * 1000).toISOString() : null
+            });
+          }
+        }
+        return sendJson(res, 200, { ok: true, count: stalker.length, stalker });
+      }
+
+      /* ------------- ADMIN: delete panel client ------------- */
+      if (action === "admin/client-delete" && isPost) {
+        const id = String(body.id || body.clientId || "").trim();
+        if (!id) return sendJson(res, 400, { ok: false, error: "id required." });
+        await rtdbSet(`panel/clients/${id}`, null);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, deleted: id });
+      }
+
+      /* ------------- ADMIN: API KEYS (mzk_…) ------------- */
+      if (action === "admin/api-keys") {
+        const raw = await rtdbGet("panel/apiKeys", { ttlMs: 5000 }).catch(() => null);
+        const keys = raw && typeof raw === "object"
+          ? Object.entries(raw).map(([hash, v]) => ({
+              id: hash.slice(0, 16),
+              hash,
+              label: v.label || "",
+              role: v.role || "admin",
+              scopes: v.scopes || ["admin:*"],
+              createdAt: v.createdAt || null,
+              expiresAt: v.expiresAt || 0,
+              lastUsedAt: v.lastUsedAt || 0,
+              revoked: Boolean(v.revoked)
+            }))
+          : [];
+        return sendJson(res, 200, { ok: true, count: keys.length, apiKeys: keys });
+      }
+
+      if (action === "admin/api-key-create" && isPost) {
+        const label = String(body.label || "").trim() || "external-panel";
+        const expiresDays = Math.max(0, Number(body.expiresDays) || 0); // 0 = never
+        const scopes = Array.isArray(body.scopes) && body.scopes.length ? body.scopes : ["admin:*"];
+        const key = generateAdminApiKey();
+        const hash = hashApiKey(key);
+        const record = {
+          hash,
+          label,
+          role: "admin",
+          scopes,
+          createdAt: new Date().toISOString(),
+          expiresAt: expiresDays > 0 ? Date.now() + expiresDays * 86400_000 : 0,
+          revoked: false,
+          createdBy: admin.uid || "admin"
+        };
+        await rtdbSet(`panel/apiKeys/${hash}`, record);
+        clearPanelCache();
+        return sendJson(res, 200, {
+          ok: true,
+          apiKey: key, // shown ONCE — store it now
+          masked: maskKey(key),
+          record: { label, role: "admin", scopes, expiresAt: record.expiresAt, createdAt: record.createdAt },
+          usage: 'Authorization: Bearer ' + key + '   (or header: x-api-key: ' + key + ')'
+        });
+      }
+
+      if (action === "admin/api-key-revoke" && isPost) {
+        const hash = String(body.hash || body.id || "").trim();
+        if (!hash) return sendJson(res, 400, { ok: false, error: "hash (or id) required." });
+        const full = hash.length === 64 ? hash : null;
+        let target = full;
+        if (!target) {
+          const all = await rtdbGet("panel/apiKeys", { ttlMs: 5000 }).catch(() => null);
+          if (all && typeof all === "object") {
+            const hit = Object.keys(all).find((h) => h.startsWith(hash));
+            if (hit) target = hit;
+          }
+        }
+        if (!target) return sendJson(res, 404, { ok: false, error: "API key not found." });
+        await rtdbSet(`panel/apiKeys/${target}/revoked`, true);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, revoked: target.slice(0, 16) });
+      }
+
+      /* ------------- ADMIN: SETTINGS via API ------------- */
+      if (action === "admin/settings") {
+        const raw = await rtdbGet("settings", { ttlMs: 5000 }).catch(() => null);
+        const priv = (raw && raw.private) || {};
+        const redactedPrivate = Object.fromEntries(Object.keys(priv).map((k) => [k, "•••"]));
+        return sendJson(res, 200, {
+          ok: true,
+          defaults: { ...DEFAULT_SETTINGS, ...((raw && raw.defaults) || {}) },
+          stored: raw || {},
+          private: redactedPrivate
+        });
+      }
+
+      if (action === "admin/settings-set" && isPost) {
+        const patch = (body && typeof body.patch === "object" && body.patch) || body;
+        const clean = {};
+        for (const [k, v] of Object.entries(patch || {})) {
+          if (k === "private" || k.startsWith("$")) continue;
+          if (!(k in DEFAULT_SETTINGS)) continue; // whitelist
+          clean[k] = v;
+        }
+        if (!Object.keys(clean).length) {
+          return sendJson(res, 400, { ok: false, error: "No valid settings keys in patch. Allowed: " + Object.keys(DEFAULT_SETTINGS).join(", ") });
+        }
+        const current = await rtdbGet("settings/defaults", { ttlMs: 5000 }).catch(() => null);
+        const merged = { ...DEFAULT_SETTINGS, ...(current || {}), ...clean };
+        await rtdbSet("settings/defaults", merged);
+        clearPanelCache();
+        return sendJson(res, 200, { ok: true, updated: Object.keys(clean), settings: merged });
       }
 
       if (action === "admin/secure-link") {

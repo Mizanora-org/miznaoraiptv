@@ -52,13 +52,23 @@ function randomBlock(len = 4) {
 }
 
 /** BW-XXXX-XXXX-XXXX style customer license key. */
-export function generateLicenseKey(prefix = "BW") {
+export function generateLicenseKey(prefix = "MZK") {
   return `${prefix}-${randomBlock()}-${randomBlock()}-${randomBlock()}`;
 }
 
 /** Reseller API key: mzr_<32 hex>. */
 export function generateResellerApiKey() {
   return "mzr_" + crypto.randomBytes(16).toString("hex");
+}
+
+/** Admin API key (manage Xtream/Stalker users, channels, resellers via API): mzk_<32 hex>. */
+export function generateAdminApiKey() {
+  return "mzk_" + crypto.randomBytes(16).toString("hex");
+}
+
+/** Hash an API key for storage/lookup (never store plaintext). */
+export function hashApiKey(key) {
+  return sha256("mzk:" + String(key || "").trim());
 }
 
 /** Strong random password for auto-provisioned Xtream users. */

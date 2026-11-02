@@ -171,7 +171,7 @@
   }
   </script>
 </head>
-<body class="has-mobile-dock bw-3d-ui">
+<body class="has-mobile-dock mz-3d-ui">
   <!-- Ambient 3D Spatial Broadcast Aurora -->
   <div class="spatial-3d-aurora" aria-hidden="true">
     <div class="aurora-orb orb-1"></div>
@@ -234,7 +234,7 @@
         <button class="nav-tab" data-view="pro">👑 PRO VIP</button>
         <button class="nav-tab" data-view="reseller">🤝 Resellers</button>
         <button class="nav-tab" data-view="blogs">📰 Blogs</button>
-        <button class="nav-tab" data-view="reseller">🤝 Dealers</button>
+        <a class="nav-tab" href="/api.html">📡 API</a>
         <a class="nav-tab" href="/pricing">💳 Pricing</a>
         <a class="nav-tab" href="/reseller">🏪 Reseller Panel</a>
         <a class="nav-tab" href="/embed.html">🔌 Embed API</a>
@@ -982,6 +982,28 @@
     </div>
   </section>
 
+    <!-- ==================== DEVELOPERS STRIP ==================== -->
+    <section class="container" aria-label="Developers" style="margin:26px auto 34px;">
+      <h2 style="margin:0 0 12px;">🧰 Developers — apni website par Mizanora IPTV lagao</h2>
+      <div class="footer-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">
+        <div class="glass-card" style="padding:16px;">
+          <h3 style="margin:0 0 6px;font-size:1rem;">🔌 Embed API (2 lines)</h3>
+          <p class="muted-sm">Plans, live channels, order form, free trial — kisi bhi site mein embed karo. CORS open.</p>
+          <a class="btn btn-sm btn-primary" href="/embed.html">Open Embed demo</a>
+        </div>
+        <div class="glass-card" style="padding:16px;">
+          <h3 style="margin:0 0 6px;font-size:1rem;">📡 API Reference (keys ke saath)</h3>
+          <p class="muted-sm">Xtream users, MAG/Stalker MAC clients, channels, resellers — <code>mzk_</code> admin key ya <code>mzr_</code> reseller key se sab manage karo, apna panel banao.</p>
+          <a class="btn btn-sm btn-outline" href="/api.html">API docs</a>
+        </div>
+        <div class="glass-card" style="padding:16px;">
+          <h3 style="margin:0 0 6px;font-size:1rem;">🛡️ Admin Guide</h3>
+          <p class="muted-sm">Firebase setup se lekar panel chalane tak — step-by-step guide (Roman Urdu + English).</p>
+          <a class="btn btn-sm btn-outline" href="/admin-guide.html">Read guide</a>
+        </div>
+      </div>
+    </section>
+
   <footer class="site-footer">
     <div class="container">
       <div class="footer-grid">
@@ -1005,6 +1027,8 @@
             <a href="/pricing">Pricing</a> &bull;
             <a href="/reseller">Reseller Panel</a> &bull;
             <a href="/embed.html">🔌 Embed API</a> &bull;
+            <a href="/api.html">📡 API Reference</a> &bull;
+            <a href="/admin-guide.html">🛡️ Admin Guide</a> &bull;
             <a href="/legal">Legal Center</a> &bull;
             <a href="/sitemap.xml">Sitemap.xml</a> &bull;
             <a href="/rss.xml">RSS Feed</a> &bull;

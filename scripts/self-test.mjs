@@ -1097,9 +1097,9 @@ async function run() {
         homeHtml3d.includes('id="activeSeriesEpisodeTray"') &&
         homeHtml3d.includes('id="cinemaFeaturedHero"') &&
         homeHtml3d.includes('class="spatial-3d-aurora"') &&
-        playerJsText.includes("bw-studio-chrome") &&
-        playerJsText.includes("bw-ambilight-canvas") &&
-        stylesCssText.includes(".bw-shell-3d") &&
+        playerJsText.includes("mz-studio-chrome") &&
+        playerJsText.includes("mz-ambilight-canvas") &&
+        stylesCssText.includes(".mz-shell-3d") &&
         stylesCssText.includes("--rx")
     );
 
