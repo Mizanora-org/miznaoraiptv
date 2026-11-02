@@ -87,6 +87,7 @@ See [docs/RESELLER.md](docs/RESELLER.md) for workflow and API examples. **Never 
 - Public account resolution requires the correct password. Unknown stream IDs/MACs never fall back to unrelated channels.
 - The repository includes default live channels plus IMDb movie/series metadata. **Metadata is not a video stream.** Configure licensed movie/episode URLs in Admin; unconfigured titles remain `Metadata only`.
 - Only import/stream content you own or have permission to distribute. Upstream availability, HTTPS and CORS policies are controlled by the provider.
+- Xtream playback redirects authenticated clients to the configured source; the source URL is therefore visible to clients. Select HLS/M3U8 output in the player for HLS sources. This service does not transcode HLS to MPEG-TS, and the player's format support and the provider's availability still determine playback.
 
 ## Tests
 

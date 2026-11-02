@@ -72,6 +72,18 @@ const remoteServer = http.createServer((req, res) => {
     const body = `#EXTM3U x-tvg-url="${remoteBase}/guide.xml"\n#EXTINF:-1 tvg-id="mz.test.one" tvg-logo="/logo.png" group-title="Test News",MZ Test, One\n${base}/media/demo-live/index.m3u8\n#EXTINF:-1 tvg-id="mz.test.two" group-title="Test Promo",MZ Test Two\n${base}/media/welcome/index.m3u8\n#EXTINF:-1 tvg-id="bad",Invalid\njavascript:alert(1)\n`;
     res.writeHead(200, { "Content-Type": "audio/mpegurl" }); return res.end(body);
   }
+  if (req.url === "/hls/master.m3u8?token=test") {
+    res.writeHead(200, { "Content-Type": "application/vnd.apple.mpegurl", "Access-Control-Allow-Origin": "*" });
+    return res.end("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\nvariant/index.m3u8\n");
+  }
+  if (req.url === "/hls/variant/index.m3u8") {
+    res.writeHead(200, { "Content-Type": "application/vnd.apple.mpegurl", "Access-Control-Allow-Origin": "*" });
+    return res.end("#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nsegment.ts\n");
+  }
+  if (req.url === "/hls/variant/segment.ts") {
+    res.writeHead(200, { "Content-Type": "video/mp2t", "Access-Control-Allow-Origin": "*" });
+    return res.end("test transport stream");
+  }
   if (req.url === "/guide.xml") {
     const now = Date.now();
     const body = `<tv><channel id="mz.test.one"><display-name>MZ Test, One</display-name></channel><programme channel="mz.test.one" start="${formatXmlTvDate(now - 1800000)}" stop="${formatXmlTvDate(now + 1800000)}"><title>Live Test &amp; News</title><desc>Current programme</desc><category>News</category></programme><programme channel="mz.test.one" start="${formatXmlTvDate(now + 1800000)}" stop="${formatXmlTvDate(now + 5400000)}"><title>Next Test Show</title></programme></tv>`;
@@ -114,7 +126,7 @@ try {
   r = await request("/api/embed?action=movies&limit=5&q=Maula"); check("catalog server search works", r.status === 200 && r.body.total >= 1 && r.body.movies.some((m) => /Maula/i.test(m.title)));
   r = await request(`/api/embed?action=stream&id=${firstChannel.id}`); check("free preview issues a signed token", r.status === 200 && r.body.url?.includes("/s/"));
   const publicPreview = r.body.url;
-  r = await request(new URL(publicPreview).pathname); check("public signed preview is a valid HLS variant", r.status === 200 && r.text.includes("#EXT-X-STREAM-INF") && r.text.includes("/media/"));
+  r = await request(new URL(publicPreview).pathname, { redirect: "manual" }); check("public preview redirects to the actual source", r.status === 302 && !!r.headers.get("location"));
   r = await request("/api/panel?action=admin/me", { headers: { "x-admin-token": "mzp_" + new URL(publicPreview).pathname.split("/s/")[1] } }); check("stream token cannot be reused as an admin PIN session", r.status === 401);
   r = await request(`/api/embed?action=stream&id=${proChannel.id}`); check("PRO preview cannot bypass subscription", r.status === 403);
   r = await request("/media/demo-live/seg0.m2ts", { headers: { Range: "bytes=0-99" } }); check("video byte range returns 206 + correct MIME", r.status === 206 && r.headers.get("content-range")?.startsWith("bytes 0-99/") && r.headers.get("content-type") === "video/mp2t");
@@ -143,13 +155,38 @@ try {
   r = await request(`/xmltv.php?username=${U}&password=${P}`); check("XMLTV contains escaped channels", r.status === 200 && r.text.includes("<tv") && r.text.includes("<display-name>"));
   r = await request(`/live/${U}/${P}/${liveStreams[0].stream_id}.m3u8`, { redirect: "manual" }); check("live URL redirects to signed /s/", r.status === 302 && r.headers.get("location")?.includes("/s/"));
   const signedPath = new URL(r.headers.get("location")).pathname;
-  r = await request(signedPath); check("signed live playlist nests upstream as HLS variant", r.status === 200 && r.text.includes("#EXT-X-STREAM-INF") && !r.text.startsWith("#EXTM3U\n#EXTINF"));
+  r = await request(signedPath, { redirect: "manual" }); check("signed live URL redirects to the real source without nesting playlists", r.status === 302 && !!r.headers.get("location"));
   r = await request(`/live/${U}/${P}/does-not-exist.m3u8`, { redirect: "manual" }); const missingPath = new URL(r.headers.get("location")).pathname;
   r = await request(missingPath); check("unknown stream is 404, never random channel fallback", r.status === 404);
   r = await request("/s/tampered.token"); check("tampered signed token is rejected", r.status === 403);
   r = await request(`/api/panel?action=resolve&username=${U}`); check("username alone cannot disclose credentials", r.status === 401);
   r = await request(`/api/panel?action=resolve&username=${U}&password=${encodeURIComponent(P)}`); check("correct credentials resolve account links", r.status === 200 && r.body.links?.m3u.includes(P));
   r = await panelPost({ action: "track", sessionId: "selftest_session", event: "stream_play", route: "/channel/test" }); check("analytics event accepted", r.status === 202 && r.body.ok);
+
+  // Exercise the actual Xtream -> signed URL -> provider redirect chain, including
+  // master playlists with relative variants and segments and colliding IDs.
+  const { rtdbGet, rtdbSet } = await import("../api/_lib/rtdb.js");
+  const originalChannels = await rtdbGet("channels");
+  await rtdbSet("channels", [
+    { id: "inactive", streamId: 99, name: "Inactive", status: "inactive", url: `${remoteBase}/hls/master.m3u8?token=test` },
+    { id: "explicit", streamId: 2, name: "Master", status: "active", url: `${remoteBase}/hls/master.m3u8?token=test` },
+    { id: "other", streamId: 42, name: "Other", status: "active", url: `${base}/media/welcome/index.m3u8` },
+    { id: "legacy", name: "Legacy", status: "active", url: `${base}/media/demo-live/index.m3u8` }
+  ]);
+  r = await request(`/player_api.php?username=${U}&password=${P}&action=get_live_streams`);
+  check("Xtream listing uses active IDs and legacy positions", r.body.map((c) => c.stream_id).join(",") === "2,42,3");
+  const masterResponse = await fetch(`${base}/live/${U}/${P}/2.m3u8`);
+  const master = await masterResponse.text();
+  check("Xtream follows the correct channel to the original HLS master", masterResponse.status === 200 && masterResponse.url === `${remoteBase}/hls/master.m3u8?token=test` && master.includes("variant/index.m3u8"));
+  const variantResponse = await fetch(new URL("variant/index.m3u8", masterResponse.url));
+  const variant = await variantResponse.text();
+  const segmentResponse = await fetch(new URL("segment.ts", variantResponse.url));
+  check("provider-relative variant and segment remain playable", variant.includes("segment.ts") && segmentResponse.ok && await segmentResponse.text() === "test transport stream");
+  r = await request(`/live/${U}/${P}/3.m3u8`);
+  check("legacy positional stream ID matches active Xtream listing", r.status === 200 && r.text.includes("seg0"));
+  r = await request(`/live/${U}/wrong/2.m3u8`); check("live stream rejects incorrect password", r.status === 401);
+  r = await request(`/live/${U}/${P}/99.m3u8`); check("inactive channel cannot play", r.status === 404);
+  await rtdbSet("channels", originalChannels);
 
   console.log("\n🛡️ Owner admin + CRUD");
   r = await request("/api/panel?action=admin/me"); check("admin requires auth", r.status === 401);
