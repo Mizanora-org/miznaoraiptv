@@ -145,6 +145,10 @@ export function createAppServer() {
 
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Accept-Ranges", "bytes");
+      if (ext === ".html") {
+        // Google sign-in popup ko window.closed se check karne dein (COOP warning fix)
+        res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+      }
 
       const range = req.headers.range;
       if (range) {
