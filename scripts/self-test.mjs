@@ -81,6 +81,8 @@ check("admin-modern.js has business tabs (resellers/orders/stalker/api keys)", [
 check("luxe CSS styles the lock screen + gsi button", luxeCss.includes(".lock-screen") && luxeCss.includes(".gsi-btn"));
 check("firebase client locks ADMIN_EMAIL to muaaziqbal.vip@gmail.com", fbClient.includes('ADMIN_EMAIL = "muaaziqbal.vip@gmail.com"') && fbClient.includes("isAdminEmail"));
 check("firebase client uses mizanoranet project config", fbClient.includes('projectId: "mizanoranet"') && fbClient.includes("mizanoranet-default-rtdb"));
+check("firebase config HARDCODED in repo (no Vercel env needed)", fbClient.includes("HARDCODED IN THE REPO") && fbClient.includes('apiKey: "AIzaSyA4PWELrMHQrRA29EZzfRx1iZkXtJkKh9M"') && fbClient.includes('appId: "1:1047231858393:web:7e9fa18b59172f806da0c8"'));
+check("server-side RTDB URL + API key baked in too", fs.readFileSync(path.join(ROOT, "api/_lib/rtdb.js"), "utf8").includes('"https://mizanoranet-default-rtdb.firebaseio.com"') && fs.readFileSync(path.join(ROOT, "api/_lib/adminauth.js"), "utf8").includes('"AIzaSyA4PWELrMHQrRA29EZzfRx1iZkXtJkKh9M"'));
 check("RTDB rules keep admin = muaaziqbal.vip@gmail.com (email_verified)", rules.includes("muaaziqbal.vip@gmail.com") && rules.includes("email_verified"));
 check("vercel.json: root '/' rewrites to /admin.html", vercel.rewrites.some(r => r.source === "/" && r.destination === "/admin.html"));
 check("vercel.json: no rewrites left to removed public pages", !vercel.rewrites.some(r => ["/reseller", "/pricing", "/blog", "/legal", "/sitemap.xml"].includes(r.source)));
@@ -178,6 +180,33 @@ j = await jget("/api/panel?action=admin/me", { headers: { "x-api-key": mzk } });
 check("revoked mzk_ key -> 401 immediately", j.status === 401);
 j = await jget("/api/panel", { method: "POST", headers: { "Authorization": "Bearer " + pinTok, "Content-Type": "application/json" }, body: JSON.stringify({ action: "admin/xtream/delete", username: "selftest1" }) });
 check("cleanup: xtream delete", j.status === 200 && j.body.ok);
+
+j = await jget("/api/panel?action=help");
+check("help/docs action self-documents all APIs", j.status === 200 && j.body.ok && Array.isArray(j.body.actions.reseller) && j.body.actions.reseller.some(a => a.includes("client-credentials")) === false && j.body.actions.reseller.some(a => a.includes("reseller/credentials")));
+
+// full reseller lifecycle via API key
+let reg = await jget("/api/panel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reseller/register", name: "Suite Dealer", email: "suite@test.com", password: "pass1234", whatsapp: "03005550001" }) });
+check("reseller/register returns code + mzr_ key (201)", (reg.status === 200 || reg.status === 201) && String(reg.body.reseller?.apiKey || reg.body.apiKey || "").startsWith("mzr_")); if (!(reg.status === 200)) console.error("    register resp:", JSON.stringify(reg.body).slice(0, 200));
+const rkey = reg.body.reseller.apiKey;
+const rh = { "x-api-key": rkey, "Content-Type": "application/json" };
+let cc = await jget("/api/panel", { method: "POST", headers: rh, body: JSON.stringify({ action: "reseller/client-create", name: "Suite MAG", mac: "00:1A:79:SU:ITE:01".replace(/SU|ITE/g, "AB"), days: 30 }) });
+check("reseller/client-create (MAC) works, links included", cc.status === 200 && cc.body.ok && cc.body.links?.m3u && cc.body.stalker?.portalUrl);
+const cu = cc.body.client.username;
+let cred = await jget("/api/panel", { method: "POST", headers: rh, body: JSON.stringify({ action: "reseller/credentials", username: cu }) });
+check("reseller/credentials returns full creds + m3u + epg + mag portal", cred.status === 200 && cred.body.credentials?.m3u?.includes("/get.php") && cred.body.credentials?.magPortal?.includes("/portal.php"));
+let up = await jget("/api/panel", { method: "POST", headers: rh, body: JSON.stringify({ action: "reseller/client-update", username: cu, note: "updated", devices: 2 }) });
+check("reseller/client-update works", up.status === 200 && up.body.client?.note === "updated" && up.body.client?.devices === 2);
+let rn = await jget("/api/panel", { method: "POST", headers: rh, body: JSON.stringify({ action: "reseller/client-renew", username: cu }) });
+check("reseller/client-renew consumes credit", rn.status === 200 && rn.body.ok && typeof rn.body.creditsLeft === "number");
+let kr = await jget("/api/panel", { method: "POST", headers: rh, body: JSON.stringify({ action: "reseller/key-rotate" }) });
+check("reseller/key-rotate issues new mzr_ key", kr.status === 200 && String(kr.body.apiKey || "").startsWith("mzr_") && kr.body.apiKey !== rkey);
+const rh2 = { "x-api-key": kr.body.apiKey, "Content-Type": "application/json" };
+let oldKey = await jget("/api/panel", { method: "POST", headers: rh, body: JSON.stringify({ action: "reseller/me" }) });
+check("old mzr_ key rejected after rotate (401)", oldKey.status === 401);
+let okNew = await jget("/api/panel", { method: "POST", headers: rh2, body: JSON.stringify({ action: "reseller/me" }) });
+check("new mzr_ key works", okNew.status === 200 && okNew.body.ok);
+let del = await jget("/api/panel", { method: "POST", headers: rh2, body: JSON.stringify({ action: "reseller/client-delete", username: cu }) });
+check("reseller/client-delete removes client", del.status === 200 && del.body.ok);
 
 server.close();
 

@@ -57,6 +57,8 @@ npm test        # module graph + full admin-only test suite (HTTP smoke included
 
 ### Env vars
 
+> 🔒 **Firebase config already repo mein hardcoded hai** (project `mizanoranet`, RTDB `https://mizanoranet-default-rtdb.firebaseio.com`, web API key included) — **Vercel mein add karne ki zaroorat nahi**. Neeche ke vars sirf optional secrets/overrides hain:
+
 ```bash
 PUBLIC_BASE_URL=https://miznaoraiptv.vercel.app
 FIREBASE_DATABASE_URL=https://mizanoranet-default-rtdb.firebaseio.com

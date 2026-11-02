@@ -33,7 +33,9 @@ import {
   onValue
 } from "../vendor/firebase-sdk.js";
 
-// Official Firebase Configuration for Mizanora IPTV (project: mizanoranet)
+// 🔒 Official Firebase Configuration for Mizanora IPTV (project: mizanoranet)
+// HARDCODED IN THE REPO on purpose — Vercel/environment variables mein add karne
+// ki zaroorat NAHI. Sirf agar override karna ho to env se ho sakta hai.
 // Google Sign-In + Email/Password + Realtime Database + Analytics
 export const firebaseConfig = {
   apiKey: "AIzaSyA4PWELrMHQrRA29EZzfRx1iZkXtJkKh9M",
