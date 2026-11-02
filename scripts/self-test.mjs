@@ -60,7 +60,7 @@ check("bundled HLS playlists reference existing media segments", localPlaylists.
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8"));
 const panelData = fs.readFileSync(path.join(ROOT, "data/panel.js"), "utf8");
-check("v5 version metadata and clean page routes are present", pkg.version === "5.0.0" && lock.version === "5.0.0" && lock.packages?.[""]?.version === "5.0.0" && panelData.includes('version: "5.0.0"') && ["/reseller", "/developers", "/guide"].every((route) => sources.includes(route)));
+check("v5 version metadata and clean page routes are present", pkg.version === "5.1.0" && lock.version === "5.1.0" && lock.packages?.[""]?.version === "5.1.0" && panelData.includes('version: "5.1.0"') && ["/reseller", "/developers", "/guide"].every((route) => sources.includes(route)));
 
 console.log("\n🌐 Real HTTP integration");
 const server = createAppServer();
@@ -114,7 +114,7 @@ try {
   r = await request("/embed.js"); check("embed widget loads", r.status === 200 && r.text.includes("data-mizanora-embed"));
   r = await request("/api/embed?action=help"); check("embed help is not a dead link", r.status === 200 && r.body.ok && r.body.actions);
   r = await request("/api/embed?action=health"); check("health reports storage diagnostics", r.status === 200 && r.body.ok && r.body.storage && typeof r.body.storage.durableServerWrites === "boolean");
-  r = await request("/api/panel?action=config"); check("public config and endpoints", r.status === 200 && r.body.brand === "Mizanora IPTV" && r.body.endpoints.magPortal.endsWith("/portal.php") && r.body.version === "5.0.0");
+  r = await request("/api/panel?action=config"); check("public config and endpoints", r.status === 200 && r.body.brand === "Mizanora IPTV" && r.body.endpoints.magPortal.endsWith("/portal.php") && r.body.version === "5.1.0");
   r = await request("/api/embed?action=config"); check("public intro, recharge and developer settings are available", r.status === 200 && r.body.experience?.intro?.url === "/media/welcome/video.mp4" && r.body.links?.resellerPanel.endsWith("/reseller") && r.body.links?.developers.endsWith("/developers"));
   r = await request("/api/embed?action=channels"); check("default live catalog and welcome promo are available", r.status === 200 && r.body.count >= 18 && r.body.channels.some((c) => c.id === "ch_mz_promo" && /Welcome/i.test(c.name)));
   const firstChannel = r.body.channels[0];
@@ -273,15 +273,31 @@ try {
 
   console.log("\n🏪 Reseller lifecycle");
   r = await panelPost({ action: "reseller/register", name: "Self Dealer", email: `dealer${Date.now()}@test.com`, password: "pass1234", whatsapp: "03005550001" }); check("reseller registration issues mzr_ key", r.status === 201 && r.body.reseller?.apiKey?.startsWith("mzr_"));
+  const resellerCode = r.body.reseller.code;
   const resellerKey = r.body.reseller.apiKey;
   const resellerHeaders = { "x-api-key": resellerKey };
-  r = await panelPost({ action: "reseller/client-create", name: "MAG Client", mac: "00:1A:79:AB:CD:01", days: 9999, collectAmount: 300 }, resellerHeaders); check("reseller creates MAC client + links and cannot override plan days", r.status === 200 && r.body.links?.m3u && r.body.stalker?.portalUrl.endsWith("/portal.php") && r.body.client.expDate - r.body.client.startDate === 30 * 86400);
+  r = await panelPost({ action: "reseller/client-create", name: "MAG Client", mac: "00:1A:79:AB:CD:01", days: 9999, startTs: 3000000000, collectAmount: 300 }, resellerHeaders); check("reseller creates MAC client + links and cannot override plan days", r.status === 200 && r.body.links?.m3u && r.body.stalker?.portalUrl.endsWith("/portal.php") && r.body.client.expDate - r.body.client.startDate === 30 * 86400 && Math.abs(r.body.client.startDate - Date.now() / 1000) < 60);
   const clientUsername = r.body.client.username, initialExpiry = r.body.client.expDate;
   r = await panelPost({ action: "recharge/contact", username: clientUsername }); check("public recharge finds the correct reseller contact", r.status === 200 && r.body.resellerName === "Self Dealer" && r.body.whatsapp.includes("03005550001"));
   r = await panelPost({ action: "reseller/credentials", username: clientUsername }, resellerHeaders); check("initial payment does not double-extend expiry", r.status === 200 && r.body.client?.expDate === initialExpiry && r.body.credentials?.magPortal?.endsWith("/portal.php"));
   r = await panelPost({ action: "reseller/payment-record", username: clientUsername, amount: 300, months: 1, via: "cash" }, resellerHeaders); check("payment-record extension consumes one credit", r.status === 200 && r.body.creditsLeft === 1 && r.body.creditsUsed === 1);
   r = await panelPost({ action: "reseller/client-update", username: clientUsername, note: "updated", devices: 2 }, resellerHeaders); check("reseller client update works", r.status === 200 && r.body.client?.note === "updated" && r.body.client?.devices === 2);
   r = await panelPost({ action: "reseller/client-renew", username: clientUsername }, resellerHeaders); check("reseller renewal consumes credit", r.status === 200 && typeof r.body.creditsLeft === "number");
+  r = await panelPost({ action: "admin/xtream/update", username: clientUsername, expDate: Math.floor(Date.now() / 1000) + 3 * 86400 }, pinHeaders);
+  r = await panelPost({ action: "reseller/report" }, resellerHeaders); check("report includes active clients expiring within seven days", r.body.report?.stats.expiringSoon === 1 && r.body.report?.expiringClients?.[0]?.username === clientUsername && !("password" in r.body.report.expiringClients[0]));
+  r = await panelPost({ action: "reseller/clients" }, resellerHeaders); check("reseller client list does not expose passwords", r.status === 200 && r.body.clients.some((c) => c.username === clientUsername) && r.body.clients.every((c) => !("password" in c)));
+  r = await panelPost({ action: "reseller/report" }, resellerHeaders); check("reseller report tracks own business activity and finance", r.status === 200 && r.body.report.stats.total === 1 && r.body.report.finance.collectedTotal === 600 && r.body.report.activity.some((e) => e.action === "payment.recorded") && !JSON.stringify(r.body).includes(resellerKey));
+  r = await request(`/api/panel?action=admin/reseller-report&code=${resellerCode}`, { headers: pinHeaders }); check("owner API can inspect reseller report", r.status === 200 && r.body.report.reseller.code === resellerCode && r.body.report.activity.some((e) => e.action === "client.created"));
+  r = await request(`/api/panel?action=admin/reseller-report&code=${resellerCode}`, { headers: resellerHeaders }); check("reseller key cannot access owner report", r.status === 401);
+  r = await panelPost({ action: "admin/credits-topup", code: resellerCode, credits: -10 }, pinHeaders); check("negative topups are rejected", r.status === 400);
+  r = await panelPost({ action: "admin/reseller-update", code: resellerCode, patch: { status: "suspended", credits: 9999 } }, pinHeaders); check("owner can suspend reseller without mass assignment of credits", r.status === 200 && r.body.reseller.status === "suspended" && r.body.reseller.credits !== 9999);
+  r = await panelPost({ action: "reseller/report" }, resellerHeaders); check("suspended reseller API key is blocked", r.status === 401);
+  r = await panelPost({ action: "admin/reseller-update", code: resellerCode, patch: { status: "active" } }, pinHeaders); check("owner can reactivate reseller", r.status === 200 && r.body.reseller.status === "active");
+  r = await request("/api/panel?action=reseller/key-rotate", { headers: resellerHeaders }); check("reseller mutations require POST", r.status === 405);
+  r = await panelPost({ action: "reseller/register", name: "Other Dealer", email: `other${Date.now()}@test.com`, password: "otherpass" });
+  const otherHeaders = { "x-api-key": r.body.reseller.apiKey };
+  r = await panelPost({ action: "reseller/report" }, otherHeaders); check("reseller report is tenant scoped", r.status === 200 && r.body.report.stats.total === 0 && r.body.report.activity.every((e) => e.detail.resellerCode !== resellerCode) && !JSON.stringify(r.body).includes(clientUsername));
+  r = await panelPost({ action: "reseller/credentials", username: clientUsername }, otherHeaders); check("resellers cannot read another dealer's client credentials", r.status === 404);
   r = await panelPost({ action: "reseller/key-rotate" }, resellerHeaders); check("reseller key rotates", r.status === 200 && r.body.apiKey?.startsWith("mzr_") && r.body.apiKey !== resellerKey);
   const newResellerKey = r.body.apiKey;
   r = await panelPost({ action: "reseller/me" }, resellerHeaders); check("old reseller key is invalid after rotation", r.status === 401);

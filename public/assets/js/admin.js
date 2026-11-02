@@ -2,7 +2,7 @@
 import {
   subscribeAuth, loginWithGoogle, loginWithGoogleRedirect, finishRedirect,
   logoutUser, getFirebaseIdToken, isAdminEmail, ADMIN_EMAIL
-} from "/assets/js/firebase-client.js?v=5.0.0";
+} from "/assets/js/firebase-client.js?v=5.1.0";
 
 const $ = (id) => document.getElementById(id);
 const setText = (id, value) => { const el = $(id); if (el) el.textContent = String(value ?? ""); };
@@ -347,7 +347,7 @@ function renderResellers() {
   if (!body) return;
   const query = queryFor("resellers");
   const list = STATE.resellers.filter((r) => matches(r, query, ["code", "name", "email", "whatsapp"]));
-  body.innerHTML = list.map((r) => `<tr data-row><td class="mono"><b>${esc(r.code)}</b></td><td>${esc(r.name || "")}<br><span class="cell-sub">${esc(r.email || "")}</span></td><td>${Number(r.credits || 0)}</td><td>${r.status === "suspended" ? '<span class="pill bad">Suspended</span>' : '<span class="pill ok">Active</span>'}</td><td><button class="btn btn-primary btn-sm" data-rs-topup="${esc(r.code)}">＋ Credits</button></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No matching resellers.</td></tr>';
+  body.innerHTML = list.map((r) => `<tr data-row><td class="mono"><b>${esc(r.code)}</b></td><td>${esc(r.name || "")}<br><span class="cell-sub">${esc(r.email || "")}</span></td><td>${Number(r.credits || 0)}</td><td>${r.status === "suspended" ? '<span class="pill bad">Suspended</span>' : '<span class="pill ok">Active</span>'}</td><td class="actions"><button class="btn btn-primary btn-sm" data-rs-topup="${esc(r.code)}">＋ Credits</button> <button class="btn btn-ghost btn-sm" data-rs-report="${esc(r.code)}">Report</button> <button class="btn btn-ghost btn-sm" data-rs-toggle="${esc(r.code)}" data-rs-suspended="${r.status === "suspended"}">${r.status === "suspended" ? "Activate" : "Suspend"}</button></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No matching resellers.</td></tr>';
 }
 async function loadOrders() {
   const data = await apiGet("admin/orders");
@@ -669,7 +669,7 @@ function appInit() {
   $("keyCopyBtn")?.addEventListener("click", async () => toast(await copyText($("keyNewValue")?.textContent || "") ? "API key copied" : "Clipboard unavailable — key manually select karein", "ok"));
 
   document.addEventListener("click", async (event) => {
-    const el = event.target.closest("[data-rs-topup],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-toggle],[data-xt-del],[data-ch-edit],[data-ch-del],[data-pl-edit],[data-pl-del],[data-epg-refresh],[data-epg-delete],[data-mv-stream],[data-sr-episodes],[data-user-copy]");
+    const el = event.target.closest("[data-rs-topup],[data-rs-report],[data-rs-toggle],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-toggle],[data-xt-del],[data-ch-edit],[data-ch-del],[data-pl-edit],[data-pl-del],[data-epg-refresh],[data-epg-delete],[data-mv-stream],[data-sr-episodes],[data-user-copy]");
     if (!el) return;
     try {
       if (el.dataset.chEdit) return channelForm(STATE.channels.find((c) => c.id === el.dataset.chEdit));
@@ -702,6 +702,22 @@ function appInit() {
           await apiPost("admin/series-update", { id: series.id, patch: { episodes: [{ id: values.episodeId, streamUrl: values.streamUrl }] } });
           toast("Episode playback updated"); await loadSeries();
         });
+      }
+      if (el.dataset.rsReport) {
+        const result = await apiGet("admin/reseller-report", { code: el.dataset.rsReport });
+        const report = result.report;
+        const box = $("rsReport");
+        if (box) {
+          box.hidden = false;
+          box.innerHTML = `<h3>📊 ${esc(report.reseller.code)} · Business report</h3><p>Clients: ${Number(report.stats.total)} · Active: ${Number(report.stats.active)} · Expiring in 7 days: ${Number(report.stats.expiringSoon)} · Collected: Rs ${Number(report.finance.collectedTotal)} · Credits used: ${Number(report.finance.creditsUsed)}</p><p>Recent business events (not viewer tracking)</p><ul>${(report.activity || []).slice(0, 15).map((entry) => `<li>${esc(entry.at)} · ${esc(entry.action)} · ${esc(entry.detail?.username || "")}</li>`).join("") || "<li>No activity yet</li>"}</ul>`;
+        }
+        return;
+      }
+      if (el.dataset.rsToggle) {
+        const status = el.dataset.rsSuspended === "true" ? "active" : "suspended";
+        if (!confirm(`${status === "active" ? "Activate" : "Suspend"} reseller ${el.dataset.rsToggle}?`)) return;
+        await apiPost("admin/reseller-update", { code: el.dataset.rsToggle, patch: { status } });
+        toast(`Reseller ${status}`); await loadResellers(); return;
       }
       if (el.dataset.rsTopup) {
         const code = el.dataset.rsTopup;

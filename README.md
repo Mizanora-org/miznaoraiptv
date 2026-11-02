@@ -1,8 +1,21 @@
-# 📺 Mizanora IPTV — Complete System v5.0.0
+# 📺 Mizanora IPTV — Reseller Suite v5.1.0
+
+![Animated Mizanora IPTV reseller suite banner](docs/assets/reseller-suite.gif)
+
+**Owner control → reseller workspace → client service**
+
+[Quick start](#run-and-verify-locally) · [Reseller API](docs/RESELLER.md) · [Deployment](docs/VERCEL.md) · [Changelog](CHANGELOG.md)
 
 **Live TV, animated welcome intro, M3U imports, XMLTV guides, Xtream Codes, MAG/Stalker, owner admin, reseller workspace and website integrations.** A **Mizanora Projects** product by **Muaaz Iqbal** (Kasur, Punjab, Pakistan).
 
-## What's new in v5
+## What's new in v5.1
+
+- **Owner reseller control:** view individual business reports and suspend/reactivate access from Admin → Resellers.
+- **Reseller insights:** credit and collection totals, client statuses, seven-day expiry list and recent business activity in the dealer panel and API.
+- **Safer integrations:** scoped reports, password-free client lists, protected owner actions and validated credit top-ups.
+- **Website ready:** owner and dealer API examples for a private backend, including use with your own Mizanora website.
+
+## What's included from v5
 
 - **Intro → secure fetch → channel playback:** configurable MP4/HLS welcome video, duration, skip control, retry and stale-request cancellation.
 - **Welcome & Promo Live:** bundled local promo channel and corrected HLS segment paths.
@@ -78,7 +91,7 @@ Open `/reseller` or use **Admin → Resellers → Create**. Dealers can login wi
 
 The dealer panel supports client creation, MAG MACs, credits, one-month renewals, suspension/reactivation, deletion, credential retrieval, payment recording, retail pricing, ledger and immediate API-key rotation. Plan months determine server-side credit cost; client-supplied prices cannot reduce it.
 
-See [docs/RESELLER.md](docs/RESELLER.md) for workflow and API examples. **Never put `mzr_` or `mzk_` keys in public browser code.** Use a backend proxy.
+See [docs/RESELLER.md](docs/RESELLER.md) for workflow, API examples and production limitations. **Never put `mzr_` or `mzk_` keys in public browser code.** Use a backend proxy.
 
 ## Owner/content notes
 

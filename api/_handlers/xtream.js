@@ -257,7 +257,7 @@ export default async function xtreamHandler(req, res) {
           max_connections: String(acc.maxConnections || 1), allowed_output_formats: ["m3u8"]
         },
         server_info: {
-          url: server.hostname, xui: true, version: "Mizanora-5.0", revision: 5,
+          url: server.hostname, xui: true, version: "Mizanora-5.1", revision: 5,
           url_without_port: server.hostname, port: serverPort,
           https_port: server.protocol === "https:" ? serverPort : "443", server_protocol: server.protocol.replace(":", ""), rtmp_port: "",
           timezone: "Asia/Karachi", timestamp_now: nowTs(), time_now: new Date().toISOString()

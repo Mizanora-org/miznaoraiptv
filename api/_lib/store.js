@@ -53,7 +53,7 @@ export function clearPanelCache() { CACHE.clear(); }
 
 export async function pushAudit(action, detail = {}) {
   const id = randomHex(6);
-  await rtdbSet(`${ROOT}/audit/${id}`, { id, action, detail, at: nowIso(), ip: detail.ip || "" });
+  await writeNode(`audit/${id}`, { id, action, detail, at: nowIso(), ip: detail.ip || "" });
   return id;
 }
 
@@ -160,7 +160,7 @@ export async function renewClient(username, { planId = "monthly" } = {}) {
     expDate: base + (Number(plan.days) || 30) * 86400,
     planId: plan.id, plan: "pro", status: "active"
   });
-  await pushAudit("client.renewed", { username, planId: plan.id });
+  await pushAudit("client.renewed", { username, planId: plan.id, resellerCode: client.resellerCode });
   return updated;
 }
 export async function suspendClient(username, suspended = true) {
@@ -168,10 +168,11 @@ export async function suspendClient(username, suspended = true) {
 }
 export async function deleteClient(username) {
   const key = String(username || "").toLowerCase();
-  if (!await getClient(key)) throw fail("Client not found.", 404);
+  const client = await getClient(key);
+  if (!client) throw fail("Client not found.", 404);
   await writeNode(`clients/${key}`, null);
   await rtdbSet(`xtreamAccounts/${key}`, null);
-  await pushAudit("client.deleted", { username: key });
+  await pushAudit("client.deleted", { username: key, resellerCode: client.resellerCode });
   clearPanelCache();
   return true;
 }
@@ -203,6 +204,8 @@ export async function getResellerByApiKey(key) {
 export async function createReseller(input = {}) {
   const code = String(input.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20) || "RS" + randomHex(4).toUpperCase();
   if (await getResellerByCode(code)) throw fail(`Reseller code '${code}' already exists.`, 409);
+  const credits = Number(input.credits ?? SELF_SERVE.signupCredits);
+  if (!Number.isSafeInteger(credits) || credits < 0 || credits > 100000) throw fail("Starting credits must be a whole number between 0 and 100000.");
   const apiKey = generateResellerApiKey();
   const rec = {
     code, name: String(input.name || "").slice(0, 80),
@@ -210,13 +213,13 @@ export async function createReseller(input = {}) {
     whatsapp: String(input.whatsapp || "").slice(0, 30),
     passwordHash: sha256(String(input.password || randomPassword(10))),
     apiKeyHash: hashApiKey(apiKey),
-    credits: Number(input.credits ?? SELF_SERVE.signupCredits) || 0,
+    credits,
     creditsUsed: 0,
     pricing: { monthly: SELF_SERVE.monthlyDefault, connectionFee: SELF_SERVE.connectionFeeDefault },
     status: "active", createdAt: nowIso(), lastLoginAt: ""
   };
   await writeNode(`resellers/${code}`, rec);
-  await pushAudit("reseller.created", { code });
+  await pushAudit("reseller.created", { resellerCode: code });
   return { ...rec, apiKey };
 }
 export async function updateReseller(code, patch = {}) {
@@ -230,13 +233,17 @@ export async function updateReseller(code, patch = {}) {
 export async function topUpCredits(code, amount) {
   const r = await getResellerByCode(code);
   if (!r) return null;
-  return updateReseller(code, { credits: Math.max(0, Number(r.credits || 0) + Number(amount || 0)) });
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 100000) throw fail("Credits must be a whole number between 1 and 100000.");
+  const updated = await updateReseller(code, { credits: Number(r.credits || 0) + amount });
+  await pushAudit("credits.topup", { resellerCode: code, credits: amount });
+  return updated;
 }
 export function resellerStats(clients) {
   const active = clients.filter((c) => c.status === "active" && !c.expired).length;
   const suspended = clients.filter((c) => c.status === "suspended").length;
   const expired = clients.filter((c) => c.expired && c.status !== "suspended").length;
-  return { total: clients.length, active, suspended, expired };
+  const expiringSoon = clients.filter((c) => c.status === "active" && !c.expired && Number(c.expDate) > 0 && c.daysLeft <= 7).length;
+  return { total: clients.length, active, suspended, expired, expiringSoon };
 }
 export async function resellerFinance(code) {
   const payments = await listPayments({ resellerCode: code });
@@ -248,6 +255,29 @@ export async function resellerFinance(code) {
     collectedTotal: total,
     paymentsCount: payments.length,
     dealerCostPerUser: SELF_SERVE.unitCost
+  };
+}
+
+/** Business activity, not viewer/stream tracking. Only explicitly scoped records are returned. */
+export async function resellerActivity(code, limit = 50) {
+  const all = (await readNode("audit")) || {};
+  return Object.values(all)
+    .filter((entry) => entry.detail?.resellerCode === code)
+    .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))
+    .slice(0, Math.max(1, Math.min(100, Number(limit) || 50)))
+    .map(({ id, action, at, detail }) => ({ id, action, at, detail }));
+}
+export async function resellerReport(code) {
+  const reseller = await getResellerByCode(code);
+  if (!reseller) return null;
+  const clients = await listClients({ resellerCode: code });
+  return {
+    reseller: resellerPublic(reseller), stats: resellerStats(clients),
+    finance: await resellerFinance(code),
+    expiringClients: clients.filter((c) => c.status === "active" && !c.expired && Number(c.expDate) > 0 && c.daysLeft <= 7)
+      .map(({ username, name, expDate, daysLeft }) => ({ username, name, expDate, daysLeft }))
+      .sort((a, b) => a.expDate - b.expDate),
+    activity: await resellerActivity(code)
   };
 }
 
@@ -305,6 +335,7 @@ export async function recordClientPayment(input = {}) {
       await updateClient(payment.username, { expDate: base + payment.months * 30 * 86400, status: "active" });
     }
   }
+  if (payment.resellerCode) await pushAudit("payment.recorded", { resellerCode: payment.resellerCode, username: payment.username, paymentId: payment.id, amount: payment.amount, months: payment.months });
   return { ok: true, payment };
 }
 export async function listPayments(filter = {}) {
@@ -852,7 +883,7 @@ export async function listStalkerClients() {
 export function publicConfig(base) {
   return {
     ok: true,
-    version: "5.0.0",
+    version: "5.1.0",
     brand: BRAND.name,
     tagline: BRAND.tagline,
     siteUrl: base,
