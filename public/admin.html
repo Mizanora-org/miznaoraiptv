@@ -6,7 +6,7 @@
 <title>🛡️ Mizanora IPTV — Admin Panel</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" href="/assets/css/admin.css?v=1">
+<link rel="stylesheet" href="/assets/css/admin.css?v=5">
 </head>
 <body data-bw-app="admin">
 
@@ -57,8 +57,9 @@
     <div class="topbar">
       <div><h1 id="pageTitle">📊 Dashboard</h1><div class="sub" id="pageSub">Real-time IPTV server overview</div></div>
       <div class="search">
-        <input id="globalSearch" placeholder="🔍 Search everywhere…">
-        <button class="icon-btn" id="btnTheme" title="Toggle theme">🌙</button>
+        <input id="globalSearch" type="search" placeholder="🔍 Search current data…" aria-label="Search panel data">
+        <button class="icon-btn" id="btnRefresh" title="Refresh all data" aria-label="Refresh all data">↻</button>
+        <button class="icon-btn" id="btnTheme" title="Toggle theme" aria-label="Toggle theme">🌙</button>
         <div class="user-chip" id="userChip">
           <div class="u-avatar" id="userAvatar">AD</div>
           <div class="meta"><b id="userName">Admin</b><span id="userRole">Super Admin</span></div>
@@ -78,31 +79,31 @@
       <div class="card"><h3>⚡ Quick actions <span class="right"><button class="btn btn-primary btn-sm" id="qAddChannel">＋ Channel</button></span></h3>
         <div class="row"><input id="qSearch" placeholder="Search…"><button class="btn btn-ghost btn-sm" id="qGo">Go</button></div>
       </div>
-      <div class="card"><h3>🕘 Recent activity</h3><table><tbody id="actBody"></tbody></table></div>
+      <div class="card"><h3>🕘 Recent activity</h3><div class="table-wrap"><table><tbody id="actBody"></tbody></table></div></div>
     </section>
 
     <section id="viewChannels" hidden>
-      <div class="card"><h3>📺 Channels <span class="right"><input id="chSearch" placeholder="search…"><button class="btn btn-primary btn-sm" id="chAddBtn">＋ Add</button></span></h3>
-        <table><thead><tr><th>#</th><th>Logo</th><th>Name</th><th>Group</th><th>URL</th></tr></thead><tbody id="chBody"></tbody></table></div>
+      <div class="card"><h3>📺 Channels <span class="right"><input id="chSearch" type="search" placeholder="Search channels…" aria-label="Search channels"><button class="btn btn-primary btn-sm" id="chAddBtn">＋ Add</button></span></h3>
+        <div class="table-wrap"><table><thead><tr><th>#</th><th>Logo</th><th>Name</th><th>Group</th><th>Access</th><th>Actions</th></tr></thead><tbody id="chBody"></tbody></table></div></div>
     </section>
 
     <section id="viewPlaylists" hidden>
-      <div class="card"><h3>📋 Playlists</h3><table><tbody id="plBody"></tbody></table></div>
+      <div class="card"><h3>📋 Playlists <span class="right"><button class="btn btn-primary btn-sm" id="plAddBtn">＋ Add playlist</button></span></h3><div class="table-wrap"><table><thead><tr><th>Name / URL</th><th>Type</th><th>Updated</th><th>Actions</th></tr></thead><tbody id="plBody"></tbody></table></div></div>
     </section>
 
     <section id="viewXtream" hidden>
-      <div class="card"><h3>⚡ Xtream Accounts <span class="right"><input id="xtSearch" placeholder="search…"><button class="btn btn-primary btn-sm" id="xtAddBtn">＋ Create</button></span></h3>
-        <table><thead><tr><th>User</th><th>Pass</th><th>MAC</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="xtBody"></tbody></table></div>
+      <div class="card"><h3>⚡ Xtream Accounts <span class="right"><input id="xtSearch" type="search" placeholder="Search accounts…" aria-label="Search Xtream accounts"><button class="btn btn-primary btn-sm" id="xtAddBtn">＋ Create</button></span></h3>
+        <div class="table-wrap"><table><thead><tr><th>User</th><th>Pass</th><th>MAC</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="xtBody"></tbody></table></div></div>
     </section>
 
     <section id="viewMovies" hidden>
-      <div class="card"><h3>🎬 Movies <span class="right"><input id="mvSearch" placeholder="search…"></span></h3>
-        <table><tbody id="mvBody"></tbody></table></div>
+      <div class="card"><h3>🎬 Movies <span class="right"><input id="mvSearch" type="search" placeholder="Search full IMDb catalog…" aria-label="Search movies"></span></h3>
+        <p class="table-note">IMDb metadata is built in. Add your licensed MP4/HLS URL to make a title playable.</p><div class="table-wrap"><table><thead><tr><th>Title</th><th>Year</th><th>Rating</th><th>Playback</th><th>Actions</th></tr></thead><tbody id="mvBody"></tbody></table></div></div>
     </section>
 
     <section id="viewSeries" hidden>
-      <div class="card"><h3>📺 Series <span class="right"><input id="srSearch" placeholder="search…"></span></h3>
-        <table><tbody id="srBody"></tbody></table></div>
+      <div class="card"><h3>📺 Series <span class="right"><input id="srSearch" type="search" placeholder="Search full IMDb catalog…" aria-label="Search series"></span></h3>
+        <p class="table-note">Search the catalog, then configure a licensed URL for each episode.</p><div class="table-wrap"><table><thead><tr><th>Title</th><th>Year</th><th>Rating</th><th>Episodes</th><th>Playback</th><th>Actions</th></tr></thead><tbody id="srBody"></tbody></table></div></div>
     </section>
 
     <section id="viewAnalytics" hidden>
@@ -112,13 +113,13 @@
         <div class="kpi"><b id="anPlays">0</b><span>Stream plays</span></div>
         <div class="kpi"><b id="anAvg">0</b><span>Avg session</span></div>
       </div>
-      <div class="card"><h3>🧑‍🤝‍🧑 Recent sessions</h3><table><tbody id="sessBody"></tbody></table></div>
-      <div class="card"><h3>🐞 Client errors <span class="right"><button class="btn btn-ghost btn-sm" id="errRefresh">Refresh</button></span></h3><table><tbody id="errBody"></tbody></table></div>
+      <div class="card"><h3>🧑‍🤝‍🧑 Recent sessions</h3><div class="table-wrap"><table><thead><tr><th>Session</th><th>Event</th><th>Route</th><th>Last seen</th></tr></thead><tbody id="sessBody"></tbody></table></div></div>
+      <div class="card"><h3>🐞 Client errors <span class="right"><button class="btn btn-ghost btn-sm" id="errRefresh">Refresh</button></span></h3><div class="table-wrap"><table><thead><tr><th>Message</th><th>Route</th><th>Time</th></tr></thead><tbody id="errBody"></tbody></table></div></div>
     </section>
 
     <section id="viewUsers" hidden>
-      <div class="card"><h3>👤 Panel clients <span class="right"><input id="usSearch" placeholder="search…"></span></h3>
-        <table><thead><tr><th>User</th><th>WhatsApp</th><th>Reseller</th><th>Status</th><th>Days left</th></tr></thead><tbody id="usBody"></tbody></table></div>
+      <div class="card"><h3>👤 Panel clients <span class="right"><input id="usSearch" type="search" placeholder="Search clients…" aria-label="Search clients"></span></h3>
+        <div class="table-wrap"><table><thead><tr><th>User</th><th>WhatsApp</th><th>Reseller</th><th>Status</th><th>Days left</th></tr></thead><tbody id="usBody"></tbody></table></div></div>
     </section>
 
     <section id="viewSettings" hidden>
@@ -136,30 +137,38 @@
     </section>
 
     <section id="viewResellers" hidden>
-      <div class="card"><h3>🏪 Resellers <span class="right"><input id="rsSearch" placeholder="search…"></span></h3>
-        <table><thead><tr><th>Code</th><th>Name</th><th>Credits</th><th>Status</th><th>Actions</th></tr></thead><tbody id="rsBody"></tbody></table></div>
+      <div class="card"><h3>🏪 Resellers <span class="right"><input id="rsSearch" type="search" placeholder="Search resellers…" aria-label="Search resellers"></span></h3>
+        <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Credits</th><th>Status</th><th>Actions</th></tr></thead><tbody id="rsBody"></tbody></table></div></div>
     </section>
 
     <section id="viewOrders" hidden>
       <div class="card"><h3>🧾 Orders &amp; Payments</h3>
-        <table><thead><tr><th>ID</th><th>Name</th><th>Plan</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody id="orBody"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>ID</th><th>Name</th><th>Plan</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead><tbody id="orBody"></tbody></table></div></div>
     </section>
 
     <section id="viewStalker" hidden>
       <div class="card"><h3>🛰️ Stalker / MAG clients <span class="right"><button class="btn btn-ghost btn-sm" id="stRefreshBtn">🔄 Refresh</button></span></h3>
-        <table><thead><tr><th>MAC</th><th>User</th><th>Status</th><th>Expiry</th></tr></thead><tbody id="stBody"></tbody></table>
+        <div class="table-wrap"><table><thead><tr><th>MAC</th><th>User</th><th>Status</th><th>Expiry</th></tr></thead><tbody id="stBody"></tbody></table></div>
         <p style="color:var(--dim);font-size:.76rem;margin:10px 0 0">MAG box: Portal <code id="portalUrl"></code> + MAC</p></div>
     </section>
 
     <section id="viewApiKeys" hidden>
       <div class="card"><h3>🔑 Admin API Keys <span class="right"><button class="btn btn-primary btn-sm" id="keyCreateBtn">＋ Create key</button></span></h3>
-        <div id="keyNewCard" class="card hidden" style="border-color:var(--gold)"><b>🆕 New key — ek dafa copy kar lo:</b><pre id="keyNewValue" class="mono" style="white-space:pre-wrap;word-break:break-all"></pre></div>
-        <table><thead><tr><th>Label</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody id="keyBody"></tbody></table></div>
+        <div id="keyNewCard" class="card" style="border-color:var(--gold)" hidden><b>🆕 New key — abhi copy kar lo, dobara show nahi hogi:</b><pre id="keyNewValue" class="mono" style="white-space:pre-wrap;word-break:break-all"></pre><button class="btn btn-ghost btn-sm" id="keyCopyBtn" type="button">📋 Copy key</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Label</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody id="keyBody"></tbody></table></div></div>
     </section>
   </main>
 </div>
 
-<div id="toasts"></div>
-<script type="module" src="/assets/js/admin.js?v=1"></script>
+<dialog id="appDialog" class="app-dialog" aria-labelledby="dialogTitle">
+  <form id="dialogForm">
+    <div class="dialog-head"><h2 id="dialogTitle">Edit</h2><button class="icon-btn" id="dialogClose" type="button" aria-label="Close">✕</button></div>
+    <div id="dialogFields" class="dialog-fields"></div>
+    <div id="dialogError" class="dialog-error" role="alert"></div>
+    <div class="dialog-actions"><button class="btn btn-ghost" id="dialogCancel" type="button">Cancel</button><button class="btn btn-primary" id="dialogSubmit" type="submit">Save</button></div>
+  </form>
+</dialog>
+<div id="toasts" aria-live="polite"></div>
+<script type="module" src="/assets/js/admin.js?v=5"></script>
 </body>
 </html>

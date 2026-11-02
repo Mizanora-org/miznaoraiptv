@@ -1,16 +1,40 @@
 {
   "rules": {
-    "channels": { ".read": true, ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true" },
-    "movies": { ".read": true, ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true" },
-    "series": { ".read": true, ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true" },
-    "playlists": { ".read": true, ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true" },
-    "settings": { ".read": true, ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true" },
-    "xtreamAccounts": { ".read": "auth != null", ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true" },
-    "stalkerSessions": { ".read": true, ".write": true },
+    "channels": {
+      ".read": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true",
+      ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true"
+    },
+    "movies": {
+      ".read": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true",
+      ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true"
+    },
+    "series": {
+      ".read": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true",
+      ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true"
+    },
+    "playlists": {
+      ".read": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true",
+      ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true"
+    },
+    "settings": {
+      ".read": true,
+      ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true"
+    },
+    "xtreamAccounts": {
+      ".read": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true",
+      ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true"
+    },
+    "stalkerSessions": {
+      ".read": false,
+      ".write": false
+    },
     "panel": {
       ".read": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true",
       ".write": "auth != null && auth.token.email == 'muaaziqbal.vip@gmail.com' && auth.token.email_verified == true"
     },
-    "$other": { ".read": false, ".write": false }
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
   }
 }

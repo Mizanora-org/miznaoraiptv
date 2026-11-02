@@ -1,17 +1,20 @@
 {
   "name": "miznaoraiptv",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=20" },
   "description": "Mizanora IPTV — full IPTV system (public site + owner-locked admin panel + Xtream/MAG/reseller/embed APIs) — a Mizanora Projects product",
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "start": "node scripts/dev-server.mjs",
-    "test": "node scripts/self-test.mjs && node scripts/smoke-admin-dom.mjs",
-    "test:dom": "node scripts/smoke-admin-dom.mjs"
+    "test": "node scripts/self-test.mjs && node scripts/smoke-admin-dom.mjs && node scripts/smoke-site-dom.mjs",
+    "test:dom": "node scripts/smoke-admin-dom.mjs && node scripts/smoke-site-dom.mjs",
+    "test:site": "node scripts/smoke-site-dom.mjs"
   },
   "devDependencies": {
-    "jsdom": "^26.1.0",
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "hls.js": "^1.7.4",
+    "jsdom": "^26.1.0"
   }
 }

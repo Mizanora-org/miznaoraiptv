@@ -1,145 +1,151 @@
-/**
- * Mizanora IPTV — Admin Panel logic (FRESH REBUILD)
- * Hardened by design: safe() step wrapper, setText null-safe writes, explicit
- * TAB_VIEWS map, idempotent init, controls bound BEFORE auth so the panel can
- * never end up dead.
- */
+/** Mizanora IPTV — functional owner admin panel. */
 import {
   subscribeAuth, loginWithGoogle, loginWithGoogleRedirect, finishRedirect,
-  logoutUser, getFirebaseIdToken, isAdminEmail, ADMIN_EMAIL, dbRead, dbWatch
-} from "/assets/js/firebase-client.js?v=4";
+  logoutUser, getFirebaseIdToken, isAdminEmail, ADMIN_EMAIL
+} from "/assets/js/firebase-client.js?v=5";
 
-/* ---------- tiny DOM helpers ---------- */
 const $ = (id) => document.getElementById(id);
-const setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+const setText = (id, value) => { const el = $(id); if (el) el.textContent = String(value ?? ""); };
+const esc = (value) => String(value ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const safe = (name, fn) => {
   try {
-    const r = fn();
-    if (r && typeof r.catch === "function") r.catch((e) => console.error(`[${name}]`, e));
-    return r;
-  } catch (e) { console.error(`[${name}]`, e); }
+    const result = fn();
+    if (result?.catch) result.catch((error) => console.error(`[${name}]`, error));
+    return result;
+  } catch (error) { console.error(`[${name}]`, error); return undefined; }
 };
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const show = (el) => el && (el.hidden = false);
-const hide = (el) => el && (el.hidden = true);
-function toast(msg, tone = "ok") {
+function toast(message, tone = "ok") {
   const box = $("toasts");
   if (!box) return;
-  const t = document.createElement("div");
-  t.className = "toast" + (tone === "error" ? " err" : "");
-  t.textContent = msg;
-  box.appendChild(t);
-  setTimeout(() => t.remove(), 4200);
+  const item = document.createElement("div");
+  item.className = "toast" + (tone === "error" ? " err" : "");
+  item.textContent = String(message);
+  box.appendChild(item);
+  setTimeout(() => item.remove(), 4500);
 }
+const debounce = (fn, wait = 220) => {
+  let timer;
+  return () => { clearTimeout(timer); timer = setTimeout(fn, wait); };
+};
 
 const STATE = {
-  user: null, tab: "dashboard", search: "",
+  user: null, tab: "dashboard", global: "", loaded: false, entering: null,
+  filters: { channels: "", xtream: "", users: "", resellers: "" },
   channels: [], playlists: [], xtream: [], movies: [], series: [],
   clients: [], resellers: [], orders: [], stalker: [], keys: [], audit: []
 };
-
 const TAB_VIEWS = {
   dashboard: "viewDashboard", channels: "viewChannels", playlists: "viewPlaylists",
   xtream: "viewXtream", movies: "viewMovies", series: "viewSeries",
   analytics: "viewAnalytics", users: "viewUsers", settings: "viewSettings",
-  resellers: "viewResellers", orders: "viewOrders", stalker: "viewStalker",
-  apikeys: "viewApiKeys"
+  resellers: "viewResellers", orders: "viewOrders", stalker: "viewStalker", apikeys: "viewApiKeys"
 };
 const TAB_TITLES = {
   dashboard: ["📊 Dashboard", "Real-time IPTV server overview"],
-  channels: ["📺 Channel Manager", "All live channels"],
+  channels: ["📺 Channel Manager", "Add, edit and remove live channels"],
   playlists: ["📋 Playlists", "Cloud M3U playlists"],
-  xtream: ["⚡ Xtream Accounts", "All Xtream users — renew / suspend / delete"],
-  movies: ["🎬 Movies", "IMDb movie catalog"],
-  series: ["📺 Series", "IMDb series catalog"],
-  analytics: ["📈 Live Analytics", "Visitors, sessions, plays, client errors"],
-  users: ["👤 Users", "Panel clients"],
-  settings: ["⚙️ Settings", "Brand, videos, WhatsApp, ticker"],
-  resellers: ["🏪 Resellers", "Dealers, credits, top-up"],
-  orders: ["🧾 Orders", "Approve to auto-provision Xtream"],
-  stalker: ["🛰️ Stalker / MAG", "MAC-bound clients + portal URL"],
-  apikeys: ["🔑 API Keys", "mzk_ admin keys — create / revoke"]
+  xtream: ["⚡ Xtream Accounts", "Create, renew, suspend and delete users"],
+  movies: ["🎬 Movies", "Search the full IMDb catalog and configure playback"],
+  series: ["📺 Series", "IMDb series and episode catalog"],
+  analytics: ["📈 Live Analytics", "Visitors, sessions, plays and client errors"],
+  users: ["👤 Users", "Panel clients and subscription status"],
+  settings: ["⚙️ Settings", "Videos, WhatsApp and announcement"],
+  resellers: ["🏪 Resellers", "Dealers, credits and top-up"],
+  orders: ["🧾 Orders", "Approve once to auto-provision Xtream"],
+  stalker: ["🛰️ Stalker / MAG", "MAC-bound clients and portal URL"],
+  apikeys: ["🔑 API Keys", "Create and revoke owner API keys"]
 };
 
-/* ---------- API helpers ---------- */
+/* ---------- auth + API ---------- */
 function adminToken() {
   try {
     const raw = localStorage.getItem("mz_admin_session");
     if (!raw) return null;
-    const s = JSON.parse(raw);
-    if (!s.token || Date.now() > Number(s.expiresAt || 0)) { localStorage.removeItem("mz_admin_session"); return null; }
-    return s.token;
+    const session = JSON.parse(raw);
+    if (!session.token || Date.now() > Number(session.expiresAt || 0)) {
+      localStorage.removeItem("mz_admin_session");
+      return null;
+    }
+    return session.token;
   } catch { return null; }
 }
 async function authHeaders(extra = {}) {
-  const h = { ...extra };
-  const t = adminToken();
-  if (t) h["x-admin-token"] = t;
-  const idt = await safe("idToken", () => getFirebaseIdToken());
-  if (idt) h.Authorization = "Bearer " + idt;
-  const key = localStorage.getItem("mz_admin_key");
-  if (key) h["x-api-key"] = key;
-  return h;
+  const headers = { ...extra };
+  const pin = adminToken();
+  if (pin) headers["x-admin-token"] = pin;
+  else {
+    const idToken = await getFirebaseIdToken().catch(() => null);
+    if (idToken) headers.Authorization = "Bearer " + idToken;
+  }
+  try {
+    const key = localStorage.getItem("mz_admin_key");
+    if (key) headers["x-api-key"] = key;
+  } catch { /* storage can be unavailable in strict privacy mode */ }
+  return headers;
 }
-async function apiGet(action, params = {}) {
-  const qs = new URLSearchParams({ action, ...params }).toString();
-  const res = await fetch("/api/panel?" + qs, { headers: await authHeaders() });
-  const d = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(d.error || `API ${action} failed (${res.status})`);
-  return d;
-}
-async function apiPost(action, payload = {}) {
-  const res = await fetch("/api/panel", {
-    method: "POST",
-    headers: await authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ action, ...payload })
+async function apiRequest(action, { method = "GET", params = {}, payload } = {}) {
+  const query = new URLSearchParams({ action });
+  for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== null) query.set(key, value);
+  const response = await fetch(method === "GET" ? "/api/panel?" + query : "/api/panel", {
+    method, headers: await authHeaders(method === "POST" ? { "Content-Type": "application/json" } : {}),
+    body: method === "POST" ? JSON.stringify({ action, ...(payload || {}) }) : undefined
   });
-  const d = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(d.error || `API ${action} failed (${res.status})`);
-  return d;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401 && action !== "admin/pin-login" && adminToken()) {
+      try { localStorage.removeItem("mz_admin_session"); } catch {}
+      STATE.loaded = false;
+      showLock("Owner session expire ho gaya — dobara unlock karein.");
+    }
+    throw new Error(data.error || `API ${action} failed (${response.status})`);
+  }
+  return data;
 }
+const apiGet = (action, params = {}) => apiRequest(action, { params });
+const apiPost = (action, payload = {}) => apiRequest(action, { method: "POST", payload });
 
-/* ---------- lock / unlock ---------- */
-function lockErr(m) { const e = $("lockErr"); if (e) { e.textContent = m || ""; } }
-function showLock(msg) {
-  const l = $("adminLock"); if (l) l.classList.add("show");
+/* ---------- lock ---------- */
+function lockErr(message) { setText("lockErr", message || ""); }
+function showLock(message) {
+  $("adminLock")?.classList.add("show");
   document.body.classList.add("is-locked");
   document.body.classList.remove("unlocked");
-  lockErr(msg || "");
+  lockErr(message || "");
 }
 function hideLock() {
-  const l = $("adminLock"); if (l) l.classList.remove("show");
+  $("adminLock")?.classList.remove("show");
   document.body.classList.remove("is-locked");
   document.body.classList.add("unlocked");
 }
 function paintUser() {
-  const u = STATE.user;
-  if (!u) return;
-  const pinWrap = $("admPinStatic"); if (pinWrap) pinWrap.hidden = true;
-  setText("userName", u.displayName || u.email || "Admin");
-  setText("userRole", isAdminEmail(u.email) ? "👑 Super Admin (Owner)" : "Admin");
-  setText("userAvatar", (u.displayName || u.email || "A").slice(0, 2).toUpperCase());
+  const user = STATE.user;
+  if (!user) return;
+  setText("userName", user.displayName || user.email || "Admin");
+  setText("userRole", isAdminEmail(user.email) ? "👑 Super Admin (Owner)" : "Admin");
+  setText("userAvatar", (user.displayName || user.email || "A").slice(0, 2).toUpperCase());
 }
 async function enterAdmin(user) {
   STATE.user = user;
-  safe("paintUser", paintUser);
-  safe("hideLock", hideLock);
-  safe("appInit", () => appInit());
-  await loadAll();
-  safe("switchTab", () => switchTab(STATE.tab || "dashboard"));
+  paintUser();
+  hideLock();
+  appInit();
+  if (!STATE.loaded) {
+    if (!STATE.entering) STATE.entering = loadAll().finally(() => { STATE.entering = null; });
+    await STATE.entering;
+  }
+  switchTab(STATE.tab || "dashboard");
 }
-
-/* ---------- auth flow ---------- */
-async function onAuthUser(u) {
-  if (u) {
-    if (!isAdminEmail(u.email)) {
+async function onAuthUser(user) {
+  if (user) {
+    if (!isAdminEmail(user.email)) {
       showLock(`⛔ Access denied — ye panel sirf ${ADMIN_EMAIL} ke liye hai.`);
-      safe("logout", logoutUser);
-      localStorage.removeItem("mz_admin_session");
+      await logoutUser();
+      try { localStorage.removeItem("mz_admin_session"); } catch {}
       return;
     }
-    await enterAdmin({ displayName: u.displayName || u.email, email: u.email, uid: u.uid });
+    await enterAdmin({ displayName: user.displayName || user.email, email: user.email, uid: user.uid });
   } else if (!adminToken()) {
+    STATE.loaded = false;
     showLock();
     setText("userName", "🔒 Locked");
     setText("userRole", "Google owner login ya Owner PIN required");
@@ -147,294 +153,503 @@ async function onAuthUser(u) {
   }
 }
 async function pinLogin(pin) {
-  if (!pin) return toast("Enter the Owner PIN.", "error");
+  if (!pin) return lockErr("Enter the Owner PIN.");
+  const button = $("lockPinBtn");
+  if (button) button.disabled = true;
+  lockErr("");
   try {
-    const res = await apiPost("admin/pin-login", { pin });
-    localStorage.setItem("mz_admin_session", JSON.stringify({ token: res.token, expiresAt: Date.now() + (res.expiresIn || 43200) * 1000 }));
+    const result = await apiPost("admin/pin-login", { pin });
+    localStorage.setItem("mz_admin_session", JSON.stringify({ token: result.token, expiresAt: Date.now() + (result.expiresIn || 43200) * 1000 }));
+    if ($("lockPinIn")) $("lockPinIn").value = "";
     await enterAdmin({ displayName: "Owner (PIN)", email: ADMIN_EMAIL, uid: "owner_pin" });
     toast("👑 Owner access granted");
-  } catch (err) {
-    lockErr(err.message);
-    toast(err.message, "error");
-  }
+  } catch (error) {
+    lockErr(error.message);
+    toast(error.message, "error");
+  } finally { if (button) button.disabled = false; }
 }
 
-/* ---------- tabs ---------- */
+/* ---------- navigation ---------- */
 function switchTab(tab) {
+  if (!TAB_VIEWS[tab]) tab = "dashboard";
   STATE.tab = tab;
-  document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
-  document.querySelectorAll("section[id^=view]").forEach((s) => hide(s));
-  const el = $(TAB_VIEWS[tab] || ("view" + tab.charAt(0).toUpperCase() + tab.slice(1)));
-  if (el) show(el); else console.warn("switchTab: no view for", tab);
-  const [t, s] = TAB_TITLES[tab] || [tab, ""];
-  setText("pageTitle", t);
-  setText("pageSub", s);
+  document.querySelectorAll(".nav-btn").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
+  document.querySelectorAll("section[id^=view]").forEach((section) => { section.hidden = section.id !== TAB_VIEWS[tab]; });
+  const [title, subtitle] = TAB_TITLES[tab];
+  setText("pageTitle", title);
+  setText("pageSub", subtitle);
 }
 
-/* ---------- loaders ---------- */
+/* ---------- loading + rendering ---------- */
+let loadingPromise = null;
 async function loadAll() {
-  await Promise.allSettled([
-    safe("loadChannels", loadChannels), safe("loadPlaylists", loadPlaylists),
-    safe("loadXtream", loadXtream), safe("loadMovies", loadMovies),
-    safe("loadSeries", loadSeries), safe("loadUsers", loadUsers),
-    safe("loadSettings", loadSettings), safe("loadAnalytics", loadAnalytics),
-    safe("loadResellers", loadResellers), safe("loadOrders", loadOrders),
-    safe("loadStalker", loadStalker), safe("loadApiKeys", loadApiKeys), safe("loadAudit", loadAudit)
-  ]);
+  if (loadingPromise) return loadingPromise;
+  const refresh = $("btnRefresh");
+  if (refresh) refresh.disabled = true;
+  loadingPromise = (async () => {
+    const jobs = [loadSystemHealth, loadChannels, loadPlaylists, loadXtream, loadMovies, loadSeries, loadUsers, loadSettings, loadAnalytics, loadResellers, loadOrders, loadStalker, loadApiKeys, loadAudit];
+    const results = await Promise.allSettled(jobs.map((job) => job()));
+    const failed = results.filter((result) => result.status === "rejected");
+    STATE.loaded = true;
+    if (failed.length) {
+      setText("kpiSystem", "Degraded");
+      setText("kpiSysSub", `${failed.length} section${failed.length > 1 ? "s" : ""} failed`);
+      toast(`${failed.length} panel section(s) load nahi hue: ${failed[0].reason?.message || "API error"}`, "error");
+    }
+    return { failed: failed.length };
+  })().finally(() => {
+    loadingPromise = null;
+    if (refresh) refresh.disabled = false;
+  });
+  return loadingPromise;
+}
+function queryFor(name) { return String(STATE.global || STATE.filters[name] || "").trim().toLowerCase(); }
+function matches(item, query, fields) {
+  if (!query) return true;
+  return fields.some((field) => String(item?.[field] ?? "").toLowerCase().includes(query));
+}
+async function loadSystemHealth() {
+  const response = await fetch("/api/embed?action=health");
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error("System health check failed");
+  setText("kpiSystem", "Online");
+  const storage = data.storage || {};
+  setText("kpiSysSub", storage.durableServerWrites ? "Firebase persistent storage" : storage.production ? "⚠ Firebase service account required" : "Local development mirror");
 }
 async function loadChannels() {
-  const d = await apiGet("admin/channels");
-  STATE.channels = d.channels || [];
+  const data = await apiGet("admin/channels");
+  STATE.channels = data.channels || [];
   setText("badgeChannels", STATE.channels.length);
   setText("kpiChannels", STATE.channels.length);
-  const pro = STATE.channels.filter((c) => String(c.tier || "").toLowerCase() === "pro").length;
+  const pro = STATE.channels.filter((c) => c.tier === "pro").length;
   setText("kpiChannelsSub", `${STATE.channels.length - pro} Free • ${pro} PRO`);
   renderChannels();
 }
 function renderChannels() {
-  const tb = $("chBody"); if (!tb) return;
-  const q = STATE.search.toLowerCase();
-  tb.innerHTML = STATE.channels.filter((c) => !q || (c.name || "").toLowerCase().includes(q)).map((c, i) =>
-    `<tr data-row><td>${i + 1}</td><td>${c.logo ? `<img src="${esc(c.logo)}" style="width:26px;height:26px;border-radius:6px">` : "📺"}</td><td>${esc(c.name)}</td><td>${esc(c.category || "")}</td><td class="mono" style="max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(c.url || "")}</td></tr>`
-  ).join("") || '<tr><td colspan="5" style="color:var(--dim)">No channels yet.</td></tr>';
+  const body = $("chBody");
+  if (!body) return;
+  const query = queryFor("channels");
+  const list = STATE.channels.filter((c) => matches(c, query, ["name", "category", "url", "id"]));
+  body.innerHTML = list.map((channel) => {
+    const index = STATE.channels.indexOf(channel) + 1;
+    return `<tr data-row><td>${index}</td><td>${channel.logo ? `<img src="${esc(channel.logo)}" alt="" style="width:28px;height:28px;border-radius:6px;object-fit:cover">` : "📺"}</td><td><b>${esc(channel.name)}</b><br><span class="cell-sub mono">${esc(channel.url || "")}</span></td><td>${esc(channel.category || "")}</td><td><span class="pill ${channel.tier === "pro" ? "warn" : "ok"}">${channel.tier === "pro" ? "PRO" : "FREE"}</span></td><td class="actions"><button class="btn btn-ghost btn-sm" data-ch-edit="${esc(channel.id)}" title="Edit channel">✏️</button><button class="btn btn-danger btn-sm" data-ch-del="${esc(channel.id)}" title="Delete channel">🗑</button></td></tr>`;
+  }).join("") || '<tr><td colspan="6" class="empty">No matching channels.</td></tr>';
 }
 async function loadPlaylists() {
-  const list = (await dbRead("playlists", [])) || [];
-  STATE.playlists = Array.isArray(list) ? list : Object.values(list);
+  const data = await apiGet("admin/playlists");
+  STATE.playlists = data.playlists || [];
   setText("badgePlaylists", STATE.playlists.length);
   setText("kpiPlaylists", STATE.playlists.length);
-  const tb = $("plBody"); if (!tb) return;
-  tb.innerHTML = STATE.playlists.map((p) => `<tr data-row><td><b>${esc(p.name || p.title || "Playlist")}</b><br><span class="mono" style="color:var(--dim)">${esc(p.url || "")}</span></td><td>${esc(p.type || "m3u")}</td><td>${esc(p.updatedAt || "")}</td></tr>`).join("") || '<tr><td style="color:var(--dim)">No playlists.</td></tr>';
+  const body = $("plBody");
+  if (!body) return;
+  body.innerHTML = STATE.playlists.map((p) => `<tr data-row><td><b>${esc(p.name || "Playlist")}</b><br><span class="cell-sub mono">${esc(p.url || "")}</span></td><td>${esc(p.type || "m3u")}</td><td>${esc(String(p.updatedAt || "").replace("T", " ").slice(0, 19) || "—")}</td><td class="actions"><button class="btn btn-ghost btn-sm" data-pl-edit="${esc(p.id)}">✏️</button><button class="btn btn-danger btn-sm" data-pl-del="${esc(p.id)}">🗑</button></td></tr>`).join("") || '<tr><td colspan="4" class="empty">No playlists yet. Add one above.</td></tr>';
 }
 async function loadXtream() {
-  const d = await apiGet("admin/xtream-accounts");
-  STATE.xtream = d.accounts || [];
+  const data = await apiGet("admin/xtream-accounts");
+  STATE.xtream = data.accounts || [];
   setText("badgeXtream", STATE.xtream.length);
   setText("kpiXtream", STATE.xtream.length);
-  const active = STATE.xtream.filter((a) => String(a.status) === "Active").length;
-  setText("kpiXtreamSub", `${active} Active • ${STATE.xtream.length - active} other`);
+  const active = STATE.xtream.filter((a) => String(a.status).toLowerCase() === "active" && !(Number(a.expDate) < Date.now() / 1000)).length;
+  setText("kpiXtreamSub", `${active} Active • ${STATE.xtream.length - active} inactive`);
   renderXtream();
 }
 function renderXtream() {
-  const tb = $("xtBody"); if (!tb) return;
-  const q = STATE.search.toLowerCase();
-  tb.innerHTML = STATE.xtream.filter((a) => !q || a.username.toLowerCase().includes(q)).map((a) => {
-    const exp = Number(a.expDate || 0);
-    const expStr = exp ? new Date(exp * 1000).toLocaleDateString() : "—";
-    const st = String(a.status || "Active") === "Active" ? '<span class="pill ok">Active</span>' : '<span class="pill bad">Suspended</span>';
-    return `<tr data-row><td><b>${esc(a.username)}</b></td><td class="mono">${esc(a.password)}</td><td class="mono">${esc(a.mac || "—")}</td><td>${st}</td><td>${expStr}</td>
-      <td><button class="btn btn-ghost btn-sm" data-xt-renew="${esc(a.username)}">🔄</button>
-      <button class="btn btn-ghost btn-sm" data-xt-susp="${esc(a.username)}">⏸</button>
-      <button class="btn btn-danger btn-sm" data-xt-del="${esc(a.username)}">🗑</button></td></tr>`;
-  }).join("") || '<tr><td colspan="6" style="color:var(--dim)">No Xtream accounts.</td></tr>';
+  const body = $("xtBody");
+  if (!body) return;
+  const query = queryFor("xtream");
+  const list = STATE.xtream.filter((a) => matches(a, query, ["username", "mac", "displayName", "resellerCode"]));
+  body.innerHTML = list.map((account) => {
+    const expired = Number(account.expDate || 0) > 0 && Number(account.expDate) < Date.now() / 1000;
+    const active = String(account.status || "Active").toLowerCase() === "active" && !expired;
+    const status = expired ? '<span class="pill warn">Expired</span>' : active ? '<span class="pill ok">Active</span>' : '<span class="pill bad">Suspended</span>';
+    const expiry = account.expDate ? new Date(Number(account.expDate) * 1000).toLocaleDateString() : "—";
+    return `<tr data-row><td><b>${esc(account.username)}</b><br><span class="cell-sub">${esc(account.resellerCode || "direct")}</span></td><td class="mono">${esc(account.password)}</td><td class="mono">${esc(account.mac || "—")}</td><td>${status}</td><td>${expiry}</td><td class="actions"><button class="btn btn-ghost btn-sm" data-xt-renew="${esc(account.username)}" title="Renew">🔄</button><button class="btn btn-ghost btn-sm" data-xt-toggle="${esc(account.username)}" data-xt-active="${active}" title="${active ? "Suspend" : "Activate"}">${active ? "⏸" : "▶️"}</button><button class="btn btn-danger btn-sm" data-xt-del="${esc(account.username)}" title="Delete">🗑</button></td></tr>`;
+  }).join("") || '<tr><td colspan="6" class="empty">No matching Xtream accounts.</td></tr>';
 }
+let movieRequest = 0, seriesRequest = 0;
 async function loadMovies() {
-  const d = await fetch("/api/embed?action=movies&limit=40").then((r) => r.json()).catch(() => ({}));
-  STATE.movies = d.movies || [];
-  renderList("mvBody", STATE.movies, (m) => `<td><b>${esc(m.title)}</b></td><td>${esc(m.year || "")}</td><td>⭐ ${esc(m.rating || "—")}</td>`);
+  const request = ++movieRequest;
+  const query = STATE.global || STATE.filters.movies || "";
+  const response = await fetch("/api/embed?action=movies&limit=80&q=" + encodeURIComponent(query));
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Movies failed to load");
+  if (request !== movieRequest) return;
+  STATE.movies = data.movies || [];
+  renderMovies();
+}
+function renderMovies() {
+  const body = $("mvBody");
+  if (!body) return;
+  body.innerHTML = STATE.movies.map((m) => `<tr data-row><td><b>${esc(m.title)}</b><br><span class="cell-sub">${esc(m.category || "")}</span></td><td>${esc(m.year || "—")}</td><td>⭐ ${esc(m.rating || "—")}</td><td>${m.streamAvailable ? '<span class="pill ok">Ready</span>' : '<span class="pill warn">Metadata only</span>'}</td><td><button class="btn btn-ghost btn-sm" data-mv-stream="${esc(m.id)}" title="Set licensed stream URL">🔗 Stream URL</button></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No matching movies.</td></tr>';
 }
 async function loadSeries() {
-  const d = await fetch("/api/embed?action=series&limit=40").then((r) => r.json()).catch(() => ({}));
-  STATE.series = d.series || [];
-  renderList("srBody", STATE.series, (m) => `<td><b>${esc(m.title)}</b></td><td>${esc(m.year || "")}</td><td>⭐ ${esc(m.rating || "—")}</td>`);
-}
-function renderList(tbodyId, list, rowFn) {
-  const tb = $(tbodyId); if (!tb) return;
-  const q = STATE.search.toLowerCase();
-  tb.innerHTML = list.filter((m) => !q || String(m.title || "").toLowerCase().includes(q)).map((m) => `<tr data-row>${rowFn(m)}</tr>`).join("") || '<tr><td style="color:var(--dim)">Empty.</td></tr>';
+  const request = ++seriesRequest;
+  const query = STATE.global || STATE.filters.series || "";
+  const response = await fetch("/api/embed?action=series&limit=80&q=" + encodeURIComponent(query));
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Series failed to load");
+  if (request !== seriesRequest) return;
+  STATE.series = data.series || [];
+  const body = $("srBody");
+  if (!body) return;
+  body.innerHTML = STATE.series.map((s) => `<tr data-row><td><b>${esc(s.title)}</b><br><span class="cell-sub">${esc(s.category || "")}</span></td><td>${esc(s.year || "—")}</td><td>⭐ ${esc(s.rating || "—")}</td><td>${Number(s.episodeCount || 0)}</td><td>${s.streamAvailable ? '<span class="pill ok">Ready</span>' : '<span class="pill warn">Metadata only</span>'}</td><td><button class="btn btn-ghost btn-sm" data-sr-episodes="${esc(s.id)}" title="Configure episode stream">🔗 Episodes</button></td></tr>`).join("") || '<tr><td colspan="6" class="empty">No matching series.</td></tr>';
 }
 async function loadUsers() {
-  const d = await apiGet("admin/clients");
-  STATE.clients = d.clients || [];
-  const tb = $("usBody"); if (!tb) return;
-  const q = STATE.search.toLowerCase();
-  tb.innerHTML = STATE.clients.filter((c) => !q || c.username.includes(q)).map((c) => {
-    const st = c.status === "suspended" ? '<span class="pill bad">Suspended</span>' : c.expired ? '<span class="pill warn">Expired</span>' : '<span class="pill ok">Active</span>';
-    return `<tr data-row><td><b>${esc(c.username)}</b></td><td>${esc(c.whatsapp || "—")}</td><td>${esc(c.resellerCode || "direct")}</td><td>${st}</td><td>${c.daysLeft}</td></tr>`;
-  }).join("") || '<tr><td colspan="5" style="color:var(--dim)">No clients.</td></tr>';
+  const data = await apiGet("admin/clients");
+  STATE.clients = data.clients || [];
+  renderUsers();
+}
+function renderUsers() {
+  const body = $("usBody");
+  if (!body) return;
+  const query = queryFor("users");
+  const list = STATE.clients.filter((c) => matches(c, query, ["username", "whatsapp", "email", "resellerCode", "name"]));
+  body.innerHTML = list.map((c) => {
+    const status = c.status === "suspended" ? '<span class="pill bad">Suspended</span>' : c.expired ? '<span class="pill warn">Expired</span>' : '<span class="pill ok">Active</span>';
+    return `<tr data-row><td><b>${esc(c.username)}</b></td><td>${esc(c.whatsapp || "—")}</td><td>${esc(c.resellerCode || "direct")}</td><td>${status}</td><td>${Number(c.daysLeft || 0)} <button class="btn btn-ghost btn-sm" data-user-copy="${esc(c.username)}" title="Copy credentials">📋</button></td></tr>`;
+  }).join("") || '<tr><td colspan="5" class="empty">No matching clients.</td></tr>';
 }
 async function loadSettings() {
-  const d = await apiGet("admin/settings");
-  const s = d.settings || {};
+  const data = await apiGet("admin/settings");
+  const settings = data.settings || {};
   const map = { stWelcome: "welcomeVideoUrl", stOffline: "channelOfflineVideoUrl", stComing: "comingSoonVideoUrl", stPro: "proUnlockVideoUrl", stWa: "proWhatsapp", stTicker: "siteAnnouncement" };
-  for (const [id, key] of Object.entries(map)) { const el = $(id); if (el) el.value = s[key] || ""; }
+  for (const [id, key] of Object.entries(map)) if ($(id)) $(id).value = settings[key] || "";
 }
 async function loadAnalytics() {
-  const d = await apiGet("admin/analytics");
-  const a = d.analytics || {};
-  setText("anOnline", a.onlineNow ?? 0);
-  setText("anSessions", a.totalSessions ?? 0);
-  setText("anPlays", a.totalPlays ?? 0);
-  setText("anAvg", Math.round((a.avgSessionSec || 0) / 60) + " min");
-  const d2 = await apiGet("admin/errors", { limit: 20 });
-  const tb = $("errBody"); if (tb) tb.innerHTML = (d2.errors || []).map((e) => `<tr><td class="mono" style="max-width:420px">${esc(e.message)}</td><td>${esc(e.route || "")}</td><td>${esc(e.at || "")}</td></tr>`).join("") || '<tr><td style="color:var(--dim)">No errors 🎉</td></tr>';
+  const [data, errors] = await Promise.all([apiGet("admin/analytics"), apiGet("admin/errors", { limit: 20 })]);
+  const analytics = data.analytics || {};
+  setText("anOnline", analytics.onlineNow ?? 0);
+  setText("anSessions", analytics.totalSessions ?? 0);
+  setText("anPlays", analytics.totalPlays ?? 0);
+  setText("anAvg", Math.round((analytics.avgSessionSec || 0) / 60) + " min");
+  const sessions = analytics.recentSessions || [];
+  if ($("sessBody")) $("sessBody").innerHTML = sessions.map((s) => `<tr><td class="mono">${esc(s.id || "—")}</td><td>${esc(s.event || "page_view")}</td><td>${esc(s.route || "—")}</td><td>${esc(s.lastSeenAt || s.at || "—")}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">No tracked sessions yet.</td></tr>';
+  if ($("errBody")) $("errBody").innerHTML = (errors.errors || []).map((e) => `<tr><td class="mono">${esc(e.message)}</td><td>${esc(e.route || "")}</td><td>${esc(e.at || "")}</td></tr>`).join("") || '<tr><td colspan="3" class="empty">No errors 🎉</td></tr>';
 }
 async function loadResellers() {
-  const d = await apiGet("admin/resellers");
-  STATE.resellers = d.resellers || [];
-  const tb = $("rsBody"); if (!tb) return;
-  tb.innerHTML = STATE.resellers.map((r) => {
-    const st = r.status === "suspended" ? '<span class="pill bad">Suspended</span>' : '<span class="pill ok">Active</span>';
-    return `<tr data-row><td class="mono"><b>${esc(r.code)}</b></td><td>${esc(r.name || "")}<br><span style="color:var(--dim);font-size:.7rem">${esc(r.email || "")}</span></td><td>${r.credits}</td><td>${st}</td>
-      <td><button class="btn btn-primary btn-sm" data-rs-topup="${esc(r.code)}">+10 💳</button></td></tr>`;
-  }).join("") || '<tr><td colspan="5" style="color:var(--dim)">No resellers yet — self-serve signup se aayenge.</td></tr>';
+  const data = await apiGet("admin/resellers");
+  STATE.resellers = data.resellers || [];
+  renderResellers();
+}
+function renderResellers() {
+  const body = $("rsBody");
+  if (!body) return;
+  const query = queryFor("resellers");
+  const list = STATE.resellers.filter((r) => matches(r, query, ["code", "name", "email", "whatsapp"]));
+  body.innerHTML = list.map((r) => `<tr data-row><td class="mono"><b>${esc(r.code)}</b></td><td>${esc(r.name || "")}<br><span class="cell-sub">${esc(r.email || "")}</span></td><td>${Number(r.credits || 0)}</td><td>${r.status === "suspended" ? '<span class="pill bad">Suspended</span>' : '<span class="pill ok">Active</span>'}</td><td><button class="btn btn-primary btn-sm" data-rs-topup="${esc(r.code)}">＋ Credits</button></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No matching resellers.</td></tr>';
 }
 async function loadOrders() {
-  const d = await apiGet("admin/orders");
-  STATE.orders = d.orders || [];
-  const tb = $("orBody"); if (!tb) return;
-  tb.innerHTML = STATE.orders.map((o) => {
-    const st = o.status === "approved" ? '<span class="pill ok">Approved</span>' : o.status === "rejected" ? '<span class="pill bad">Rejected</span>' : '<span class="pill warn">Pending</span>';
-    const act = o.status === "pending" ? `<button class="btn btn-primary btn-sm" data-or-approve="${esc(o.id)}">✅</button> <button class="btn btn-danger btn-sm" data-or-reject="${esc(o.id)}">✖</button>` : esc(o.clientUsername || "");
-    return `<tr data-row><td class="mono">${esc(o.id)}</td><td>${esc(o.name)}<br><span style="color:var(--dim);font-size:.7rem">${esc(o.whatsapp || "")}</span></td><td>${esc(o.planId)}</td><td>Rs ${o.amount || "—"}</td><td>${st}</td><td>${act}</td></tr>`;
-  }).join("") || '<tr><td colspan="6" style="color:var(--dim)">No orders.</td></tr>';
+  const data = await apiGet("admin/orders");
+  STATE.orders = data.orders || [];
+  const body = $("orBody");
+  if (!body) return;
+  body.innerHTML = STATE.orders.map((o) => {
+    const status = o.status === "approved" ? '<span class="pill ok">Approved</span>' : o.status === "rejected" ? '<span class="pill bad">Rejected</span>' : '<span class="pill warn">Pending</span>';
+    const action = o.status === "pending" ? `<button class="btn btn-primary btn-sm" data-or-approve="${esc(o.id)}" title="Approve and provision">✅</button> <button class="btn btn-danger btn-sm" data-or-reject="${esc(o.id)}" title="Reject">✖</button>` : esc(o.clientUsername || "—");
+    return `<tr data-row><td class="mono">${esc(o.id)}</td><td>${esc(o.name)}<br><span class="cell-sub">${esc(o.whatsapp || "")}</span></td><td>${esc(o.planId)}</td><td>Rs ${Number(o.amount || 0)}</td><td>${status}</td><td>${action}</td></tr>`;
+  }).join("") || '<tr><td colspan="6" class="empty">No orders.</td></tr>';
 }
 async function loadStalker() {
-  const d = await apiGet("admin/stalker/list");
-  STATE.stalker = d.clients || [];
+  const data = await apiGet("admin/stalker/list");
+  STATE.stalker = data.clients || [];
   setText("portalUrl", location.origin + "/portal.php");
-  const tb = $("stBody"); if (!tb) return;
-  tb.innerHTML = STATE.stalker.map((c) => {
-    const st = c.status === "suspended" || c.expired ? '<span class="pill bad">Blocked</span>' : '<span class="pill ok">Active</span>';
-    return `<tr data-row><td class="mono">${esc(c.mac)}</td><td>${esc(c.username)}</td><td>${st}</td><td>${c.expDate ? new Date(c.expDate * 1000).toLocaleDateString() : "—"}</td></tr>`;
-  }).join("") || '<tr><td colspan="4" style="color:var(--dim)">No MAG clients yet.</td></tr>';
+  const body = $("stBody");
+  if (!body) return;
+  body.innerHTML = STATE.stalker.map((c) => `<tr data-row><td class="mono">${esc(c.mac)}</td><td>${esc(c.username)}</td><td>${c.status === "suspended" || c.expired ? '<span class="pill bad">Blocked</span>' : '<span class="pill ok">Active</span>'}</td><td>${c.expDate ? new Date(Number(c.expDate) * 1000).toLocaleDateString() : "—"}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">No MAG clients yet. Create an Xtream user with a MAC address.</td></tr>';
 }
 async function loadApiKeys() {
-  const d = await apiGet("admin/api-keys");
-  STATE.keys = d.keys || [];
-  const tb = $("keyBody"); if (!tb) return;
-  tb.innerHTML = STATE.keys.map((k) => {
-    const st = k.revoked ? '<span class="pill bad">Revoked</span>' : '<span class="pill ok">Active</span>';
-    return `<tr data-row><td>${esc(k.label)}</td><td>${esc((k.createdAt || "").slice(0, 10))}</td><td>${esc(k.lastUsedAt ? new Date(Number(k.lastUsedAt)).toLocaleString() : "—")}</td><td>${st}</td>
-      <td>${k.revoked ? "" : `<button class="btn btn-danger btn-sm" data-key-revoke="${esc(k.hash || k.id)}">Revoke</button>`}</td></tr>`;
-  }).join("") || '<tr><td colspan="5" style="color:var(--dim)">No API keys.</td></tr>';
+  const data = await apiGet("admin/api-keys");
+  STATE.keys = data.keys || [];
+  const body = $("keyBody");
+  if (!body) return;
+  body.innerHTML = STATE.keys.map((k) => `<tr data-row><td>${esc(k.label)}</td><td>${esc(String(k.createdAt || "").slice(0, 10))}</td><td>${esc(k.lastUsedAt ? new Date(Number(k.lastUsedAt)).toLocaleString() : "—")}</td><td>${k.revoked ? '<span class="pill bad">Revoked</span>' : '<span class="pill ok">Active</span>'}</td><td>${k.revoked ? "" : `<button class="btn btn-danger btn-sm" data-key-revoke="${esc(k.id)}">Revoke</button>`}</td></tr>`).join("") || '<tr><td colspan="5" class="empty">No API keys.</td></tr>';
 }
 async function loadAudit() {
-  const d = await apiGet("admin/audit", { limit: 12 });
-  STATE.audit = d.audit || [];
-  const tb = $("actBody"); if (!tb) return;
-  tb.innerHTML = STATE.audit.map((a) => `<tr><td style="color:var(--dim);font-size:.72rem">${esc((a.at || "").slice(0, 19).replace("T", " "))}</td><td>${esc(a.action)}</td><td class="mono" style="font-size:.72rem">${esc(JSON.stringify(a.detail || {}).slice(0, 90))}</td></tr>`).join("") || '<tr><td style="color:var(--dim)">No activity.</td></tr>';
+  const data = await apiGet("admin/audit", { limit: 12 });
+  STATE.audit = data.audit || [];
+  if ($("actBody")) $("actBody").innerHTML = STATE.audit.map((a) => `<tr><td class="cell-sub">${esc(String(a.at || "").slice(0, 19).replace("T", " "))}</td><td>${esc(a.action)}</td><td class="mono cell-sub">${esc(JSON.stringify(a.detail || {}).slice(0, 90))}</td></tr>`).join("") || '<tr><td class="empty">No activity.</td></tr>';
+}
+function renderLocalSearches() { renderChannels(); renderXtream(); renderUsers(); renderResellers(); }
+function activateLocalSearch() {
+  STATE.global = "";
+  if ($("globalSearch")) $("globalSearch").value = "";
+}
+
+/* ---------- dialog forms ---------- */
+function closeDialog() {
+  const dialog = $("appDialog");
+  if (!dialog) return;
+  if (typeof dialog.close === "function" && dialog.hasAttribute("open")) dialog.close();
+  else dialog.removeAttribute("open");
+}
+function openForm(title, fields, onSubmit, submitLabel = "Save") {
+  const dialog = $("appDialog"), form = $("dialogForm");
+  if (!dialog || !form) return;
+  setText("dialogTitle", title);
+  setText("dialogError", "");
+  $("dialogFields").innerHTML = fields.map((f) => {
+    const value = f.value ?? "";
+    let control;
+    if (f.options) {
+      control = `<select name="${esc(f.name)}" ${f.required ? "required" : ""}>${f.options.map(([v, label]) => `<option value="${esc(v)}" ${String(v) === String(value) ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>`;
+    } else {
+      control = `<input name="${esc(f.name)}" type="${esc(f.type || "text")}" value="${esc(value)}" placeholder="${esc(f.placeholder || "")}" ${f.required ? "required" : ""} ${f.min !== undefined ? `min="${f.min}"` : ""} ${f.max !== undefined ? `max="${f.max}"` : ""} ${f.step !== undefined ? `step="${f.step}"` : ""}>`;
+    }
+    return `<label><span>${esc(f.label)}</span>${control}${f.help ? `<small>${esc(f.help)}</small>` : ""}</label>`;
+  }).join("");
+  setText("dialogSubmit", submitLabel);
+  $("dialogSubmit").hidden = false;
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(form).entries());
+    $("dialogSubmit").disabled = true;
+    setText("dialogError", "");
+    try { await onSubmit(values); closeDialog(); }
+    catch (error) { setText("dialogError", error.message); }
+    finally { $("dialogSubmit").disabled = false; }
+  };
+  $("dialogClose").onclick = closeDialog;
+  $("dialogCancel").onclick = closeDialog;
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
+}
+function channelForm(channel) {
+  const existing = channel || {};
+  openForm(existing.id ? "Edit live channel" : "Add live channel", [
+    { name: "name", label: "Channel name", value: existing.name, required: true, placeholder: "Example: Madani Channel HD" },
+    { name: "url", label: "Licensed HLS / MP4 / DASH URL", value: existing.url, required: true, placeholder: "https://…/playlist.m3u8 or /media/…" },
+    { name: "category", label: "Category", value: existing.category || "General", required: true },
+    { name: "logo", label: "Logo URL (optional)", value: existing.logo, placeholder: "https://…/logo.png" },
+    { name: "tier", label: "Access", value: existing.tier || "free", options: [["free", "Free preview"], ["pro", "PRO subscribers"]] }
+  ], async (values) => {
+    await apiPost(existing.id ? "admin/channel-update" : "admin/channel-create", existing.id ? { id: existing.id, patch: values } : values);
+    toast(existing.id ? "Channel updated" : "Channel added");
+    await loadChannels();
+  });
+}
+function playlistForm(playlist) {
+  const existing = playlist || {};
+  openForm(existing.id ? "Edit playlist" : "Add playlist", [
+    { name: "name", label: "Playlist name", value: existing.name, required: true },
+    { name: "url", label: "M3U/M3U8 URL", value: existing.url, required: true, placeholder: "https://…/playlist.m3u" }
+  ], async (values) => {
+    await apiPost("admin/playlist-save", { ...values, id: existing.id });
+    toast("Playlist saved");
+    await loadPlaylists();
+  });
+}
+function xtreamCreateForm() {
+  openForm("Create Xtream client", [
+    { name: "name", label: "Client name", required: true, placeholder: "Client name" },
+    { name: "username", label: "Username (optional)", help: "Lowercase letters, numbers and underscore. Blank = auto-generate." },
+    { name: "password", label: "Password (optional)", help: "Blank = secure random password." },
+    { name: "planId", label: "Plan", value: "monthly", options: [["trial-1d", "1-day trial"], ["monthly", "1 month"], ["quarterly", "3 months"], ["half-yearly", "6 months"], ["yearly", "12 months"]] },
+    { name: "days", label: "Duration override (days)", type: "number", value: 30, min: 1, max: 3650, required: true },
+    { name: "devices", label: "Connections", type: "number", value: 1, min: 1, max: 20, required: true },
+    { name: "mac", label: "MAG MAC (optional)", placeholder: "00:1A:79:XX:XX:XX" },
+    { name: "email", label: "Email (optional)", type: "email" },
+    { name: "whatsapp", label: "WhatsApp (optional)" }
+  ], async (values) => {
+    const result = await apiPost("admin/xtream/create", values);
+    toast(`⚡ ${result.client.username} created — password: ${result.client.password}`);
+    await Promise.all([loadXtream(), loadUsers(), loadStalker(), loadAudit()]);
+  }, "Create client");
+}
+async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; }
+    const area = document.createElement("textarea");
+    area.value = text; area.style.position = "fixed"; area.style.opacity = "0";
+    document.body.appendChild(area); area.select();
+    const copied = document.execCommand?.("copy");
+    area.remove();
+    return !!copied;
+  } catch { return false; }
 }
 
 /* ---------- controls ---------- */
 function appInit() {
   if (window.__mzAdminInit) return;
   window.__mzAdminInit = true;
+  document.querySelectorAll(".nav-btn").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
 
-  document.querySelectorAll(".nav-btn").forEach((b) =>
-    b.addEventListener("click", () => safe("switchTab", () => switchTab(b.dataset.tab))));
-
-  const gs = $("globalSearch");
-  if (gs) gs.addEventListener("input", (e) => {
-    STATE.search = e.target.value;
-    safe("renderChannels", renderChannels); safe("renderXtream", renderXtream);
-    ["mvBody", "srBody", "usBody"].forEach((id) => safe("render" + id, () => { const tb = $(id); }));
-    safe("loadMovies", loadMovies); safe("loadSeries", loadSeries); safe("loadUsers", loadUsers);
+  const catalogSearch = debounce(() => { Promise.allSettled([loadMovies(), loadSeries()]); });
+  $("globalSearch")?.addEventListener("input", (event) => {
+    STATE.global = event.target.value;
+    renderLocalSearches();
+    catalogSearch();
   });
-  for (const id of ["chSearch", "xtSearch", "mvSearch", "srSearch", "usSearch"]) {
-    const el = $(id);
-    if (el) el.addEventListener("input", (e) => {
-      STATE.search = e.target.value;
-      safe("renderChannels", renderChannels); safe("renderXtream", renderXtream);
-      safe("loadMovies", loadMovies); safe("loadSeries", loadSeries); safe("loadUsers", loadUsers);
-    });
+  const searchMap = { chSearch: "channels", xtSearch: "xtream", usSearch: "users", rsSearch: "resellers" };
+  for (const [id, key] of Object.entries(searchMap)) {
+    $(id)?.addEventListener("input", (event) => { activateLocalSearch(); STATE.filters[key] = event.target.value; renderLocalSearches(); });
+  }
+  for (const [id, key] of [["mvSearch", "movies"], ["srSearch", "series"]]) {
+    $(id)?.addEventListener("input", (event) => { activateLocalSearch(); STATE.filters[key] = event.target.value; catalogSearch(); });
   }
 
   $("lockGoogleBtn")?.addEventListener("click", async () => {
     lockErr("");
-    const b = $("lockGoogleBtn"); if (b) b.disabled = true;
-    const res = await safe("loginWithGoogle", () => loginWithGoogle()) || { ok: false, error: "failed" };
-    if (b) b.disabled = false;
-    if (!res.ok) {
-      const hint = res.code === "auth/unauthorized-domain" ? ` — Firebase → Auth → Authorized domains mein ${location.hostname} add karo, ya Owner PIN use karo.` : "";
-      lockErr((res.error || "Google sign-in failed") + hint);
+    const button = $("lockGoogleBtn");
+    if (button) button.disabled = true;
+    const result = await loginWithGoogle();
+    if (button) button.disabled = false;
+    if (!result.ok) {
+      const hint = result.code === "auth/unauthorized-domain" ? ` — Firebase → Auth → Authorized domains mein ${location.hostname} add karein, ya Owner PIN use karein.` : "";
+      lockErr((result.error || "Google sign-in failed") + hint);
     }
   });
-  $("lockGoogleRedirectBtn")?.addEventListener("click", () => { lockErr("Redirecting…"); safe("redirect", () => loginWithGoogleRedirect()); });
+  $("lockGoogleRedirectBtn")?.addEventListener("click", async () => {
+    lockErr("Redirecting…");
+    const result = await loginWithGoogleRedirect();
+    if (!result.ok) lockErr(result.error || "Redirect sign-in failed");
+  });
   $("lockPinBtn")?.addEventListener("click", () => pinLogin($("lockPinIn")?.value.trim()));
-  $("lockPinIn")?.addEventListener("keydown", (e) => { if (e.key === "Enter") $("lockPinBtn")?.click(); });
-
+  $("lockPinIn")?.addEventListener("keydown", (event) => { if (event.key === "Enter") $("lockPinBtn")?.click(); });
   $("btnLogout")?.addEventListener("click", async () => {
-    await safe("logout", logoutUser);
-    localStorage.removeItem("mz_admin_session");
-    localStorage.removeItem("mz_admin_key");
+    await logoutUser();
+    try { localStorage.removeItem("mz_admin_session"); localStorage.removeItem("mz_admin_key"); } catch {}
     location.reload();
   });
   $("btnTheme")?.addEventListener("click", () => {
-    const root = document.documentElement;
-    const next = root.dataset.theme === "light" ? "dark" : "light";
-    root.dataset.theme = next;
-    localStorage.setItem("mz_theme", next);
+    const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("mz_theme", next); } catch {}
     setText("btnTheme", next === "dark" ? "🌙" : "☀️");
   });
   safe("theme", () => {
-    const t = localStorage.getItem("mz_theme");
-    if (t) { document.documentElement.dataset.theme = t; setText("btnTheme", t === "dark" ? "🌙" : "☀️"); }
+    const theme = localStorage.getItem("mz_theme");
+    if (theme) { document.documentElement.dataset.theme = theme; setText("btnTheme", theme === "dark" ? "🌙" : "☀️"); }
   });
+  $("btnRefresh")?.addEventListener("click", async () => { await loadAll(); toast("Panel data refreshed"); });
 
-  $("stRefreshBtn")?.addEventListener("click", () => safe("loadStalker", loadStalker));
-  $("errRefresh")?.addEventListener("click", () => safe("loadAnalytics", loadAnalytics));
+  $("chAddBtn")?.addEventListener("click", () => channelForm());
+  $("qAddChannel")?.addEventListener("click", () => channelForm());
+  $("plAddBtn")?.addEventListener("click", () => playlistForm());
+  $("xtAddBtn")?.addEventListener("click", xtreamCreateForm);
+  $("qGo")?.addEventListener("click", () => {
+    const value = $("qSearch")?.value || "";
+    activateLocalSearch();
+    STATE.filters.channels = value;
+    if ($("chSearch")) $("chSearch").value = value;
+    switchTab("channels");
+    renderChannels();
+  });
+  $("qSearch")?.addEventListener("keydown", (event) => { if (event.key === "Enter") $("qGo")?.click(); });
+  $("stRefreshBtn")?.addEventListener("click", () => loadStalker().then(() => toast("MAG list refreshed")).catch((e) => toast(e.message, "error")));
+  $("errRefresh")?.addEventListener("click", () => loadAnalytics().catch((e) => toast(e.message, "error")));
   $("stSave")?.addEventListener("click", async () => {
+    const button = $("stSave");
+    if (button) button.disabled = true;
     try {
-      await apiPost("admin/settings-set", {
-        patch: {
-          welcomeVideoUrl: $("stWelcome")?.value, channelOfflineVideoUrl: $("stOffline")?.value,
-          comingSoonVideoUrl: $("stComing")?.value, proUnlockVideoUrl: $("stPro")?.value,
-          proWhatsapp: $("stWa")?.value, siteAnnouncement: $("stTicker")?.value
-        }
-      });
+      await apiPost("admin/settings-set", { patch: {
+        welcomeVideoUrl: $("stWelcome")?.value.trim(), channelOfflineVideoUrl: $("stOffline")?.value.trim(),
+        comingSoonVideoUrl: $("stComing")?.value.trim(), proUnlockVideoUrl: $("stPro")?.value.trim(),
+        proWhatsapp: $("stWa")?.value.trim(), siteAnnouncement: $("stTicker")?.value.trim()
+      } });
       toast("💾 Settings saved");
-    } catch (e) { toast(e.message, "error"); }
+      await loadAudit();
+    } catch (error) { toast(error.message, "error"); }
+    finally { if (button) button.disabled = false; }
   });
   $("keyCreateBtn")?.addEventListener("click", async () => {
+    const button = $("keyCreateBtn");
+    if (button) button.disabled = true;
     try {
-      const r = await apiPost("admin/api-key-create", { label: "panel-" + new Date().toISOString().slice(0, 10), expiresDays: 0 });
-      const card = $("keyNewCard"), pre = $("keyNewValue");
-      if (card) card.hidden = false;
-      if (pre) pre.textContent = r.apiKey;
-      toast("🔑 API key created — copy kar lo!");
-      safe("loadApiKeys", loadApiKeys);
-    } catch (e) { toast(e.message, "error"); }
+      const result = await apiPost("admin/api-key-create", { label: "panel-" + new Date().toISOString().slice(0, 10), expiresDays: 0 });
+      if ($("keyNewCard")) { $("keyNewCard").hidden = false; $("keyNewCard").classList.remove("hidden"); }
+      setText("keyNewValue", result.apiKey);
+      toast("🔑 API key created — copy it now");
+      await loadApiKeys();
+    } catch (error) { toast(error.message, "error"); }
+    finally { if (button) button.disabled = false; }
   });
-  $("chAddBtn")?.addEventListener("click", () => toast("Channel add: seed catalog se hoti hai — /api/panel admin/channels dekhein.", "ok"));
-  $("xtAddBtn")?.addEventListener("click", async () => {
-    try {
-      const r = await apiPost("admin/xtream/create", { name: "user" + Date.now() % 100000, days: 30, planId: "monthly" });
-      toast("⚡ Xtream user created: " + r.client.username);
-      safe("loadXtream", loadXtream); safe("loadUsers", loadUsers);
-    } catch (e) { toast(e.message, "error"); }
-  });
-  $("qGo")?.addEventListener("click", () => { STATE.search = $("qSearch")?.value || ""; switchTab("channels"); });
+  $("keyCopyBtn")?.addEventListener("click", async () => toast(await copyText($("keyNewValue")?.textContent || "") ? "API key copied" : "Clipboard unavailable — key manually select karein", "ok"));
 
-  // delegated row actions
-  document.addEventListener("click", async (e) => {
-    const el = e.target.closest("[data-rs-topup],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-susp],[data-xt-del]");
+  document.addEventListener("click", async (event) => {
+    const el = event.target.closest("[data-rs-topup],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-toggle],[data-xt-del],[data-ch-edit],[data-ch-del],[data-pl-edit],[data-pl-del],[data-mv-stream],[data-sr-episodes],[data-user-copy]");
     if (!el) return;
     try {
-      if (el.dataset.rsTopup) { await apiPost("admin/credits-topup", { code: el.dataset.rsTopup, credits: 10 }); toast("+10 credits"); safe("loadResellers", loadResellers); }
-      else if (el.dataset.orApprove) { const r = await apiPost("admin/order-review", { id: el.dataset.orApprove, approve: true }); toast("✅ Approved — client: " + (r.client?.username || "")); safe("loadOrders", loadOrders); safe("loadXtream", loadXtream); }
-      else if (el.dataset.orReject) { await apiPost("admin/order-review", { id: el.dataset.orReject, approve: false }); toast("Order rejected"); safe("loadOrders", loadOrders); }
-      else if (el.dataset.keyRevoke) { await apiPost("admin/api-key-revoke", { hash: el.dataset.keyRevoke }); toast("Key revoked 🚫"); safe("loadApiKeys", loadApiKeys); }
-      else if (el.dataset.xtRenew) { await apiPost("admin/xtream/renew", { username: el.dataset.xtRenew }); toast("🔄 renewed"); safe("loadXtream", loadXtream); }
-      else if (el.dataset.xtSusp) { await apiPost("admin/xtream/suspend", { username: el.dataset.xtSusp }); toast("⏸ suspended"); safe("loadXtream", loadXtream); }
-      else if (el.dataset.xtDel) { await apiPost("admin/xtream/delete", { username: el.dataset.xtDel }); toast("🗑 deleted"); safe("loadXtream", loadXtream); safe("loadUsers", loadUsers); }
-    } catch (err) { toast(err.message, "error"); }
+      if (el.dataset.chEdit) return channelForm(STATE.channels.find((c) => c.id === el.dataset.chEdit));
+      if (el.dataset.plEdit) return playlistForm(STATE.playlists.find((p) => p.id === el.dataset.plEdit));
+      if (el.dataset.mvStream) {
+        const movie = STATE.movies.find((m) => m.id === el.dataset.mvStream);
+        return openForm(`Stream URL — ${movie?.title || "Movie"}`, [{ name: "streamUrl", label: "Licensed MP4/HLS URL", placeholder: "https://…/movie.mp4", help: "Only add content you have rights to stream. Blank removes playback." }], async (values) => {
+          await apiPost("admin/movie-update", { id: el.dataset.mvStream, patch: values });
+          toast("Movie playback updated"); await loadMovies();
+        });
+      }
+      if (el.dataset.srEpisodes) {
+        const series = STATE.series.find((item) => item.id === el.dataset.srEpisodes);
+        const episodes = series?.episodes || [];
+        if (!episodes.length) return toast("No episodes in this catalog entry", "error");
+        return openForm(`Episode stream — ${series.title || "Series"}`, [
+          { name: "episodeId", label: "Episode", type: "select", options: episodes.map((ep) => [ep.id, `S${String(ep.season || 1).padStart(2, "0")}E${String(ep.episode || 1).padStart(2, "0")} — ${ep.title || ep.id}${ep.streamAvailable ? " (ready)" : ""}`]) },
+          { name: "streamUrl", label: "Licensed episode URL", placeholder: "https://…/episode.mp4", help: "MP4 or HLS URL. Blank removes playback for the selected episode." }
+        ], async (values) => {
+          await apiPost("admin/series-update", { id: series.id, patch: { episodes: [{ id: values.episodeId, streamUrl: values.streamUrl }] } });
+          toast("Episode playback updated"); await loadSeries();
+        });
+      }
+      if (el.dataset.rsTopup) {
+        const code = el.dataset.rsTopup;
+        return openForm(`Top up ${code}`, [{ name: "credits", label: "Credits to add", type: "number", value: 10, min: 1, max: 10000, required: true }], async (values) => {
+          await apiPost("admin/credits-topup", { code, credits: Number(values.credits) });
+          toast(`+${values.credits} credits`); await loadResellers();
+        }, "Add credits");
+      }
+      if (el.dataset.userCopy) {
+        const client = STATE.clients.find((c) => c.username === el.dataset.userCopy);
+        if (!client) return;
+        const text = `Mizanora IPTV\nServer: ${location.origin}\nUsername: ${client.username}\nPassword: ${client.password}\nM3U: ${location.origin}/get.php?username=${encodeURIComponent(client.username)}&password=${encodeURIComponent(client.password)}&type=m3u_plus&output=m3u8`;
+        return toast(await copyText(text) ? "Client credentials copied" : "Clipboard unavailable", "ok");
+      }
+      if (el.dataset.chDel) {
+        if (!confirm("Delete this channel?")) return;
+        await apiPost("admin/channel-delete", { id: el.dataset.chDel }); toast("Channel deleted"); await loadChannels(); return;
+      }
+      if (el.dataset.plDel) {
+        if (!confirm("Delete this playlist?")) return;
+        await apiPost("admin/playlist-delete", { id: el.dataset.plDel }); toast("Playlist deleted"); await loadPlaylists(); return;
+      }
+      if (el.dataset.orApprove) {
+        const result = await apiPost("admin/order-review", { id: el.dataset.orApprove, approve: true });
+        toast("✅ Approved — client: " + (result.client?.username || "")); await Promise.all([loadOrders(), loadXtream(), loadUsers()]); return;
+      }
+      if (el.dataset.orReject) {
+        if (!confirm("Reject this order?")) return;
+        await apiPost("admin/order-review", { id: el.dataset.orReject, approve: false }); toast("Order rejected"); await loadOrders(); return;
+      }
+      if (el.dataset.keyRevoke) {
+        if (!confirm("Revoke this API key immediately?")) return;
+        await apiPost("admin/api-key-revoke", { id: el.dataset.keyRevoke }); toast("Key revoked"); await loadApiKeys(); return;
+      }
+      if (el.dataset.xtRenew) {
+        await apiPost("admin/xtream/renew", { username: el.dataset.xtRenew, planId: "monthly" }); toast("🔄 Renewed for 30 days"); await Promise.all([loadXtream(), loadUsers()]); return;
+      }
+      if (el.dataset.xtToggle) {
+        const active = el.dataset.xtActive === "true";
+        await apiPost(active ? "admin/xtream/suspend" : "admin/xtream/activate", { username: el.dataset.xtToggle });
+        toast(active ? "⏸ Suspended" : "▶️ Activated"); await Promise.all([loadXtream(), loadUsers(), loadStalker()]); return;
+      }
+      if (el.dataset.xtDel) {
+        if (!confirm(`Permanently delete ${el.dataset.xtDel}?`)) return;
+        await apiPost("admin/xtream/delete", { username: el.dataset.xtDel }); toast("🗑 Client deleted"); await Promise.all([loadXtream(), loadUsers(), loadStalker()]);
+      }
+    } catch (error) { toast(error.message, "error"); }
   });
 }
 
 /* ---------- boot ---------- */
 (async () => {
-  safe("appInit", appInit);                 // controls bound FIRST — panel kabhi dead nahi
-  safe("subscribeAuth", () => subscribeAuth((u) => { safe("onAuthUser", () => onAuthUser(u)); }));
-  // redirect result (Google redirect sign-in)
-  safe("finishRedirect", async () => { const r = await finishRedirect(); if (r?.ok) await onAuthUser({ email: r.user.email, displayName: r.user.displayName || "", uid: r.user.uid }); });
-  // existing PIN session?
-  if (adminToken()) {
-    await enterAdmin({ displayName: "Owner (PIN)", email: ADMIN_EMAIL, uid: "owner_pin" });
-  } else {
-    showLock();
-  }
-})().catch((err) => {
-  console.error("boot failed", err);
-  safe("showLock", () => showLock("Boot error: " + (err?.message || err)));
+  safe("appInit", appInit);
+  safe("subscribeAuth", () => subscribeAuth((user) => { safe("onAuthUser", () => onAuthUser(user)); }));
+  safe("finishRedirect", async () => {
+    const result = await finishRedirect();
+    if (result?.ok) await onAuthUser(result.user);
+  });
+  if (adminToken()) await enterAdmin({ displayName: "Owner (PIN)", email: ADMIN_EMAIL, uid: "owner_pin" });
+  else showLock();
+})().catch((error) => {
+  console.error("boot failed", error);
+  showLock("Boot error: " + (error?.message || error));
 });

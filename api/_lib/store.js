@@ -9,9 +9,10 @@
  *   channels, movies, series, playlists, stalkerSessions/<mac>
  */
 import { rtdbGet, rtdbSet } from "./rtdb.js";
-import { sha256, randomHex, randomPassword, signPayload, normalizeMac, isValidEmail, WA_LINK, WA_NUMBER, OWNER_EMAIL } from "./util.js";
+import { sha256, randomHex, randomPassword, signPayload, normalizeMac, isValidEmail, serverSecret, WA_LINK, WA_NUMBER, OWNER_EMAIL } from "./util.js";
 import { hashApiKey, generateAdminApiKey, generateResellerApiKey } from "./auth.js";
 import { BRAND, DEFAULT_SETTINGS, DEFAULT_CHANNELS } from "../../data/catalog.js";
+import { DEFAULT_MOVIES, DEFAULT_SERIES } from "../../data/imdb-seed.js";
 import { PANEL, SELF_SERVE, PLANS, getPlan } from "../../data/panel.js";
 
 export { BRAND, PANEL, SELF_SERVE, PLANS, getPlan, DEFAULT_SETTINGS, DEFAULT_CHANNELS };
@@ -19,6 +20,17 @@ export { BRAND, PANEL, SELF_SERVE, PLANS, getPlan, DEFAULT_SETTINGS, DEFAULT_CHA
 const nowIso = () => new Date().toISOString();
 const ROOT = "panel";
 const CACHE = new Map();
+const asArray = (value) => Array.isArray(value) ? value.filter(Boolean) : Object.values(value || {}).filter(Boolean);
+const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+
+function cleanMediaUrl(value, { required = false } = {}) {
+  const url = String(value || "").trim();
+  if (!url && !required) return "";
+  if (!url || url.length > 2000 || !(/^(https?:\/\/|\/)[^\s]*$/i.test(url))) {
+    throw fail("Stream/image URL must be a valid http(s) URL or an absolute /path.", 400);
+  }
+  return url;
+}
 
 async function readNode(path, ttl = 5000) {
   const full = `${ROOT}/${path}`;
@@ -67,20 +79,36 @@ export async function getClient(username) {
 }
 export async function createClient(input = {}) {
   const plan = getPlan(input.planId) || PLANS.find((p) => p.id === "monthly") || PLANS[1];
-  const username = (String(input.username || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "") || "mz" + randomHex(3)).slice(0, 24);
-  const password = String(input.password || "").trim() || randomPassword(10);
-  const days = Number(input.days) || plan.days || 30;
+  const requested = String(input.username || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24);
+  let username = requested;
+  if (username && await getClient(username)) throw fail(`Username '${username}' already exists.`, 409);
+  if (!username) {
+    // Generated usernames must also be unique; never silently overwrite a client.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const candidate = "mz" + randomHex(4);
+      if (!await getClient(candidate)) { username = candidate; break; }
+    }
+  }
+  if (!username) throw fail("Could not allocate a unique username. Please retry.", 503);
+  const password = String(input.password || "").trim().slice(0, 80) || randomPassword(10);
+  const days = Math.max(1, Math.min(3650, Number(input.days) || plan.days || 30));
   const startTs = Number(input.startTs) || Math.floor(Date.now() / 1000);
+  const mac = normalizeMac(input.mac || "") || "";
+  if (String(input.mac || "").trim() && !mac) throw fail("Invalid MAC address (expected 00:1A:79:XX:XX:XX).", 400);
+  if (mac) {
+    const clash = (await listClients()).find((c) => String(c.mac || "").toUpperCase() === mac);
+    if (clash) throw fail(`MAC address is already assigned to ${clash.username}.`, 409);
+  }
   const client = {
     username, password,
     email: String(input.email || "").trim().toLowerCase().slice(0, 120),
     whatsapp: String(input.whatsapp || "").trim().slice(0, 30),
-    name: String(input.name || input.displayName || "").slice(0, 80),
+    name: String(input.name || input.displayName || "").trim().slice(0, 80),
     resellerCode: String(input.resellerCode || "").trim().toUpperCase(),
     planId: plan.id, plan: "pro", tier: "pro",
     status: "active",
-    devices: Math.max(1, Number(input.devices) || plan.devices || 1),
-    mac: normalizeMac(input.mac || "") || "",
+    devices: Math.max(1, Math.min(20, Number(input.devices) || plan.devices || 1)),
+    mac,
     startDate: startTs, expDate: startTs + days * 86400,
     createdAt: nowIso(), source: String(input.source || "panel").slice(0, 40),
     orderId: String(input.orderId || ""), note: String(input.note || "").slice(0, 300)
@@ -103,9 +131,21 @@ export async function mirrorXtream(c) {
 export async function updateClient(username, patch = {}) {
   const client = await getClient(username);
   if (!client) return null;
-  const updated = { ...client, ...patch, username: client.username };
-  delete updated.daysLeft; delete updated.expired;
-  await writeNode(`clients/${username}`, updated);
+  const clean = { ...patch };
+  delete clean.username; delete clean.daysLeft; delete clean.expired; delete clean.action; delete clean.createdAt;
+  if (clean.mac !== undefined) {
+    const mac = normalizeMac(clean.mac || "");
+    if (String(clean.mac || "").trim() && !mac) throw fail("Invalid MAC address.", 400);
+    if (mac) {
+      const clash = (await listClients()).find((c) => c.username !== client.username && String(c.mac || "").toUpperCase() === mac);
+      if (clash) throw fail(`MAC address is already assigned to ${clash.username}.`, 409);
+    }
+    clean.mac = mac;
+  }
+  if (clean.status !== undefined) clean.status = clean.status === "suspended" ? "suspended" : "active";
+  if (clean.devices !== undefined) clean.devices = Math.max(1, Math.min(20, Number(clean.devices) || 1));
+  const updated = { ...client, ...clean, username: client.username };
+  await writeNode(`clients/${client.username}`, updated);
   await mirrorXtream(updated);
   return updated;
 }
@@ -125,9 +165,11 @@ export async function suspendClient(username, suspended = true) {
   return updateClient(username, { status: suspended ? "suspended" : "active" });
 }
 export async function deleteClient(username) {
-  await writeNode(`clients/${username}`, null);
-  await rtdbSet(`xtreamAccounts/${username}`, null);
-  await pushAudit("client.deleted", { username });
+  const key = String(username || "").toLowerCase();
+  if (!await getClient(key)) throw fail("Client not found.", 404);
+  await writeNode(`clients/${key}`, null);
+  await rtdbSet(`xtreamAccounts/${key}`, null);
+  await pushAudit("client.deleted", { username: key });
   clearPanelCache();
   return true;
 }
@@ -157,7 +199,8 @@ export async function getResellerByApiKey(key) {
   return null;
 }
 export async function createReseller(input = {}) {
-  const code = (String(input.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "") || "RS-" + randomHex(3).toUpperCase());
+  const code = String(input.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20) || "RS" + randomHex(4).toUpperCase();
+  if (await getResellerByCode(code)) throw fail(`Reseller code '${code}' already exists.`, 409);
   const apiKey = generateResellerApiKey();
   const rec = {
     code, name: String(input.name || "").slice(0, 80),
@@ -215,12 +258,12 @@ export async function createOrder(input = {}) {
     name: String(input.name || "").slice(0, 80),
     email: String(input.email || "").toLowerCase().slice(0, 120),
     whatsapp: String(input.whatsapp || "").slice(0, 30),
-    planId: plan.id, days: Number(input.days) || plan.days || 30,
-    audience: input.audience === "reseller" ? "reseller" : "direct",
-    amount: Number(input.amount) || 0,
+    planId: plan.id, days: plan.days || 30,
+    audience: "direct",
+    amount: Math.max(0, Number(plan.direct) || 0),
     via: String(input.via || "whatsapp").slice(0, 30),
     status: "pending", proof: String(input.proof || "").slice(0, 500),
-    resellerCode: String(input.resellerCode || "").toUpperCase(),
+    resellerCode: "",
     createdAt: nowIso(), reviewedAt: "", clientUsername: ""
   };
   await writeNode(`orders/${id}`, order);
@@ -243,8 +286,8 @@ export async function recordClientPayment(input = {}) {
   const payment = {
     id,
     username: String(input.username || "").toLowerCase(),
-    amount: Number(input.amount || 0),
-    months: Number(input.months || 0),
+    amount: Math.max(0, Number(input.amount || 0)),
+    months: Math.max(0, Math.min(120, Number(input.months || 0))),
     via: String(input.via || "cash").slice(0, 30),
     note: String(input.note || "").slice(0, 300),
     resellerCode: String(input.resellerCode || "").toUpperCase(),
@@ -272,10 +315,10 @@ export async function listPayments(filter = {}) {
 export async function claimTrial({ email = "", deviceId = "", whatsapp = "" } = {}) {
   email = String(email || "").toLowerCase().trim();
   deviceId = String(deviceId || "").trim();
-  if (!isValidEmail(email) && !deviceId) return { ok: false, error: "Email ya device id required" };
+  if (email && !isValidEmail(email)) return { ok: false, error: "Valid email required" };
+  if (!email && !deviceId) return { ok: false, error: "Email ya device id required" };
   const all = (await readNode("trials")) || {};
-  const key = email || deviceId;
-  const existing = Object.values(all).find((t) => t.email === email || (deviceId && t.deviceId === deviceId));
+  const existing = Object.values(all).find((t) => (email && t.email === email) || (deviceId && t.deviceId === deviceId));
   if (existing) return { ok: false, error: "Trial pehle se claim kar chuke ho", trial: existing };
   const plan = PLANS.find((p) => p.id === "trial-1d") || PLANS[0];
   const client = await createClient({
@@ -319,15 +362,48 @@ export async function listClientErrors(limit = 50) {
   const all = (await readNode("clientErrors")) || {};
   return Object.values(all).sort((a, b) => (b.at || "").localeCompare(a.at || "")).slice(0, limit);
 }
+export async function recordAnalyticsEvent(req, body = {}) {
+  const id = String(body.sessionId || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  if (!id) throw fail("sessionId is required", 400);
+  const event = String(body.event || "page_view").replace(/[^a-z_]/g, "").slice(0, 30) || "page_view";
+  const allowed = new Set(["page_view", "stream_play", "trial_claim", "order_created"]);
+  if (!allowed.has(event)) throw fail("Unsupported analytics event", 400);
+  const path = `analytics/sessions/${id}`;
+  const previous = (await readNode(path)) || {};
+  const at = nowIso();
+  const session = {
+    id, event,
+    route: String(body.route || "/").slice(0, 180),
+    firstSeenAt: previous.firstSeenAt || at,
+    lastSeenAt: at,
+    plays: Number(previous.plays || 0) + (event === "stream_play" ? 1 : 0)
+  };
+  await writeNode(path, session);
+  const analytics = (await rtdbGet("panel/analytics", { useCache: false })) || {};
+  const counters = {
+    totalSessions: Number(analytics.totalSessions || 0) + (previous.firstSeenAt ? 0 : 1),
+    totalPlays: Number(analytics.totalPlays || 0) + (event === "stream_play" ? 1 : 0),
+    totalPageViews: Number(analytics.totalPageViews || 0) + (event === "page_view" ? 1 : 0)
+  };
+  await rtdbSet("panel/analytics/counters", counters);
+  return { ok: true, id };
+}
+
 export async function getAnalytics() {
   const a = (await rtdbGet("panel/analytics")) || {};
+  const counters = a.counters || {};
+  const sessions = asArray(a.sessions).sort((x, y) => String(y.lastSeenAt || "").localeCompare(String(x.lastSeenAt || "")));
+  const activeCutoff = Date.now() - 5 * 60_000;
+  const durations = sessions.map((s) => Math.max(0, new Date(s.lastSeenAt || 0) - new Date(s.firstSeenAt || 0)) / 1000).filter(Number.isFinite);
   const clients = await listClients();
   const orders = await listOrders();
   return {
-    onlineNow: Number(a.onlineNow || 0),
-    totalSessions: Number(a.totalSessions || 0),
-    totalPlays: Number(a.totalPlays || 0),
-    avgSessionSec: Number(a.avgSessionSec || 0),
+    onlineNow: sessions.filter((s) => new Date(s.lastSeenAt || 0).getTime() >= activeCutoff).length,
+    totalSessions: Number(counters.totalSessions ?? a.totalSessions ?? sessions.length),
+    totalPlays: Number(counters.totalPlays ?? a.totalPlays ?? 0),
+    totalPageViews: Number(counters.totalPageViews || 0),
+    avgSessionSec: durations.length ? Math.round(durations.reduce((sum, n) => sum + n, 0) / durations.length) : 0,
+    recentSessions: sessions.slice(0, 20),
     clients: resellerStats(clients),
     orders: { total: orders.length, pending: orders.filter((o) => o.status === "pending").length, approved: orders.filter((o) => o.status === "approved").length },
     resellers: (await listResellers()).length,
@@ -342,7 +418,10 @@ export async function listAudit(limit = 60) {
 /* ---------------- api keys ---------------- */
 export async function listApiKeys() {
   const all = (await readNode("apiKeys")) || {};
-  return Object.values(all).map((k) => ({ ...k, hash: undefined })).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  return Object.entries(all).map(([id, k]) => {
+    const { hash, ...safe } = k;
+    return { ...safe, id: k.id || id };
+  }).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 }
 export async function createApiKey({ label = "", expiresDays = 0 } = {}) {
   const key = generateAdminApiKey();
@@ -357,11 +436,11 @@ export async function createApiKey({ label = "", expiresDays = 0 } = {}) {
   await pushAudit("apikey.created", { id, label: rec.label });
   return { ...rec, apiKey: key };
 }
-export async function revokeApiKeyByHash(hash) {
+export async function revokeApiKeyByHash(hashOrId) {
   const all = (await readNode("apiKeys")) || {};
   for (const [id, k] of Object.entries(all)) {
-    if (k.hash === hash) {
-      await writeNode(`apiKeys/${id}`, { ...k, revoked: true, revokedAt: nowIso() });
+    if (k.hash === hashOrId || id === hashOrId || k.id === hashOrId) {
+      await writeNode(`apiKeys/${id}`, { ...k, id: k.id || id, revoked: true, revokedAt: nowIso() });
       clearPanelCache();
       await pushAudit("apikey.revoked", { id });
       return true;
@@ -370,16 +449,163 @@ export async function revokeApiKeyByHash(hash) {
   return false;
 }
 
-/* ---------------- channels ---------------- */
+/* ---------------- channels / playlists / VOD catalogs ---------------- */
 export async function listChannels() {
-  const ch = (await rtdbGet("channels")) || {};
-  const arr = Array.isArray(ch) ? ch : Object.values(ch || {});
-  if (!arr.length) return DEFAULT_CHANNELS;
-  return arr;
+  const arr = asArray(await rtdbGet("channels"));
+  return arr.length ? arr : DEFAULT_CHANNELS;
+}
+
+function channelPatch(input = {}, existing = {}) {
+  const name = String(input.name ?? existing.name ?? "").trim().slice(0, 120);
+  if (!name) throw fail("Channel name is required.", 400);
+  const url = cleanMediaUrl(input.url ?? existing.url, { required: true });
+  const category = String(input.category ?? existing.category ?? "General").trim().slice(0, 120) || "General";
+  return {
+    ...existing,
+    name, url, category,
+    categoryId: String(input.categoryId ?? existing.categoryId ?? category).slice(0, 40),
+    logo: cleanMediaUrl(input.logo ?? existing.logo),
+    epgId: String(input.epgId ?? existing.epgId ?? "").slice(0, 120),
+    tier: String(input.tier ?? existing.tier ?? "free").toLowerCase() === "pro" ? "pro" : "free",
+    status: String(input.status ?? existing.status ?? "active").toLowerCase() === "inactive" ? "inactive" : "active",
+    updatedAt: nowIso()
+  };
+}
+
+export async function createChannel(input = {}) {
+  const channels = await listChannels();
+  const id = String(input.id || "ch_" + randomHex(5)).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 48);
+  if (channels.some((c) => String(c.id) === id)) throw fail("Channel ID already exists.", 409);
+  const streamId = Math.max(1000, ...channels.map((c) => Number(c.streamId) || 0)) + 1;
+  const channel = { ...channelPatch(input), id, streamId, order: channels.length + 1, createdAt: nowIso() };
+  channels.push(channel);
+  await rtdbSet("channels", channels);
+  await pushAudit("channel.created", { id, name: channel.name });
+  return channel;
+}
+
+export async function updateChannel(id, input = {}) {
+  const channels = await listChannels();
+  const index = channels.findIndex((c) => String(c.id) === String(id));
+  if (index < 0) throw fail("Channel not found.", 404);
+  channels[index] = channelPatch(input, channels[index]);
+  await rtdbSet("channels", channels);
+  await pushAudit("channel.updated", { id });
+  return channels[index];
+}
+
+export async function deleteChannel(id) {
+  const channels = await listChannels();
+  const next = channels.filter((c) => String(c.id) !== String(id));
+  if (next.length === channels.length) throw fail("Channel not found.", 404);
+  await rtdbSet("channels", next.map((c, i) => ({ ...c, order: i + 1 })));
+  await pushAudit("channel.deleted", { id });
+  return true;
+}
+
+export async function listMovies() {
+  const list = asArray(await rtdbGet("movies"));
+  return list.length ? list : DEFAULT_MOVIES;
+}
+export async function listSeries() {
+  const list = asArray(await rtdbGet("series"));
+  return list.length ? list : DEFAULT_SERIES;
+}
+export async function updateMovie(id, input = {}) {
+  const movies = await listMovies();
+  const index = movies.findIndex((m) => String(m.id) === String(id) || String(m.streamId) === String(id));
+  if (index < 0) throw fail("Movie not found.", 404);
+  const streamUrl = cleanMediaUrl(input.streamUrl ?? input.url ?? movies[index].streamUrl);
+  movies[index] = { ...movies[index], streamUrl, updatedAt: nowIso() };
+  await rtdbSet("movies", movies);
+  await pushAudit("movie.updated", { id: movies[index].id, playable: !!streamUrl });
+  return movies[index];
+}
+export async function updateSeries(id, input = {}) {
+  const series = await listSeries();
+  const index = series.findIndex((s) => String(s.id) === String(id) || String(s.seriesId) === String(id));
+  if (index < 0) throw fail("Series not found.", 404);
+  const current = series[index];
+  const episodes = asArray(current.episodes).map((ep) => {
+    const supplied = asArray(input.episodes).find((x) => String(x.id) === String(ep.id));
+    return supplied ? { ...ep, streamUrl: cleanMediaUrl(supplied.streamUrl ?? supplied.url ?? ep.streamUrl) } : ep;
+  });
+  series[index] = { ...current, episodes, updatedAt: nowIso() };
+  await rtdbSet("series", series);
+  await pushAudit("series.updated", { id: current.id });
+  return series[index];
+}
+
+export async function listPlaylists() {
+  return asArray(await rtdbGet("playlists")).sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+}
+export async function savePlaylist(input = {}) {
+  const name = String(input.name || "").trim().slice(0, 100);
+  if (!name) throw fail("Playlist name is required.", 400);
+  const url = cleanMediaUrl(input.url, { required: true });
+  const playlists = await listPlaylists();
+  const id = String(input.id || "pl_" + randomHex(5)).replace(/[^a-zA-Z0-9_]/g, "").slice(0, 48);
+  const index = playlists.findIndex((p) => String(p.id) === id);
+  const playlist = { ...(index >= 0 ? playlists[index] : {}), id, name, url, type: "m3u", updatedAt: nowIso() };
+  if (index >= 0) playlists[index] = playlist; else playlists.push(playlist);
+  await rtdbSet("playlists", playlists);
+  await pushAudit(index >= 0 ? "playlist.updated" : "playlist.created", { id, name });
+  return playlist;
+}
+export async function deletePlaylist(id) {
+  const playlists = await listPlaylists();
+  const next = playlists.filter((p) => String(p.id) !== String(id));
+  if (next.length === playlists.length) throw fail("Playlist not found.", 404);
+  await rtdbSet("playlists", next);
+  await pushAudit("playlist.deleted", { id });
+  return true;
+}
+
+/** Resolve a protocol stream reference without ever falling back to an unrelated channel. */
+export async function resolveMedia(kind, reference) {
+  const raw = String(reference || "").replace(/^\/+|\/+$/g, "");
+  const parts = raw.split("/").filter(Boolean);
+  const stripExt = (v) => String(v || "").replace(/\.(m3u8|mp4|m2ts|ts|mpd)$/i, "");
+  const matches = (item, ref, keys) => {
+    const target = stripExt(ref).toLowerCase();
+    return keys.some((key) => String(item[key] ?? "").toLowerCase() === target);
+  };
+  if (kind === "live") {
+    const ref = stripExt(parts[parts.length - 1]);
+    const channel = (await listChannels()).find((c, i) => matches(c, ref, ["id", "streamId", "slug"]) || String(i + 1) === ref);
+    if (!channel || channel.status === "inactive") return null;
+    let url = channel.url;
+    if (/\.mpd(?:$|\?)/i.test(url) && !/\.mpd$/i.test(raw)) {
+      url = asArray(channel.backupUrls).find((u) => /\.m3u8(?:$|\?)/i.test(u)) || url;
+    }
+    return { kind, id: channel.id, title: channel.name, url, logo: channel.logo || "", tier: channel.tier || "free" };
+  }
+  if (kind === "movie") {
+    const ref = stripExt(parts[parts.length - 1]);
+    const movie = (await listMovies()).find((m) => matches(m, ref, ["id", "streamId", "imdbId"]));
+    return movie?.streamUrl ? { kind, id: movie.id, title: movie.title, url: movie.streamUrl, logo: movie.poster || "" } : null;
+  }
+  if (kind === "series") {
+    const seriesRef = stripExt(parts.length > 1 ? parts[0] : parts[parts.length - 1]);
+    const episodeRef = stripExt(parts[parts.length - 1]);
+    const all = await listSeries();
+    const series = all.find((s) => matches(s, seriesRef, ["id", "seriesId", "imdbId"]));
+    if (series) {
+      const episode = asArray(series.episodes).find((ep) => String(ep.id) === episodeRef || `${ep.season}x${ep.episode}` === episodeRef);
+      if (episode?.streamUrl) return { kind, id: episode.id, title: episode.title, url: episode.streamUrl, logo: series.poster || "" };
+      return null;
+    }
+    // Also accept /series/user/pass/<episodeId>.mp4 links emitted by some players.
+    for (const s of all) {
+      const episode = asArray(s.episodes).find((ep) => String(ep.id) === episodeRef);
+      if (episode?.streamUrl) return { kind, id: episode.id, title: episode.title, url: episode.streamUrl, logo: s.poster || "" };
+    }
+  }
+  return null;
 }
 
 /* ---------------- signed stream links ---------------- */
-const STREAM_SECRET = process.env.MZ_STREAM_SECRET || "mizanora-iptv-stream-v3";
+const STREAM_SECRET = serverSecret("MZ_STREAM_SECRET", "mizanora-iptv-stream-v3");
 export function signStreamFor(base, username, file = "index.m3u8", kind = "live") {
   const token = signPayload({ u: username, f: file, k: kind }, STREAM_SECRET, 900);
   return { url: `${base}/s/${token}`, token, expiresIn: 900 };
@@ -390,7 +616,7 @@ export async function stalkerHandshake(mac) {
   mac = normalizeMac(mac);
   if (!mac) return null;
   const sessions = (await rtdbGet("stalkerSessions")) || {};
-  const existing = sessions[mac];
+  const existing = sessions[mac.replace(/:/g, "")];
   const now = Math.floor(Date.now() / 1000);
   if (existing && existing.exp > now) return existing;
   const token = randomHex(16);
@@ -405,7 +631,7 @@ export async function stalkerProfile(mac, token) {
   if (!s || s.token !== token || s.exp < Math.floor(Date.now() / 1000)) return null;
   const clients = (await readNode("clients")) || {};
   const client = Object.values(clients).find((c) => c.mac === mac);
-  return { mac, status: client ? (client.status === "suspended" || (client.expDate && client.expDate < Date.now() / 1000) ? "blocked" : "active") : "active", username: client?.username || "" };
+  return { mac, status: client ? (client.status === "suspended" || (client.expDate && client.expDate < Date.now() / 1000) ? "blocked" : "active") : "blocked", username: client?.username || "" };
 }
 export async function listStalkerClients() {
   const clients = await listClients();

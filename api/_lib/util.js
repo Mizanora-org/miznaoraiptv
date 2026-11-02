@@ -5,9 +5,21 @@ import crypto from "node:crypto";
 
 export const BRAND_NAME = "Mizanora IPTV";
 export const OWNER_EMAIL = "muaaziqbal.vip@gmail.com";
-export const BOOTSTRAP_PIN = "03062015326";
+export const BOOTSTRAP_PIN = process.env.MZ_OWNER_PIN || "03062015326";
 export const WA_NUMBER = "03062015326";
 export const WA_LINK = "https://wa.me/923062015326";
+
+/** Use explicit production secrets, with the configured service-account key as
+ * a non-public fallback instead of signing admin sessions with a repo constant. */
+export function serverSecret(name, fallback) {
+  if (process.env[name]) return process.env[name];
+  if (process.env.FIREBASE_PRIVATE_KEY) return process.env.FIREBASE_PRIVATE_KEY;
+  try {
+    const account = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "{}");
+    if (account.private_key) return account.private_key;
+  } catch { /* rtdb reports malformed service-account JSON with a clear error */ }
+  return fallback;
+}
 
 export function corsHeaders(extra = {}) {
   return {
@@ -47,6 +59,15 @@ export function parseQuery(req) {
 }
 
 export function parseBody(req) {
+  // Vercel may pre-parse JSON while the local Node server exposes a stream.
+  if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body)) return Promise.resolve(req.body);
+  if (typeof req.body === "string") {
+    try { return Promise.resolve(JSON.parse(req.body)); } catch { return Promise.resolve({}); }
+  }
+  if (Buffer.isBuffer(req.body)) {
+    try { return Promise.resolve(JSON.parse(req.body.toString("utf8"))); } catch { return Promise.resolve({}); }
+  }
+  if (req.readableEnded) return Promise.resolve({});
   return new Promise((resolve) => {
     let raw = "";
     req.on("data", (c) => {
@@ -62,9 +83,12 @@ export function parseBody(req) {
 }
 
 export function getRequestBaseUrl(req) {
-  const proto = req.headers["x-forwarded-proto"] || "https";
-  const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost";
-  return `${proto}://${host}`;
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const requestedProto = forwardedProto || (req.socket?.encrypted ? "https" : "http");
+  const proto = /^https?$/.test(requestedProto) ? requestedProto : "http";
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "localhost").split(",")[0].trim();
+  try { return new URL(`${proto}://${host}`).origin; }
+  catch { return "http://localhost"; }
 }
 
 /* ---------------- security ---------------- */

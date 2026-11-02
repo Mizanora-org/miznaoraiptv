@@ -7,8 +7,10 @@ import { handleOptions, parseBody, parseQuery, sendJson, getRequestBaseUrl, chec
 import { authenticateAdmin, authorizeReseller, createPinSession, verifyBootstrapPin } from "../_lib/auth.js";
 import * as S from "../_lib/store.js";
 
+const portFor = (base) => Number(new URL(base).port || (new URL(base).protocol === "https:" ? 443 : 80));
+
 const PUBLIC_ACTIONS = new Set([
-  "config", "plans", "help", "order", "order-status", "trial", "resolve",
+  "config", "plans", "help", "order", "order-status", "trial", "resolve", "track",
   "reseller/register", "reseller/login-password", "recharge/contact"
 ]);
 const RESELLER_ACTIONS = new Set([
@@ -19,11 +21,12 @@ const RESELLER_ACTIONS = new Set([
   "reseller/pricing-set", "reseller/payment-record", "reseller/finance", "reseller/ledger"
 ]);
 const ADMIN_ACTIONS = new Set([
-  "admin/me", "admin/pin-login", "admin/pin-set",
+  "admin/me", "admin/pin-login",
   "admin/xtream-accounts", "admin/xtream/create", "admin/xtream/update", "admin/xtream/renew",
   "admin/xtream/suspend", "admin/xtream/activate", "admin/xtream/delete",
-  "admin/stalker/list", "admin/channels", "admin/clients",
-  "admin/client-create", "admin/client-renew", "admin/client-suspend", "admin/client-delete",
+  "admin/stalker/list", "admin/channels", "admin/channel-create", "admin/channel-update", "admin/channel-delete",
+  "admin/playlists", "admin/playlist-save", "admin/playlist-delete", "admin/movie-update", "admin/series-update",
+  "admin/clients", "admin/client-create", "admin/client-renew", "admin/client-suspend", "admin/client-delete",
   "admin/resellers", "admin/reseller-create", "admin/reseller-update", "admin/credits-topup",
   "admin/orders", "admin/order-review", "admin/payments", "admin/trials",
   "admin/api-keys", "admin/api-key-create", "admin/api-key-revoke",
@@ -53,8 +56,19 @@ export default async function panelHandler(req, res) {
       if (action === "help") {
         return sendJson(res, 200, helpDoc(base));
       }
+      if (action === "track") {
+        if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const trackRl = checkRateLimit(req, "analytics", 120, 60_000);
+        if (!trackRl.allowed) return sendJson(res, 429, { ok: false, error: "Rate limit" });
+        return sendJson(res, 202, await S.recordAnalyticsEvent(req, body));
+      }
       if (action === "order") {
         if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const orderRl = checkRateLimit(req, "order", 12, 10 * 60_000);
+        if (!orderRl.allowed) return sendJson(res, 429, { ok: false, error: "Too many orders. Please try again later." });
+        if (!String(body.name || "").trim()) return sendJson(res, 400, { ok: false, error: "Name is required" });
+        if (!isValidEmail(body.email)) return sendJson(res, 400, { ok: false, error: "Valid email is required" });
+        if (String(body.whatsapp || "").replace(/\D/g, "").length < 10) return sendJson(res, 400, { ok: false, error: "Valid WhatsApp number is required" });
         const o = await S.createOrder(body);
         return sendJson(res, 201, {
           ok: true, order: o,
@@ -65,10 +79,12 @@ export default async function panelHandler(req, res) {
       if (action === "order-status") {
         const o = await S.getOrder(String(body.id || q.id || "").toUpperCase());
         if (!o) return sendJson(res, 404, { ok: false, error: "Order not found" });
-        return sendJson(res, 200, { ok: true, order: o });
+        return sendJson(res, 200, { ok: true, order: { id: o.id, status: o.status, planId: o.planId, amount: o.amount, createdAt: o.createdAt, clientUsername: o.clientUsername || "" } });
       }
       if (action === "trial") {
         if (!isPost) return sendJson(res, 405, { ok: false, error: "POST required" });
+        const trialRl = checkRateLimit(req, "trial", 8, 60 * 60_000);
+        if (!trialRl.allowed) return sendJson(res, 429, { ok: false, error: "Too many trial attempts. Please try again later." });
         const r = await S.claimTrial(body);
         if (!r.ok) return sendJson(res, 409, r);
         return sendJson(res, 201, {
@@ -82,10 +98,13 @@ export default async function panelHandler(req, res) {
         });
       }
       if (action === "resolve") {
-        // resolve a username -> public-safe info + links (used by landing page)
+        // A username alone must never disclose the account password or signed-in links.
         const u = String(body.username || q.username || "").toLowerCase();
+        const suppliedPassword = String(body.password || q.password || "");
         const c = await S.getClient(u);
-        if (!c) return sendJson(res, 404, { ok: false, error: "Account not found" });
+        if (!c || !suppliedPassword || c.password !== suppliedPassword) {
+          return sendJson(res, 401, { ok: false, error: "Valid username and password required" });
+        }
         return sendJson(res, 200, {
           ok: true,
           username: c.username,
@@ -95,7 +114,7 @@ export default async function panelHandler(req, res) {
             m3u: `${base}/get.php?username=${c.username}&password=${c.password}&type=m3u_plus&output=m3u8`,
             epg: `${base}/xmltv.php?username=${c.username}&password=${c.password}`,
             playerApi: `${base}/player_api.php?username=${c.username}&password=${c.password}`,
-            magPortal: c.mac ? `${base}/c/portal.php` : undefined
+            magPortal: c.mac ? `${base}/portal.php` : undefined
           }
         });
       }
@@ -152,8 +171,8 @@ export default async function panelHandler(req, res) {
         m3u: `${base}/get.php?username=${c.username}&password=${c.password}&type=m3u_plus&output=m3u8`,
         epg: `${base}/xmltv.php?username=${c.username}&password=${c.password}`,
         playerApi: `${base}/player_api.php?username=${c.username}&password=${c.password}`,
-        magPortal: c.mac ? `${base}/c/portal.php` : undefined,
-        xtream: { host: base, port: 443, username: c.username, password: c.password }
+        magPortal: c.mac ? `${base}/portal.php` : undefined,
+        xtream: { host: base, port: portFor(base), username: c.username, password: c.password }
       });
 
       if (action === "reseller/login" || action === "reseller/me" || action === "reseller/stats") {
@@ -176,8 +195,11 @@ export default async function panelHandler(req, res) {
         return sendJson(res, 200, { ok: true, count: clients.length, clients });
       }
       if (action === "reseller/client-create") {
-        if (Number(R.credits || 0) < 1) {
-          return sendJson(res, 402, { ok: false, error: `Credits khatam. JazzCash ${WA_NUMBER} par bhejein aur WhatsApp par screenshot karein.` });
+        let plan = S.getPlan(body.planId) || S.PLANS.find((p) => p.id === "monthly");
+        if (plan.id === "trial-1d") plan = S.PLANS.find((p) => p.id === "monthly");
+        const creditCost = Math.max(1, Number(plan.months) || 1);
+        if (Number(R.credits || 0) < creditCost) {
+          return sendJson(res, 402, { ok: false, error: `${creditCost} credits required for ${plan.name}. JazzCash ${WA_NUMBER} par top-up karein.` });
         }
         let mac = "";
         if (body.mac) {
@@ -187,8 +209,8 @@ export default async function panelHandler(req, res) {
           const all = await S.listClients();
           if (all.some((c) => c.mac && c.mac.toUpperCase() === mac)) return sendJson(res, 409, { ok: false, error: "Ye MAC pehle se registered hai." });
         }
-        const created = await S.createClient({ ...body, mac, resellerCode: R.code, source: mac ? "reseller-mac" : "reseller" });
-        await S.updateReseller(R.code, { credits: Number(R.credits) - 1, creditsUsed: Number(R.creditsUsed || 0) + 1 });
+        const created = await S.createClient({ ...body, planId: plan.id, days: plan.days, mac, resellerCode: R.code, source: mac ? "reseller-mac" : "reseller" });
+        await S.updateReseller(R.code, { credits: Number(R.credits) - creditCost, creditsUsed: Number(R.creditsUsed || 0) + creditCost });
         const pricing = R.pricing || {};
         const collectAmount = Math.max(0, Number(body.collectAmount) || 0);
         const connectionFee = Math.max(0, Number(body.connectionFee ?? pricing.connectionFee ?? 0) || 0);
@@ -197,7 +219,8 @@ export default async function panelHandler(req, res) {
         if (amt > 0 && body.collectFee !== false) {
           const rec = await S.recordClientPayment({
             username: created.username, amount: amt,
-            months: collectAmount > 0 ? Math.round((Number(body.days) || 30) / 30) : 0,
+            // createClient already set the full plan expiry; do not extend it twice.
+            months: 0,
             via: body.via || "cash", note: collectAmount > 0 ? "Client sale (connection + plan)" : "Connection fee",
             resellerCode: R.code, recordedBy: "reseller"
           });
@@ -205,9 +228,9 @@ export default async function panelHandler(req, res) {
         }
         S.clearPanelCache();
         return sendJson(res, 200, {
-          ok: true, client: created, creditsLeft: Number(R.credits) - 1, connectionFee: feeRecord,
+          ok: true, client: created, creditsLeft: Number(R.credits) - creditCost, creditsUsed: creditCost, connectionFee: feeRecord,
           finance: await S.resellerFinance(R.code),
-          stalker: mac ? { portalUrl: `${base}/c/portal.php`, mac, note: "MAG/Stalker box mein ye Portal URL + MAC daalein." } : undefined,
+          stalker: mac ? { portalUrl: `${base}/portal.php`, mac, note: "MAG/Stalker box mein ye Portal URL + MAC daalein." } : undefined,
           sellPrice: { monthly: Number(pricing.monthly) || S.SELF_SERVE.monthlyDefault, connectionFee: Number(pricing.connectionFee) || S.SELF_SERVE.connectionFeeDefault },
           links: clientLinks(base, created)
         });
@@ -218,7 +241,7 @@ export default async function panelHandler(req, res) {
         return sendJson(res, 200, {
           ok: true,
           client: { ...t, password: undefined },
-          credentials: { serverUrl: base, port: 443, username: t.username, password: t.password, mac: t.mac || undefined, ...clientLinks(base, t), signedLink: S.signStreamFor(base, t.username, "index.m3u8", "live").url }
+          credentials: { serverUrl: base, port: portFor(base), username: t.username, password: t.password, mac: t.mac || undefined, ...clientLinks(base, t) }
         });
       }
       if (action === "reseller/client-update") {
@@ -245,10 +268,13 @@ export default async function panelHandler(req, res) {
       if (action === "reseller/client-renew") {
         const t = await owned(body.username);
         if (!t) return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
-        if (Number(R.credits || 0) < 1) return sendJson(res, 402, { ok: false, error: "No credits left to renew." });
-        const renewed = await S.renewClient(t.username, { planId: body.planId || "monthly" });
-        await S.updateReseller(R.code, { credits: Number(R.credits) - 1, creditsUsed: Number(R.creditsUsed || 0) + 1 });
-        return sendJson(res, 200, { ok: true, client: renewed, creditsLeft: Number(R.credits) - 1 });
+        let plan = S.getPlan(body.planId) || S.PLANS.find((p) => p.id === "monthly");
+        if (plan.id === "trial-1d") plan = S.PLANS.find((p) => p.id === "monthly");
+        const creditCost = Math.max(1, Number(plan.months) || 1);
+        if (Number(R.credits || 0) < creditCost) return sendJson(res, 402, { ok: false, error: `${creditCost} credits required to renew ${plan.name}.` });
+        const renewed = await S.renewClient(t.username, { planId: plan.id });
+        await S.updateReseller(R.code, { credits: Number(R.credits) - creditCost, creditsUsed: Number(R.creditsUsed || 0) + creditCost });
+        return sendJson(res, 200, { ok: true, client: renewed, creditsLeft: Number(R.credits) - creditCost, creditsUsed: creditCost });
       }
       if (action === "reseller/client-suspend" || action === "reseller/client-block") {
         const t = await owned(body.username);
@@ -265,7 +291,9 @@ export default async function panelHandler(req, res) {
       if (action === "reseller/secure-link") {
         const t = await owned(body.username);
         if (!t) return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
-        return sendJson(res, 200, { ok: true, ...S.signStreamFor(base, t.username, body.file || "index.m3u8", body.kind || "live") });
+        const file = body.file || (await S.listChannels()).find((c) => c.status !== "inactive")?.id;
+        if (!file) return sendJson(res, 404, { ok: false, error: "No channel available to sign." });
+        return sendJson(res, 200, { ok: true, ...S.signStreamFor(base, t.username, file, body.kind || "live") });
       }
       if (action === "reseller/key-rotate") {
         const { generateResellerApiKey } = await import("../_lib/auth.js");
@@ -276,15 +304,23 @@ export default async function panelHandler(req, res) {
         return sendJson(res, 200, { ok: true, apiKey: newKey, note: "Purana mzr_ key foran invalid. Naya key ek dafa dikhta hai — save kar lo." });
       }
       if (action === "reseller/pricing-set") {
-        const p = R.pricing || {};
-        await S.updateReseller(R.code, { pricing: { ...p, ...body.pricing } });
+        const current = R.pricing || {};
+        const supplied = body.pricing || {};
+        const pricing = { ...current };
+        for (const key of ["monthly", "quarterly", "yearly", "connectionFee"]) {
+          if (supplied[key] !== undefined) pricing[key] = Math.max(0, Math.min(1_000_000, Number(supplied[key]) || 0));
+        }
+        await S.updateReseller(R.code, { pricing });
         return sendJson(res, 200, { ok: true, pricing: (await S.getResellerByCode(R.code)).pricing });
       }
       if (action === "reseller/payment-record") {
         const t = await owned(body.username);
         if (!t) return sendJson(res, 404, { ok: false, error: "Client not found in your panel." });
-        const rec = await S.recordClientPayment({ ...body, username: t.username, resellerCode: R.code, recordedBy: "reseller" });
-        return sendJson(res, 200, rec);
+        const months = Math.max(0, Math.min(120, Math.floor(Number(body.months) || 0)));
+        if (Number(R.credits || 0) < months) return sendJson(res, 402, { ok: false, error: `${months} credits required for this extension.` });
+        const rec = await S.recordClientPayment({ ...body, months, username: t.username, resellerCode: R.code, recordedBy: "reseller" });
+        if (months) await S.updateReseller(R.code, { credits: Number(R.credits) - months, creditsUsed: Number(R.creditsUsed || 0) + months });
+        return sendJson(res, 200, { ...rec, creditsLeft: Number(R.credits) - months, creditsUsed: months });
       }
       if (action === "reseller/finance") return sendJson(res, 200, { ok: true, finance: await S.resellerFinance(R.code) });
       if (action === "reseller/ledger") return sendJson(res, 200, { ok: true, payments: await S.listPayments({ resellerCode: R.code }) });
@@ -295,6 +331,8 @@ export default async function panelHandler(req, res) {
     if (ADMIN_ACTIONS.has(action) || action.startsWith("admin/")) {
       // bootstrap: PIN login works without any prior auth
       if (action === "admin/pin-login") {
+        const pinRl = checkRateLimit(req, "owner_pin", 8, 15 * 60_000);
+        if (!pinRl.allowed) return sendJson(res, 429, { ok: false, error: "Too many PIN attempts. 15 min baad try karein." });
         if (!verifyBootstrapPin(body.pin)) {
           await S.pushAudit("pin.failed", { ip: req.headers["x-forwarded-for"] || "" });
           return sendJson(res, 401, { ok: false, error: "Invalid Owner PIN" });
@@ -307,7 +345,6 @@ export default async function panelHandler(req, res) {
       if (!admin.ok) return sendJson(res, admin.status || 401, { ok: false, error: admin.error });
 
       if (action === "admin/me") return sendJson(res, 200, { ok: true, admin: { email: admin.user.email, uid: admin.user.uid, via: admin.via }, owner: OWNER_EMAIL, brand: S.BRAND.name });
-      if (action === "admin/pin-set") return sendJson(res, 200, { ok: true, note: "Bootstrap PIN fixed hai (repo config)." });
       if (action === "admin/xtream-accounts") {
         const xt = (await S.rtdbGetXtream?.()) || (await (await import("../_lib/rtdb.js")).rtdbGet("xtreamAccounts")) || {};
         const list = (Array.isArray(xt) ? xt : Object.values(xt)).map((a) => ({ ...a, password: a.password }));
@@ -325,15 +362,34 @@ export default async function panelHandler(req, res) {
         if (!t) return sendJson(res, 404, { ok: false, error: "Not found" });
         return sendJson(res, 200, { ok: true, client: await S.renewClient(t.username, { planId: body.planId || "monthly" }) });
       }
-      if (action === "admin/xtream/suspend") return sendJson(res, 200, { ok: true, client: await S.suspendClient(body.username, true) });
-      if (action === "admin/xtream/activate") return sendJson(res, 200, { ok: true, client: await S.suspendClient(body.username, false) });
-      if (action === "admin/xtream/delete") { await S.deleteClient(body.username); return sendJson(res, 200, { ok: true, deleted: body.username }); }
+      if (action === "admin/xtream/suspend" || action === "admin/xtream/activate") {
+        const client = await S.suspendClient(body.username, action.endsWith("suspend"));
+        return client ? sendJson(res, 200, { ok: true, client }) : sendJson(res, 404, { ok: false, error: "Client not found" });
+      }
+      if (action === "admin/xtream/delete") { await S.deleteClient(body.username); return sendJson(res, 200, { ok: true, deleted: String(body.username || "").toLowerCase() }); }
       if (action === "admin/stalker/list") return sendJson(res, 200, { ok: true, clients: await S.listStalkerClients() });
-      if (action === "admin/channels") return sendJson(res, 200, { ok: true, count: (await S.listChannels()).length, channels: await S.listChannels() });
+      if (action === "admin/channels") {
+        const channels = await S.listChannels();
+        return sendJson(res, 200, { ok: true, count: channels.length, channels });
+      }
+      if (action === "admin/channel-create") return sendJson(res, 201, { ok: true, channel: await S.createChannel(body) });
+      if (action === "admin/channel-update") return sendJson(res, 200, { ok: true, channel: await S.updateChannel(body.id, body.patch || body) });
+      if (action === "admin/channel-delete") { await S.deleteChannel(body.id); return sendJson(res, 200, { ok: true, deleted: body.id }); }
+      if (action === "admin/playlists") return sendJson(res, 200, { ok: true, playlists: await S.listPlaylists() });
+      if (action === "admin/playlist-save") return sendJson(res, 200, { ok: true, playlist: await S.savePlaylist(body) });
+      if (action === "admin/playlist-delete") { await S.deletePlaylist(body.id); return sendJson(res, 200, { ok: true, deleted: body.id }); }
+      if (action === "admin/movie-update") return sendJson(res, 200, { ok: true, movie: await S.updateMovie(body.id, body.patch || body) });
+      if (action === "admin/series-update") return sendJson(res, 200, { ok: true, series: await S.updateSeries(body.id, body.patch || body) });
       if (action === "admin/clients") return sendJson(res, 200, { ok: true, count: (await S.listClients()).length, clients: await S.listClients() });
       if (action === "admin/client-create") return sendJson(res, 200, { ok: true, client: await S.createClient({ ...body, source: "admin" }) });
-      if (action === "admin/client-renew") return sendJson(res, 200, { ok: true, client: await S.renewClient(body.username, { planId: body.planId || "monthly" }) });
-      if (action === "admin/client-suspend") return sendJson(res, 200, { ok: true, client: await S.suspendClient(body.username, body.suspended !== false) });
+      if (action === "admin/client-renew") {
+        const client = await S.renewClient(body.username, { planId: body.planId || "monthly" });
+        return client ? sendJson(res, 200, { ok: true, client }) : sendJson(res, 404, { ok: false, error: "Client not found" });
+      }
+      if (action === "admin/client-suspend") {
+        const client = await S.suspendClient(body.username, body.suspended !== false);
+        return client ? sendJson(res, 200, { ok: true, client }) : sendJson(res, 404, { ok: false, error: "Client not found" });
+      }
       if (action === "admin/client-delete") { await S.deleteClient(body.username); return sendJson(res, 200, { ok: true }); }
       if (action === "admin/resellers") return sendJson(res, 200, { ok: true, resellers: await S.listResellers() });
       if (action === "admin/reseller-create") {
@@ -352,6 +408,7 @@ export default async function panelHandler(req, res) {
       if (action === "admin/order-review") {
         const o = await S.getOrder(String(body.id || "").toUpperCase());
         if (!o) return sendJson(res, 404, { ok: false, error: "Order not found" });
+        if (o.status !== "pending") return sendJson(res, 409, { ok: false, error: `Order is already ${o.status}.`, order: o });
         if (body.approve === true || body.approve === "true") {
           const client = await S.createClient({
             name: o.name, email: o.email, whatsapp: o.whatsapp,
@@ -378,7 +435,7 @@ export default async function panelHandler(req, res) {
       }
       if (action === "admin/api-key-revoke") {
         const { hashApiKey } = await import("../_lib/auth.js");
-        const target = String(body.hash || "");
+        const target = String(body.hash || body.id || "");
         const ok = await S.revokeApiKeyByHash(target.startsWith("mzk_") ? hashApiKey(target) : target);
         return ok ? sendJson(res, 200, { ok: true, revoked: true }) : sendJson(res, 404, { ok: false, error: "Key not found" });
       }
@@ -393,15 +450,17 @@ export default async function panelHandler(req, res) {
       if (action === "admin/secure-link") {
         const t = await S.getClient(body.username);
         if (!t) return sendJson(res, 404, { ok: false, error: "Not found" });
-        return sendJson(res, 200, { ok: true, ...S.signStreamFor(base, t.username, body.file || "index.m3u8", body.kind || "live") });
+        const file = body.file || (await S.listChannels()).find((c) => c.status !== "inactive")?.id;
+        if (!file) return sendJson(res, 404, { ok: false, error: "No channel available to sign." });
+        return sendJson(res, 200, { ok: true, ...S.signStreamFor(base, t.username, file, body.kind || "live") });
       }
       return sendJson(res, 400, { ok: false, error: "Unknown admin action: " + action });
     }
 
     return sendJson(res, 400, { ok: false, error: "Unknown action: " + action });
   } catch (err) {
-    console.error("panel error:", err);
-    return sendJson(res, 500, { ok: false, error: "Panel request failed: " + (err?.message || err) });
+    if (!err.status || err.status >= 500) console.error("panel error:", err);
+    return sendJson(res, err.status || 500, { ok: false, error: "Panel request failed: " + (err?.message || err) });
   }
 }
 
@@ -417,9 +476,9 @@ function helpDoc(base) {
       admin: "Authorization: Bearer <firebaseIdToken> (owner Google) OR x-admin-token: mzp_… (admin/pin-login) OR x-api-key: mzk_…"
     },
     actions: {
-      public: ["config", "plans", "help", "order", "order-status", "trial", "resolve", "reseller/register", "reseller/login-password", "recharge/contact"],
-      reseller: ["reseller/login {code,password}", "reseller/me|stats", "reseller/clients", "reseller/client-create {name,days,planId?,mac?,collectAmount?,via?}", "reseller/credentials {username}", "reseller/client-update {username,…}", "reseller/client-renew {username,planId?}", "reseller/client-suspend|client-block {username}", "reseller/client-delete {username}", "reseller/secure-link {username,file?,kind?}", "reseller/key-rotate", "reseller/pricing-set {pricing}", "reseller/payment-record {username,amount,months,via}", "reseller/finance", "reseller/ledger"],
-      admin: ["admin/me", "admin/pin-login {pin}", "admin/xtream-accounts", "admin/xtream/create|update|renew|suspend|activate|delete {username,…}", "admin/stalker/list", "admin/channels", "admin/clients", "admin/client-create|renew|suspend|delete", "admin/resellers", "admin/reseller-create|reseller-update", "admin/credits-topup {code,credits}", "admin/orders", "admin/order-review {id,approve}", "admin/payments", "admin/trials", "admin/api-keys", "admin/api-key-create {label,expiresDays?}", "admin/api-key-revoke {hash}", "admin/settings|settings-set", "admin/analytics", "admin/audit", "admin/errors", "admin/secure-link {username}"]
+      public: ["config", "plans", "help", "order", "order-status", "trial", "resolve {username,password}", "track {sessionId,event,route}", "reseller/register", "reseller/login-password", "recharge/contact"],
+      reseller: ["reseller/login {code,password}", "reseller/me|stats", "reseller/clients", "reseller/client-create {name,planId?,mac?,collectAmount?,via?} — plan months = credit cost", "reseller/credentials {username}", "reseller/client-update {username,…}", "reseller/client-renew {username,planId?} — plan months = credit cost", "reseller/client-suspend|client-block {username}", "reseller/client-delete {username}", "reseller/secure-link {username,file?,kind?}", "reseller/key-rotate", "reseller/pricing-set {pricing}", "reseller/payment-record {username,amount,months,via} — one credit per extension month", "reseller/finance", "reseller/ledger"],
+      admin: ["admin/me", "admin/pin-login {pin}", "admin/xtream-accounts", "admin/xtream/create|update|renew|suspend|activate|delete {username,…}", "admin/stalker/list", "admin/channels", "admin/channel-create|channel-update|channel-delete", "admin/playlists", "admin/playlist-save|playlist-delete", "admin/movie-update|series-update", "admin/clients", "admin/client-create|renew|suspend|delete", "admin/resellers", "admin/reseller-create|reseller-update", "admin/credits-topup {code,credits}", "admin/orders", "admin/order-review {id,approve}", "admin/payments", "admin/trials", "admin/api-keys", "admin/api-key-create {label,expiresDays?}", "admin/api-key-revoke {id|hash}", "admin/settings|settings-set", "admin/analytics", "admin/audit", "admin/errors", "admin/secure-link {username}"]
     },
     protocols: {
       xtreamPlayerApi: `${base}/player_api.php?username=U&password=P`,
