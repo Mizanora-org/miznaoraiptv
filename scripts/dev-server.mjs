@@ -19,7 +19,8 @@ const MIME = {
   ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8", ".png": "image/png", ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".webp": "image/webp",
-  ".mp4": "video/mp4", ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t",
+  ".mp4": "video/mp4", ".m4s": "video/mp4", ".m3u8": "application/vnd.apple.mpegurl", ".m3u": "audio/mpegurl",
+  ".ts": "video/mp2t", ".m2ts": "video/mp2t", ".mpd": "application/dash+xml",
   ".webmanifest": "application/manifest+json", ".txt": "text/plain; charset=utf-8", ".xml": "application/xml"
 };
 
@@ -76,7 +77,8 @@ export function createAppServer() {
 
       let relFile = effectivePath === "/" ? "index.html" : effectivePath.replace(/^\/+/, "");
       let diskPath = path.resolve(PUBLIC_DIR, relFile);
-      if (!diskPath.startsWith(PUBLIC_DIR)) { res.writeHead(403); return res.end("Forbidden"); }
+      const relative = path.relative(PUBLIC_DIR, diskPath);
+      if (relative.startsWith("..") || path.isAbsolute(relative)) { res.writeHead(403); return res.end("Forbidden"); }
       if (!fs.existsSync(diskPath) && !path.extname(diskPath) && fs.existsSync(diskPath + ".html")) diskPath += ".html";
       if (!fs.existsSync(diskPath) || !fs.statSync(diskPath).isFile()) {
         res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
@@ -85,9 +87,23 @@ export function createAppServer() {
       const ext = path.extname(diskPath).toLowerCase();
       res.setHeader("Access-Control-Allow-Origin", "*");
       if (ext === ".html") res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
-      if (ext === ".m3u8") res.setHeader("Cache-Control", "no-store");
+      if (ext === ".m3u8" || ext === ".mpd") res.setHeader("Cache-Control", "no-store");
       const stat = fs.statSync(diskPath);
-      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Content-Length": stat.size, "Accept-Ranges": "bytes" });
+      const headers = { "Content-Type": MIME[ext] || "application/octet-stream", "Accept-Ranges": "bytes" };
+      const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ""));
+      if (range) {
+        const start = range[1] ? Number(range[1]) : Math.max(0, stat.size - Number(range[2] || 0));
+        const end = range[1] && range[2] ? Math.min(Number(range[2]), stat.size - 1) : stat.size - 1;
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start > end || start >= stat.size) {
+          res.writeHead(416, { ...headers, "Content-Range": `bytes */${stat.size}` });
+          return res.end();
+        }
+        res.writeHead(206, { ...headers, "Content-Length": end - start + 1, "Content-Range": `bytes ${start}-${end}/${stat.size}` });
+        if (req.method === "HEAD") return res.end();
+        return fs.createReadStream(diskPath, { start, end }).pipe(res);
+      }
+      res.writeHead(200, { ...headers, "Content-Length": stat.size });
+      if (req.method === "HEAD") return res.end();
       fs.createReadStream(diskPath).pipe(res);
     } catch (err) {
       res.writeHead(500, { "Content-Type": "application/json" });

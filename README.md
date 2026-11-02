@@ -1,44 +1,59 @@
-# 📺 Mizanora IPTV — Full System (Fresh Rebuild v3)
+# 📺 Mizanora IPTV — Full System v4
 
-**Mizanora IPTV** — Live TV • IMDb Movies & Series • Xtream Codes • MAG/Stalker Portal • Reseller API • Owner-locked Admin Panel.
-A **Mizanora Projects** product by **Muaaz Iqbal** (Kasur, Punjab, Pakistan).
+**Mizanora IPTV** — live TV, searchable IMDb catalogs, Xtream Codes, MAG/Stalker, reseller APIs and a functional owner admin panel. A **Mizanora Projects** product by **Muaaz Iqbal** (Kasur, Punjab, Pakistan).
 
-## 🚀 Run
+## Run locally
 
 ```bash
-npm install        # only for the DOM smoke test (jsdom+esbuild devDeps)
-npm run dev        # → http://0.0.0.0:3000
-npm test           # 88 API checks + 24 headless admin-panel click-through checks
+npm install
+npm run dev       # http://localhost:3000 (binds 0.0.0.0)
+npm test          # API/protocol + real admin DOM interaction tests
 ```
 
-Deploy: import this repo on **Vercel** (no env vars needed — Firebase is hardcoded, see below).
+Local development can use `/tmp/miznaoraiptv-rtdb-mirror.json` when Firebase is unreachable. This mirror is only a development fallback.
 
-## 🔒 Firebase — hardcoded in the repo (project `mizanoranet`)
+## Required Vercel/Firebase setup
 
-`public/assets/js/firebase-client.js` + `api/_lib/rtdb.js` contain the full config already:
+The public Firebase web config is included. **A service account is required for durable server writes on Vercel** because serverless `/tmp` storage is temporary and is not shared between invocations.
 
-- projectId `mizanoranet` · authDomain `mizanoranet.firebaseapp.com`
-- **RTDB `https://mizanoranet-default-rtdb.firebaseio.com`**
-- apiKey / appId / measurementId baked in — **Vercel mein kuch add karne ki zaroorat nahi** (`.env.example` vars sirf optional overrides hain)
+1. Firebase Console → **Project settings → Service accounts → Generate new private key**.
+2. Vercel → **Settings → Environment Variables** → add the complete JSON as sensitive variable **`FIREBASE_SERVICE_ACCOUNT_JSON`**. Alternatively use `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` (see `.env.example`).
+3. Set strong production values for **`MZ_OWNER_PIN`**, **`MZ_SESSION_SECRET`** and **`MZ_STREAM_SECRET`**. Never commit these secrets.
+4. Firebase Authentication → enable Google, then add the Vercel domain under **Authorized domains**. The owner is `muaaziqbal.vip@gmail.com`.
+5. Publish `firebase/database.rules.json`. The service account accesses RTDB with elevated privileges; do not expose its JSON in browser code.
+6. Redeploy after changing environment variables.
 
-Firebase Console (`mizanoranet`): enable **Google + Email/Password** auth, add your domain to **Authorized domains**, and publish `firebase/database.rules.json` (panel sirf `muaaziqbal.vip@gmail.com` + `email_verified` ko read/write deta hai).
+On Vercel, a failed Firebase write returns an explicit error instead of pretending that a temporary file is a durable save. `/api/embed?action=health` and the admin dashboard expose storage health without exposing credentials.
 
-## 🧱 What's inside
+## Working surfaces
 
-| Surface | Route | Notes |
+| Surface | Route | Functionality |
 |---|---|---|
-| Public site | `/` | landing + live channel preview (embed API) + trial & order forms |
-| Admin panel | `/admin` | **full-screen lock** → Google owner login (only `muaaziqbal.vip@gmail.com`) or Owner PIN `03062015326`; 13 tabs: dashboard, channels, playlists, xtream, movies, series, analytics, users, settings, resellers, orders, stalker/MAG, API keys |
-| Embed widget | `/embed.js` + `/embed.html` | drop-in channel grid, CORS `*` |
-| Panel API | `/api/panel?action=…` | public / reseller (`mzr_`) / admin (Firebase token, `mzp_` PIN session, `mzk_` key) — see `?action=help` |
-| Xtream Codes | `/player_api.php`, `/get.php`, `/xmltv.php`, `/live|/movie|/series/:u/:p/:file` | M3U+EPG, 302 → signed `/s/<token>` (HMAC-SHA256, 15 min) |
-| MAG / Stalker | `/portal.php`, `/stalker_portal/server/load.php`, `/c/…` | handshake token TTL 8h |
-| Embed API | `/api/embed?action=config\|channels\|movies\|series\|order\|trial\|order-status\|health` | CORS `*` |
+| Public site | `/` | Channel grid with actual HLS playback (HLS.js + native HLS), free-trial and order forms |
+| Owner admin | `/admin` | Google owner login or Owner PIN; 13 tabs with working channel/playlist CRUD, Xtream lifecycle, users, orders, resellers, settings, analytics and API keys |
+| Xtream Codes | `/player_api.php`, `/get.php`, `/xmltv.php` | Login plus `get_live_categories`, `get_live_streams`, VOD/series lists and info, M3U and XMLTV |
+| Stream URLs | `/live/…`, `/movie/…`, `/series/…`, `/s/<token>` | Credential checks, 15-minute HMAC tokens, valid HLS variant playlists and direct-file redirects |
+| MAG / Stalker | `/portal.php`, `/stalker_portal/server/load.php`, `/c/portal.php` | Handshake, active-MAC profile, genres/channel lists and `create_link` |
+| Reseller API | `/api/panel?action=help` | Register/login, credits, clients, MACs, renew/suspend/delete, pricing, payments and key rotation |
+| Embed | `/embed.js`, `/embed.html`, `/api/embed` | CORS-enabled channel widget, searchable catalogs, free preview tokens, orders/trials |
 
-## 🏪 Reseller business
+### Catalog and content rights
 
-Self-serve register (`reseller/register`) → free starter credits → `mzr_…` API key → create clients (incl. **MAC/Stalker**), set own PKR pricing, record payments, renew/suspend/block/delete, rotate key. Dealer rate Rs 100/user/month; direct Rs 200. Support WhatsApp **0306-2015326**.
+The repository includes 18 default live channel records, 1,134 movie metadata records and 437 series metadata records. An IMDb title or poster is **not a video stream**. Movies/episodes without a licensed `streamUrl` are honestly marked **Metadata only**; configure playback URLs in the admin panel or RTDB. Only stream content you own or have permission to distribute.
 
-## ✅ Tests
+## Owner admin notes
 
-`npm test` runs `scripts/self-test.mjs` (structure + live HTTP over every protocol incl. full admin & reseller lifecycles — **88 checks**) and `scripts/smoke-admin-dom.mjs` (jsdom headless click-through of the real admin panel: lock → PIN → 13 tabs → buttons — **24 checks, zero uncaught errors**).
+- New admin API keys are shown once. Revoke uses the key ID returned by the server; secret hashes are never sent back to the browser.
+- A username or MAC cannot overwrite another client. Orders can only be reviewed once.
+- Public account resolution requires the correct password; a username alone does not reveal playlist credentials.
+- Default local development credentials remain compatible with existing installs. Set `MZ_OWNER_PIN` in production.
+- All external stream availability and CORS policy depend on the upstream provider. The player reports these failures instead of substituting an unrelated channel.
+
+## Tests
+
+```bash
+npm test
+npm run test:dom
+```
+
+The suite checks real HTTP flows (public/admin/reseller, Xtream actions, signed playback, MAG, validation and CRUD) and jsdom click-throughs against the actual admin JavaScript. Test data uses an isolated local mirror; production Firebase is not required for the suite.

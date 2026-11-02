@@ -98,4 +98,35 @@ tr:hover td{background:rgba(52,211,153,.05)}
 .toast{background:var(--panel2);border:1px solid var(--line2);color:var(--text);padding:11px 18px;border-radius:12px;font-size:.84rem;box-shadow:var(--sh);animation:tin .25s ease}
 .toast.err{border-color:var(--danger);color:#fecaca}
 @keyframes tin{from{transform:translateY(12px);opacity:0}}
-.hidden{display:none!important}
+.hidden,[hidden]{display:none!important}
+/* ---------- functional tables + dialogs ---------- */
+.table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.table-wrap table{min-width:640px}
+.cell-sub{display:block;color:var(--dim);font-size:.7rem;max-width:330px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:3px}
+.empty{color:var(--dim);text-align:center;padding:22px!important}
+.actions{white-space:nowrap}.actions .btn{padding:6px 9px;margin:1px}
+.table-note{color:var(--dim);font-size:.76rem;margin:-4px 0 12px}
+.icon-btn:disabled{opacity:.55;cursor:wait}
+body.is-locked{overflow:hidden}
+.app-dialog{width:min(620px,94vw);max-height:90vh;overflow:auto;background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:20px;padding:0;box-shadow:var(--sh)}
+.app-dialog::backdrop{background:rgba(1,8,5,.82);backdrop-filter:blur(5px)}
+.app-dialog[open]{animation:dialog-in .18s ease-out}
+@keyframes dialog-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+#dialogForm{padding:22px}
+.dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.dialog-head h2{font-size:1.15rem;margin:0}
+.dialog-fields{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.dialog-fields label{display:flex;flex-direction:column;gap:5px;color:var(--dim);font-size:.75rem}
+.dialog-fields label:nth-child(1),.dialog-fields label:nth-child(2){grid-column:1/-1}
+.dialog-fields input,.dialog-fields select{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:.84rem;outline:none}
+.dialog-fields input:focus,.dialog-fields select:focus{border-color:var(--primary)}
+.dialog-fields small{font-size:.66rem;line-height:1.4}
+.dialog-error{color:var(--danger);font-size:.78rem;min-height:1.2em;margin-top:12px;white-space:pre-wrap}
+.dialog-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:14px}
+@media(max-width:700px){
+  main{padding:16px 12px 45px}.topbar{align-items:flex-start}.search{margin-left:0;width:100%;flex-wrap:wrap}.search input{flex:1;min-width:150px}.user-chip{margin-left:auto}
+  .card{padding:13px}.card h3{flex-wrap:wrap}.card h3 .right{margin-left:0;width:100%;flex-wrap:wrap}.card h3 .right input{flex:1;min-width:140px}
+  .dialog-fields{grid-template-columns:1fr}.dialog-fields label{grid-column:1/-1}.app-dialog{width:96vw}#dialogForm{padding:17px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.kpi{padding:13px}.kpi b{font-size:1.3rem}
+  #toasts{left:12px;right:12px;bottom:12px}.toast{text-align:center}
+}

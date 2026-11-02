@@ -1,15 +1,11 @@
-/**
- * Mizanora IPTV — public embeddable API (CORS *), fresh rebuild.
- * /api/embed?action=config|channels|movies|series|order|trial|order-status|health
- * Widget: /embed.js  (any website: <script src="…/embed.js" data-mizanora-embed></script>)
- */
-import { handleOptions, parseQuery, parseBody, sendJson, getRequestBaseUrl, corsHeaders, checkRateLimit, WA_LINK } from "../_lib/util.js";
-import { rtdbGet } from "../_lib/rtdb.js";
+/** Public embed/catalog API (CORS *). */
+import { handleOptions, parseQuery, parseBody, sendJson, getRequestBaseUrl, checkRateLimit, WA_LINK, isValidEmail } from "../_lib/util.js";
 import * as S from "../_lib/store.js";
+import { rtdbHealth } from "../_lib/rtdb.js";
 
 export default async function embedHandler(req, res) {
   if (handleOptions(req, res)) return;
-  const rl = checkRateLimit(req, "embed", 240, 60_000);
+  const rl = checkRateLimit(req, "embed", 300, 60_000);
   if (!rl.allowed) return sendJson(res, 429, { ok: false, error: "Rate limit" });
   const q = parseQuery(req);
   const base = getRequestBaseUrl(req);
@@ -18,22 +14,64 @@ export default async function embedHandler(req, res) {
   const body = isPost ? await parseBody(req) : {};
 
   try {
-    if (action === "health") return sendJson(res, 200, { ok: true, brand: "Mizanora IPTV", ts: Date.now() });
-    if (action === "config") {
-      return sendJson(res, 200, { ...S.publicConfig(base), embed: true }, "public, max-age=60");
+    if (action === "health") return sendJson(res, 200, { ok: true, brand: "Mizanora IPTV", ts: Date.now(), storage: rtdbHealth() });
+    if (action === "help") {
+      return sendJson(res, 200, {
+        ok: true, brand: S.BRAND.name,
+        actions: {
+          "GET config": "Public plans and endpoints",
+          "GET channels": "Live channel metadata",
+          "GET movies|series&limit=40&offset=0&q=": "Searchable IMDb catalog",
+          "GET stream&id=CHANNEL_ID": "Short-lived preview URL (free channels only)",
+          "POST order": "{name,email,whatsapp,planId}",
+          "POST trial": "{email,deviceId?,whatsapp?}",
+          "GET order-status&id=": "Order status"
+        },
+        widget: `${base}/embed.js`
+      });
     }
+    if (action === "config") return sendJson(res, 200, { ...S.publicConfig(base), embed: true }, "public, max-age=60");
     if (action === "channels") {
-      const list = (await S.listChannels()).map((c) => ({ id: c.id, name: c.name, logo: c.logo, category: c.category, group: c.category }));
+      const list = (await S.listChannels()).filter((c) => c.status !== "inactive").map((c) => ({
+        id: c.id, streamId: c.streamId, name: c.name, logo: c.logo,
+        category: c.category, group: c.category, tier: c.tier || "free"
+      }));
       return sendJson(res, 200, { ok: true, count: list.length, channels: list }, "public, max-age=60");
     }
+    if (action === "stream") {
+      const channels = await S.listChannels();
+      const channel = channels.find((c) => String(c.id) === String(q.id) || String(c.streamId) === String(q.id));
+      if (!channel || channel.status === "inactive") return sendJson(res, 404, { ok: false, error: "Channel not found" });
+      if (channel.tier === "pro") return sendJson(res, 403, { ok: false, error: "PRO channel — free trial ya subscription activate karein.", trialUrl: `${base}/#trial` });
+      return sendJson(res, 200, { ok: true, channel: { id: channel.id, name: channel.name, logo: channel.logo }, ...S.signStreamFor(base, "public", String(channel.id), "live") });
+    }
     if (action === "movies" || action === "series") {
-      const node = action === "movies" ? "movies" : "series";
-      const raw = (await rtdbGet(node)) || {};
-      const list = (Array.isArray(raw) ? raw : Object.values(raw)).slice(0, Number(q.limit) || 60)
-        .map((m) => ({ id: m.id || m.tmdbId, title: m.title || m.name, poster: m.poster || m.poster_path, year: m.year || (m.release_date || "").slice(0, 4), rating: m.rating || m.vote_average }));
-      return sendJson(res, 200, { ok: true, count: list.length, [action]: list }, "public, max-age=300");
+      const source = action === "movies" ? await S.listMovies() : await S.listSeries();
+      const search = String(q.q || q.search || "").trim().toLowerCase();
+      const filtered = search ? source.filter((m) => `${m.title || m.name || ""} ${m.year || ""} ${(Array.isArray(m.genres) ? m.genres : []).join(" ")} ${m.category || ""}`.toLowerCase().includes(search)) : source;
+      const limit = Math.max(1, Math.min(200, Number(q.limit) || 60));
+      const offset = Math.max(0, Number(q.offset) || 0);
+      const list = filtered.slice(offset, offset + limit).map((m) => ({
+        id: m.id || m.tmdbId,
+        streamId: m.streamId || m.seriesId,
+        title: m.title || m.name,
+        poster: m.poster || m.poster_path,
+        backdrop: m.backdrop || "",
+        year: m.year || (m.release_date || "").slice(0, 4),
+        rating: m.imdbRating ?? m.rating ?? m.vote_average ?? "",
+        category: m.category || "",
+        genres: m.genres || [],
+        plot: m.plot || "",
+        streamAvailable: action === "movies" ? !!m.streamUrl : Object.values(m.episodes || {}).some((ep) => !!ep.streamUrl),
+        episodeCount: action === "series" ? Object.values(m.episodes || {}).length : undefined,
+        episodes: action === "series" ? Object.values(m.episodes || {}).map((ep) => ({ id: ep.id, title: ep.title, season: ep.season, episode: ep.episode, streamAvailable: !!ep.streamUrl })) : undefined
+      }));
+      return sendJson(res, 200, { ok: true, count: list.length, total: filtered.length, offset, limit, [action]: list }, "public, max-age=300");
     }
     if (action === "order" && isPost) {
+      if (!String(body.name || "").trim() || !isValidEmail(body.email) || String(body.whatsapp || "").replace(/\D/g, "").length < 10) {
+        return sendJson(res, 400, { ok: false, error: "Valid name, email and WhatsApp are required" });
+      }
       const o = await S.createOrder(body);
       return sendJson(res, 201, { ok: true, orderId: o.id, whatsapp: WA_LINK, message: "Order receive hua — WhatsApp par screenshot bhejein." });
     }
@@ -44,10 +82,11 @@ export default async function embedHandler(req, res) {
     }
     if (action === "order-status") {
       const o = await S.getOrder(String(body.id || q.id || "").toUpperCase());
-      return o ? sendJson(res, 200, { ok: true, order: o }) : sendJson(res, 404, { ok: false, error: "Not found" });
+      return o ? sendJson(res, 200, { ok: true, order: { id: o.id, status: o.status, planId: o.planId, amount: o.amount, createdAt: o.createdAt, clientUsername: o.clientUsername || "" } }) : sendJson(res, 404, { ok: false, error: "Not found" });
     }
     return sendJson(res, 400, { ok: false, error: "Unknown embed action" });
   } catch (err) {
-    return sendJson(res, 500, { ok: false, error: String(err?.message || err) });
+    console.error("embed error:", err);
+    return sendJson(res, err.status || 500, { ok: false, error: String(err?.message || err) });
   }
 }

@@ -2,10 +2,11 @@
  * Mizanora IPTV — admin authentication: Firebase ID token (owner Google),
  * Owner PIN session (mzp_…), or admin API key (mzk_…). Fresh rebuild.
  */
+import crypto from "node:crypto";
 import { rtdbGet, rtdbSet, verifyFirebaseIdToken } from "./rtdb.js";
-import { sha256, hmacSHA256, randomHex, b64url, BOOTSTRAP_PIN, OWNER_EMAIL } from "./util.js";
+import { sha256, hmacSHA256, randomHex, b64url, serverSecret, BOOTSTRAP_PIN, OWNER_EMAIL } from "./util.js";
 
-const SESSION_SECRET = process.env.MZ_SESSION_SECRET || "mizanora-iptv-v3-session-secret";
+const SESSION_SECRET = serverSecret("MZ_SESSION_SECRET", "mizanora-iptv-v3-session-secret");
 const SESSION_TTL_MS = 12 * 3600 * 1000;
 
 export function isAdminEmail(email) {
@@ -46,10 +47,13 @@ export function verifyPinSession(token) {
   const [data, sig] = String(rest || "").split(".");
   if (!data || !sig) return null;
   const expect = hmacSHA256(SESSION_SECRET, data);
-  if (expect !== sig) return null;
+  const actualBytes = Buffer.from(String(sig));
+  const expectedBytes = Buffer.from(expect);
+  if (actualBytes.length !== expectedBytes.length || !crypto.timingSafeEqual(actualBytes, expectedBytes)) return null;
   try {
     const p = JSON.parse(Buffer.from(data, "base64url").toString("utf-8"));
-    if (Date.now() > Number(p.exp || 0)) return null;
+    if (p.uid !== "owner_pin" || !isAdminEmail(p.email)) return null;
+    if (!Number.isFinite(Number(p.exp)) || Date.now() > Number(p.exp)) return null;
     return { uid: p.uid, email: p.email };
   } catch { return null; }
 }
