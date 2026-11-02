@@ -81,9 +81,13 @@ check("admin-modern.js has business tabs (resellers/orders/stalker/api keys)", [
 check("luxe CSS styles the lock screen + gsi button", luxeCss.includes(".lock-screen") && luxeCss.includes(".gsi-btn"));
 check("firebase client locks ADMIN_EMAIL to muaaziqbal.vip@gmail.com", fbClient.includes('ADMIN_EMAIL = "muaaziqbal.vip@gmail.com"') && fbClient.includes("isAdminEmail"));
 check("firebase client uses mizanoranet project config", fbClient.includes('projectId: "mizanoranet"') && fbClient.includes("mizanoranet-default-rtdb"));
+check("panel hardened: safe() step wrapper + controls bound at boot before auth", adminJs.includes("const safe = (name, fn)") && adminJs.indexOf('safe("app.init"') < adminJs.indexOf("await ensureAdmin()"));
+check("init() idempotent (no double-bound buttons)", adminJs.includes("window.__mzAppInit"));
+check("switchTab uses explicit TAB_VIEWS map (apikeys->viewApiKeys bug fixed)", adminJs.includes('apikeys: "viewApiKeys"') && adminJs.includes("TAB_VIEWS[tab]"));
+check("no unguarded KPI/badge textContent writes remain", !/\$\("(badgeChannels|kpiChannels|kpiXtream|anOnline|pageTitle|pageSub|xtModalTitle)"\)\.textContent/.test(adminJs));
 check("paintUser is null-safe (setText helper, no unguarded $(...).textContent)", adminJs.includes("const setText = (id, v)") && !/\$\("userName"\)\.textContent/.test(adminJs) && adminJs.includes('setText("userName"'));
 check("locked screen never wipes #userChip children (no uChip.innerHTML)", !adminJs.includes("uChip.innerHTML"));
-check("admin.html cache-busted to v=16 (fix deploy)", adminHtml.includes("admin-modern.js?v=16") && adminHtml.includes("error-beacon.js?v=16"));
+check("admin.html cache-busted to v=16 (fix deploy)", adminHtml.includes("admin-modern.js?v=17") && adminHtml.includes("error-beacon.js?v=17"));
 const beacon = fs.readFileSync(path.join(ROOT, "public/assets/js/error-beacon.js"), "utf8");
 check("error beacon posts to /api/analytics only (not admin-only /api/sync)", beacon.includes('var ENDPOINT = "/api/analytics"') && !beacon.includes('ENDPOINT = "/api/sync"'));
 const vj = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
@@ -192,7 +196,7 @@ j = await jget("/api/panel?action=help");
 check("help/docs action self-documents all APIs", j.status === 200 && j.body.ok && Array.isArray(j.body.actions.reseller) && j.body.actions.reseller.some(a => a.includes("client-credentials")) === false && j.body.actions.reseller.some(a => a.includes("reseller/credentials")));
 
 // full reseller lifecycle via API key
-let reg = await jget("/api/panel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reseller/register", name: "Suite Dealer", email: "suite@test.com", password: "pass1234", whatsapp: "03005550001" }) });
+let reg = await jget("/api/panel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "reseller/register", name: "Suite Dealer", email: "suite" + Date.now() + "@test.com", password: "pass1234", whatsapp: "03005550001" }) });
 check("reseller/register returns code + mzr_ key (201)", (reg.status === 200 || reg.status === 201) && String(reg.body.reseller?.apiKey || reg.body.apiKey || "").startsWith("mzr_")); if (!(reg.status === 200)) console.error("    register resp:", JSON.stringify(reg.body).slice(0, 200));
 const rkey = reg.body.reseller.apiKey;
 const rh = { "x-api-key": rkey, "Content-Type": "application/json" };
