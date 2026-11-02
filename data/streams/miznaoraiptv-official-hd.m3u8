@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:Mizanora Pakistan Flagship HD — Mizanora IPTV (FREE HD)
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.channel",VALUE="miznaoraiptv-official-hd"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="miznaoraiptv.promo.pk" tvg-name="Mizanora Pakistan Flagship HD" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🇵🇰 ⭐ PAKISTAN TOP CHANNELS",Mizanora Pakistan Flagship HD
+https://miznaoraiptv.vercel.app/ch/miznaoraiptv-official-hd.m3u8

@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:TRT World News HD — Mizanora IPTV (FREE HD)
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.channel",VALUE="trt-world-hd"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="trtworld.hd" tvg-name="TRT World News HD" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="📰 🔴 LIVE NEWS NETWORKS",TRT World News HD
+https://miznaoraiptv.vercel.app/ch/trt-world-hd.m3u8

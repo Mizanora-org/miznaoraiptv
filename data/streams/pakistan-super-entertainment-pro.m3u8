@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:Pakistan Gold National HD [PRO VIP] — Mizanora IPTV (PRO VIP (Unlock: 0306-2015326))
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.channel",VALUE="pakistan-super-entertainment-pro"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="pk.super.pro" tvg-name="Pakistan Gold National HD [PRO VIP]" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🇵🇰 ⭐ PAKISTAN TOP CHANNELS",Pakistan Gold National HD [PRO VIP]
+https://miznaoraiptv.vercel.app/ch/pakistan-super-entertainment-pro.m3u8

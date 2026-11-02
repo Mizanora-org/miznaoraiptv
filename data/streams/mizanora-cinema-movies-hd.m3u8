@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:Mizanora Cinema & Telefilms HD — Mizanora IPTV (FREE HD)
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.channel",VALUE="mizanora-cinema-movies-hd"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="mizanora.cinema.pk" tvg-name="Mizanora Cinema & Telefilms HD" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🎬 🍿 MOVIES & CINEMA HD",Mizanora Cinema & Telefilms HD
+https://miznaoraiptv.vercel.app/ch/mizanora-cinema-movies-hd.m3u8

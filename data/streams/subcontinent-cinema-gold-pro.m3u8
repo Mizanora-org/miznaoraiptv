@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:Subcontinent Blockbuster Movies 4K [PRO VIP] — Mizanora IPTV (PRO VIP (Unlock: 0306-2015326))
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.channel",VALUE="subcontinent-cinema-gold-pro"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="in.cinema.pro" tvg-name="Subcontinent Blockbuster Movies 4K [PRO VIP]" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🎬 🍿 MOVIES & CINEMA HD",Subcontinent Blockbuster Movies 4K [PRO VIP]
+https://miznaoraiptv.vercel.app/ch/subcontinent-cinema-gold-pro.m3u8

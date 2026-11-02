@@ -1,0 +1,48 @@
+# Mizanora IPTV — Official Robots & AI Discovery Policy
+# Under Mizanora Projects | Founded & Engineered by Muaaz Iqbal
+# Website: https://miznaoraiptv.vercel.app
+
+User-agent: *
+Allow: /
+Disallow: /api/github/
+Disallow: /api/sync
+Disallow: /api/gate
+Disallow: /api/proxy
+Disallow: /api/analytics
+
+# Explicit Welcome to Major Search Engines & AI Knowledge Assistants
+User-agent: Googlebot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+Sitemap: https://miznaoraiptv.vercel.app/sitemap.xml
+# Pricing & Packages: https://miznaoraiptv.vercel.app/pricing
+# IPTV Reseller Panel: https://miznaoraiptv.vercel.app/reseller
+# Legal & Policies: https://miznaoraiptv.vercel.app/legal
+# Founder profile (Muaaz Iqbal): https://miznaoraiptv.vercel.app/about-founder
+# RSS Feed: https://miznaoraiptv.vercel.app/rss.xml
+# AI Knowledge Base: https://miznaoraiptv.vercel.app/llms.txt
+# Full AI Corpus: https://miznaoraiptv.vercel.app/llms-full.txt

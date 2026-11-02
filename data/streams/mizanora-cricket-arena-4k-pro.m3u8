@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:Mizanora Cricket Arena 4K [PRO VIP] — Mizanora IPTV (PRO VIP (Unlock: 0306-2015326))
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.channel",VALUE="mizanora-cricket-arena-4k-pro"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="mizanora.cricket.pro" tvg-name="Mizanora Cricket Arena 4K [PRO VIP]" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🏏 🏆 LIVE SPORTS & CRICKET 4K",Mizanora Cricket Arena 4K [PRO VIP]
+https://miznaoraiptv.vercel.app/ch/mizanora-cricket-arena-4k-pro.m3u8

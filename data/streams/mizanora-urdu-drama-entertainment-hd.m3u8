@@ -1,0 +1,6 @@
+#EXTM3U
+#PLAYLIST:Mizanora Urdu Drama & Family HD — Mizanora IPTV (FREE HD)
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.channel",VALUE="mizanora-urdu-drama-entertainment-hd"
+#EXT-X-SESSION-DATA:DATA-ID="com.mizanora.miznaoraiptv.founder",VALUE="Muaaz Iqbal - Mizanora Projects"
+#EXTINF:-1 tvg-id="mizanora.drama.pk" tvg-name="Mizanora Urdu Drama & Family HD" tvg-logo="https://miznaoraiptv.vercel.app/assets/img/brand/miznaoraiptv-logo.png" group-title="🎭 📺 DRAMA & ENTERTAINMENT HD",Mizanora Urdu Drama & Family HD
+https://miznaoraiptv.vercel.app/ch/mizanora-urdu-drama-entertainment-hd.m3u8
