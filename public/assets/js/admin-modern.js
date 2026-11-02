@@ -21,7 +21,7 @@ import {
   dbWrite,
   dbDelete,
   getCurrentUserSnapshot
-} from "/assets/js/firebase-client.js?v=3";
+} from "/assets/js/firebase-client.js?v=4";
 
 const STATE = {
   user: null,
@@ -45,6 +45,8 @@ const STATE = {
 
 /* ==================== DOM helpers ==================== */
 const $ = (id) => document.getElementById(id);
+// Null-safe text setter — kabhi bhi null element par crash nahi hoga (paintUser fix)
+const setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
 const show = (el) => el && (el.hidden = false);
 const hide = (el) => el && (el.hidden = true);
 const esc = (s) => String(s ?? "")
@@ -121,10 +123,10 @@ async function ensureAdmin() {
   showLock();
   const pinWrap = $("admPinStatic");
   if (pinWrap) pinWrap.hidden = false;
-  const uChip = $("userChip");
-  if (uChip) {
-    uChip.innerHTML = `<div style="padding:10px;color:var(--text-dim);font-size:0.82rem;"><div style="font-weight:700;color:#fff;margin-bottom:4px;">🔐 Private Admin Panel</div><div style="font-size:0.7rem;">Google owner login ya Owner PIN required</div></div>`;
-  }
+  // 🔒 Chip ke andar elements ko delete na karo (purana innerHTML wipe hi paintUser crash ka cause tha)
+  setText("userName", "🔒 Locked");
+  setText("userRole", "Google owner login ya Owner PIN required");
+  setText("userAvatar", "🔒");
   return false;
 }
 
@@ -188,9 +190,9 @@ function paintUser() {
   if (!u) return;
   const pinWrap = $("admPinStatic");
   if (pinWrap) pinWrap.hidden = true;
-  $("userName").textContent = u.displayName || u.email || "Admin";
-  $("userRole").textContent = isAdminEmail(u.email) ? "👑 Super Admin (Owner)" : "Admin";
-  $("userAvatar").textContent = (u.displayName || u.email || "A").slice(0, 2).toUpperCase();
+  setText("userName", u.displayName || u.email || "Admin");
+  setText("userRole", isAdminEmail(u.email) ? "👑 Super Admin (Owner)" : "Admin");
+  setText("userAvatar", (u.displayName || u.email || "A").slice(0, 2).toUpperCase());
   const btn = $("btnLogout");
   if (btn) {
     btn.textContent = "🚪 Sign Out";

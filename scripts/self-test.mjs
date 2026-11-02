@@ -81,6 +81,13 @@ check("admin-modern.js has business tabs (resellers/orders/stalker/api keys)", [
 check("luxe CSS styles the lock screen + gsi button", luxeCss.includes(".lock-screen") && luxeCss.includes(".gsi-btn"));
 check("firebase client locks ADMIN_EMAIL to muaaziqbal.vip@gmail.com", fbClient.includes('ADMIN_EMAIL = "muaaziqbal.vip@gmail.com"') && fbClient.includes("isAdminEmail"));
 check("firebase client uses mizanoranet project config", fbClient.includes('projectId: "mizanoranet"') && fbClient.includes("mizanoranet-default-rtdb"));
+check("paintUser is null-safe (setText helper, no unguarded $(...).textContent)", adminJs.includes("const setText = (id, v)") && !/\$\("userName"\)\.textContent/.test(adminJs) && adminJs.includes('setText("userName"'));
+check("locked screen never wipes #userChip children (no uChip.innerHTML)", !adminJs.includes("uChip.innerHTML"));
+check("admin.html cache-busted to v=16 (fix deploy)", adminHtml.includes("admin-modern.js?v=16") && adminHtml.includes("error-beacon.js?v=16"));
+const beacon = fs.readFileSync(path.join(ROOT, "public/assets/js/error-beacon.js"), "utf8");
+check("error beacon posts to /api/analytics only (not admin-only /api/sync)", beacon.includes('var ENDPOINT = "/api/analytics"') && !beacon.includes('ENDPOINT = "/api/sync"'));
+const vj = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
+check("vercel.json sets COOP same-origin-allow-popups on / and /admin(.html)", (vj.headers||[]).filter(h => ["/","/admin","/admin.html"].includes(h.source)).every(h => (h.headers||[]).some(x => x.key === "Cross-Origin-Opener-Policy" && x.value === "same-origin-allow-popups")));
 check("firebase config HARDCODED in repo (no Vercel env needed)", fbClient.includes("HARDCODED IN THE REPO") && fbClient.includes('apiKey: "AIzaSyA4PWELrMHQrRA29EZzfRx1iZkXtJkKh9M"') && fbClient.includes('appId: "1:1047231858393:web:7e9fa18b59172f806da0c8"'));
 check("server-side RTDB URL + API key baked in too", fs.readFileSync(path.join(ROOT, "api/_lib/rtdb.js"), "utf8").includes('"https://mizanoranet-default-rtdb.firebaseio.com"') && fs.readFileSync(path.join(ROOT, "api/_lib/adminauth.js"), "utf8").includes('"AIzaSyA4PWELrMHQrRA29EZzfRx1iZkXtJkKh9M"'));
 check("RTDB rules keep admin = muaaziqbal.vip@gmail.com (email_verified)", rules.includes("muaaziqbal.vip@gmail.com") && rules.includes("email_verified"));
@@ -207,6 +214,15 @@ let okNew = await jget("/api/panel", { method: "POST", headers: rh2, body: JSON.
 check("new mzr_ key works", okNew.status === 200 && okNew.body.ok);
 let del = await jget("/api/panel", { method: "POST", headers: rh2, body: JSON.stringify({ action: "reseller/client-delete", username: cu }) });
 check("reseller/client-delete removes client", del.status === 200 && del.body.ok);
+
+let hr = await fetch(base + "/");
+check("GET / sends Cross-Origin-Opener-Policy: same-origin-allow-popups", (hr.headers.get("cross-origin-opener-policy") || "").includes("same-origin-allow-popups"));
+let an = await jget("/api/analytics", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "error", message: "self-test beacon", route: "/", app: "admin" }) });
+check("POST /api/analytics type=error accepted anonymously (200)", an.status === 200 && an.body.ok);
+let sc = await fetch(base + "/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "error", message: "old beacon", route: "/", app: "site" }) });
+check("POST /api/sync with error-beacon payload -> 204 (no console 403)", sc.status === 204);
+let sc2 = await jget("/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: "channels", value: {} }) });
+check("POST /api/sync real mirror op still admin-only (403)", sc2.status === 403);
 
 server.close();
 

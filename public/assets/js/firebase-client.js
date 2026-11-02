@@ -31,7 +31,7 @@ import {
   push,
   remove,
   onValue
-} from "../vendor/firebase-sdk.js";
+} from "../vendor/firebase-sdk.js?v=2";
 
 // 🔒 Official Firebase Configuration for Mizanora IPTV (project: mizanoranet)
 // HARDCODED IN THE REPO on purpose — Vercel/environment variables mein add karne

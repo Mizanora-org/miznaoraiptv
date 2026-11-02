@@ -14,26 +14,27 @@
   if (typeof window === "undefined" || window.__bwErrorBeacon) return;
   window.__bwErrorBeacon = true;
 
+  // Client errors sirf /api/analytics par (anonymous, rate-limited, 200 OK).
+  // /api/sync admin-only hai — wahan beacon kabhi nahi bhejna (403 console spam).
   var ENDPOINT = "/api/analytics";
+  var endpointOk = true;
   var sent = Object.create(null);
   var attempts = 0;
   var MAX_REPORTS = 12;
 
   function post(payload) {
     try {
-      if (attempts >= MAX_REPORTS) return;
+      if (attempts >= MAX_REPORTS || !endpointOk) return;
       attempts += 1;
       var body = JSON.stringify(payload);
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "application/json" }));
-        return;
-      }
+      // fetch + keepalive: agar endpoint kabhi fail ho to is session me band kar do
+      // taake console me 403/404 ki red lines na aayein.
       fetch(ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: body,
         keepalive: true
-      }).catch(function () {});
+      }).then(function (res) { if (!res || !res.ok) endpointOk = false; }).catch(function () { endpointOk = false; });
     } catch (_) {
       /* never break the page */
     }
