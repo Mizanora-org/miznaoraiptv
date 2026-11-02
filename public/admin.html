@@ -6,7 +6,7 @@
 <title>🛡️ Mizanora IPTV — Admin Panel</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" href="/assets/css/admin.css?v=5.1.0">
+<link rel="stylesheet" href="/assets/css/admin.css?v=5.1.2">
 </head>
 <body data-bw-app="admin">
 
@@ -125,12 +125,12 @@
     </section>
 
     <section id="viewMovies" hidden>
-      <div class="card"><h3>🎬 Movies <span class="right"><input id="mvSearch" type="search" placeholder="Search full IMDb catalog…" aria-label="Search movies"></span></h3>
+      <div class="card"><h3>🎬 Movies <span class="right"><input id="mvSearch" type="search" placeholder="Search full IMDb catalog…" aria-label="Search movies"><select id="mvSort" aria-label="Sort movies"><option value="title-asc">Title A–Z</option><option value="title-desc">Title Z–A</option><option value="year-desc">Newest year</option><option value="year-asc">Oldest year</option><option value="rating-desc">Highest rated</option><option value="ready-first">Playable first</option></select></span></h3>
         <p class="table-note">IMDb metadata is built in. Add your licensed MP4/HLS URL to make a title playable.</p><div class="table-wrap"><table><thead><tr><th>Title</th><th>Year</th><th>Rating</th><th>Playback</th><th>Actions</th></tr></thead><tbody id="mvBody"></tbody></table></div></div>
     </section>
 
     <section id="viewSeries" hidden>
-      <div class="card"><h3>📺 Series <span class="right"><input id="srSearch" type="search" placeholder="Search full IMDb catalog…" aria-label="Search series"></span></h3>
+      <div class="card"><h3>📺 Series <span class="right"><input id="srSearch" type="search" placeholder="Search full IMDb catalog…" aria-label="Search series"><select id="srSort" aria-label="Sort series"><option value="title-asc">Title A–Z</option><option value="title-desc">Title Z–A</option><option value="year-desc">Newest year</option><option value="year-asc">Oldest year</option><option value="rating-desc">Highest rated</option><option value="ready-first">Playable first</option></select></span></h3>
         <p class="table-note">Search the catalog, then configure a licensed URL for each episode.</p><div class="table-wrap"><table><thead><tr><th>Title</th><th>Year</th><th>Rating</th><th>Episodes</th><th>Playback</th><th>Actions</th></tr></thead><tbody id="srBody"></tbody></table></div></div>
     </section>
 
@@ -209,6 +209,6 @@
   </form>
 </dialog>
 <div id="toasts" aria-live="polite"></div>
-<script type="module" src="/assets/js/admin.js?v=5.1.1"></script>
+<script type="module" src="/assets/js/admin.js?v=5.1.2"></script>
 </body>
 </html>
