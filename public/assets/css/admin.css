@@ -80,6 +80,8 @@ main{padding:22px 26px 60px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:16px;backdrop-filter:blur(8px)}
 .card h3{margin:0 0 12px;font-size:.98rem;display:flex;align-items:center;gap:8px}
 .card h3 .right{margin-left:auto;display:flex;gap:8px}
+.card h3 .right select{min-width:132px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit;font-size:.76rem;outline:none}
+.card h3 .right select:focus{border-color:var(--primary)}
 table{width:100%;border-collapse:collapse;font-size:.82rem}
 th{text-align:left;color:var(--dim);font-size:.68rem;text-transform:uppercase;letter-spacing:.6px;padding:8px 10px;border-bottom:1px solid var(--line)}
 td{padding:9px 10px;border-bottom:1px solid rgba(52,211,153,.07)}

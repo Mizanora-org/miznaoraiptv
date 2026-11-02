@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.1.2 — 2026-11-02
+
+- Add a direct channel number / playlist-position field to channel create and edit; ordering stays synchronized across the public list, M3U, Xtream and MAG outputs while stream IDs remain stable.
+- Add sortable movie and series views by title, release year, rating and playable status.
+- Keep the new admin controls responsive and keyboard-accessible.
+
 ## 5.1.0 — 2026-11-02
 
 - Add reseller business reports, activity history and upcoming-expiry dashboard.

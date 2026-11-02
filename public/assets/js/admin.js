@@ -286,10 +286,21 @@ async function loadMovies() {
   STATE.movies = data.movies || [];
   renderMovies();
 }
+function sortCatalog(items, selectId) {
+  const mode = $(selectId)?.value || "title-asc";
+  return [...items].sort((a, b) => {
+    if (mode === "title-desc") return String(b.title || "").localeCompare(String(a.title || ""));
+    if (mode === "year-desc") return (Number(b.year) || 0) - (Number(a.year) || 0) || String(a.title || "").localeCompare(String(b.title || ""));
+    if (mode === "year-asc") return (Number(a.year) || 0) - (Number(b.year) || 0) || String(a.title || "").localeCompare(String(b.title || ""));
+    if (mode === "rating-desc") return (Number(b.rating) || 0) - (Number(a.rating) || 0) || String(a.title || "").localeCompare(String(b.title || ""));
+    if (mode === "ready-first") return Number(Boolean(b.streamAvailable)) - Number(Boolean(a.streamAvailable)) || String(a.title || "").localeCompare(String(b.title || ""));
+    return String(a.title || "").localeCompare(String(b.title || ""));
+  });
+}
 function renderMovies() {
   const body = $("mvBody");
   if (!body) return;
-  body.innerHTML = STATE.movies.map((m) => `<tr data-row><td><b>${esc(m.title)}</b><br><span class="cell-sub">${esc(m.category || "")}</span></td><td>${esc(m.year || "—")}</td><td>⭐ ${esc(m.rating || "—")}</td><td>${m.streamAvailable ? '<span class="pill ok">Ready</span>' : '<span class="pill warn">Metadata only</span>'}</td><td><button class="btn btn-ghost btn-sm" data-mv-stream="${esc(m.id)}" title="Set licensed stream URL">🔗 Stream URL</button></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No matching movies.</td></tr>';
+  body.innerHTML = sortCatalog(STATE.movies, "mvSort").map((m) => `<tr data-row><td><b>${esc(m.title)}</b><br><span class="cell-sub">${esc(m.category || "")}</span></td><td>${esc(m.year || "—")}</td><td>⭐ ${esc(m.rating || "—")}</td><td>${m.streamAvailable ? '<span class="pill ok">Ready</span>' : '<span class="pill warn">Metadata only</span>'}</td><td><button class="btn btn-ghost btn-sm" data-mv-stream="${esc(m.id)}" title="Set licensed stream URL">🔗 Stream URL</button></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No matching movies.</td></tr>';
 }
 async function loadSeries() {
   const request = ++seriesRequest;
@@ -301,7 +312,7 @@ async function loadSeries() {
   STATE.series = data.series || [];
   const body = $("srBody");
   if (!body) return;
-  body.innerHTML = STATE.series.map((s) => `<tr data-row><td><b>${esc(s.title)}</b><br><span class="cell-sub">${esc(s.category || "")}</span></td><td>${esc(s.year || "—")}</td><td>⭐ ${esc(s.rating || "—")}</td><td>${Number(s.episodeCount || 0)}</td><td>${s.streamAvailable ? '<span class="pill ok">Ready</span>' : '<span class="pill warn">Metadata only</span>'}</td><td><button class="btn btn-ghost btn-sm" data-sr-episodes="${esc(s.id)}" title="Configure episode stream">🔗 Episodes</button></td></tr>`).join("") || '<tr><td colspan="6" class="empty">No matching series.</td></tr>';
+  body.innerHTML = sortCatalog(STATE.series, "srSort").map((s) => `<tr data-row><td><b>${esc(s.title)}</b><br><span class="cell-sub">${esc(s.category || "")}</span></td><td>${esc(s.year || "—")}</td><td>⭐ ${esc(s.rating || "—")}</td><td>${Number(s.episodeCount || 0)}</td><td>${s.streamAvailable ? '<span class="pill ok">Ready</span>' : '<span class="pill warn">Metadata only</span>'}</td><td><button class="btn btn-ghost btn-sm" data-sr-episodes="${esc(s.id)}" title="Configure episode stream">🔗 Episodes</button></td></tr>`).join("") || '<tr><td colspan="6" class="empty">No matching series.</td></tr>';
 }
 async function loadUsers() {
   const data = await apiGet("admin/clients");
@@ -432,10 +443,16 @@ function channelForm(channel) {
     { name: "category", label: "Category", value: existing.category || "General", required: true },
     { name: "logo", label: "Logo URL (optional)", value: existing.logo, placeholder: "https://…/logo.png" },
     { name: "epgId", label: "XMLTV EPG ID", value: existing.epgId || "" },
+    { name: "position", label: "Channel number / playlist position", type: "number", value: existing.id ? STATE.channels.indexOf(existing) + 1 : STATE.channels.length + 1, min: 1, max: existing.id ? Math.max(1, STATE.channels.length) : STATE.channels.length + 1, required: true, help: "Controls the order shown in the website, M3U, Xtream and MAG lists." },
     { name: "status", label: "Visibility", value: existing.status || "active", options: [["active", "Active"], ["inactive", "Inactive"]] },
     { name: "tier", label: "Access", value: existing.tier || "free", options: [["free", "Free preview"], ["pro", "PRO subscribers"]] }
   ], async (values) => {
-    await apiPost(existing.id ? "admin/channel-update" : "admin/channel-create", existing.id ? { id: existing.id, patch: values } : values);
+    const position = Number(values.position);
+    delete values.position;
+    const result = await apiPost(existing.id ? "admin/channel-update" : "admin/channel-create", existing.id ? { id: existing.id, patch: values } : values);
+    const channelId = existing.id || result.channel?.id;
+    const currentPosition = existing.id ? STATE.channels.indexOf(existing) + 1 : STATE.channels.length + 1;
+    if (channelId && position !== currentPosition) await apiPost("admin/channel-move", { id: channelId, position });
     toast(existing.id ? "Channel updated" : "Channel added");
     await loadChannels();
   });
@@ -580,6 +597,8 @@ function appInit() {
   for (const [id, key] of [["mvSearch", "movies"], ["srSearch", "series"]]) {
     $(id)?.addEventListener("input", (event) => { activateLocalSearch(); STATE.filters[key] = event.target.value; catalogSearch(); });
   }
+  $("mvSort")?.addEventListener("change", renderMovies);
+  $("srSort")?.addEventListener("change", renderSeries);
 
   $("lockGoogleBtn")?.addEventListener("click", async () => {
     lockErr("");
