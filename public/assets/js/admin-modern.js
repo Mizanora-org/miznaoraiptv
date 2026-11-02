@@ -47,6 +47,10 @@ const STATE = {
 const $ = (id) => document.getElementById(id);
 // Null-safe text setter — kabhi bhi null element par crash nahi hoga (paintUser fix)
 const setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+// safe(): koi bhi step fail ho toh poora panel dead na ho — error report karo, aage badho
+const safe = (name, fn) => { try { const r = fn(); if (r && typeof r.catch === "function") r.catch((e) => { console.error(`[${name}]`, e); try { window.bwReportError?.(`${name}: ${e?.message || e}`); } catch {} }); return r; } catch (e) { console.error(`[${name}]`, e); try { window.bwReportError?.(`${name}: ${e?.message || e}`); } catch {} } };
+// UI me bhi dikhao agar kuch toot jaye (beacon ke saath)
+window.addEventListener("unhandledrejection", (e) => { try { toast("⚠️ " + (e.reason?.message || e.reason || "error"), "error"); } catch {} });
 const show = (el) => el && (el.hidden = false);
 const hide = (el) => el && (el.hidden = true);
 const esc = (s) => String(s ?? "")
@@ -93,11 +97,11 @@ function lockErr(m) {
 
 async function enterAdmin(user, via) {
   STATE.user = user;
-  paintUser();
-  hideLock();
-  try { await loadAll(); } catch {}
-  try { window.app?.init?.(); } catch {}
-  switchTab(STATE.tab || "dashboard");
+  safe("paintUser", paintUser);
+  safe("hideLock", hideLock);          // lock foran hatao — panel kabhi atka nahi
+  safe("app.init", () => window.app?.init?.()); // saare buttons foran bind karo
+  await loadAll();                      // har loader khud try/catch hai
+  safe("switchTab", () => switchTab(STATE.tab || "dashboard"));
 }
 
 async function ensureAdmin() {
@@ -298,11 +302,11 @@ async function loadChannels() {
     slug: c.slug || ""
   })).sort((a, b) => (a.order || 9999) - (b.order || 9999));
   renderChannels();
-  $("badgeChannels").textContent = STATE.channels.length;
-  $("kpiChannels").textContent = STATE.channels.length;
+  setText("badgeChannels", STATE.channels.length);
+  setText("kpiChannels", STATE.channels.length);
   const free = STATE.channels.filter(c => c.tier !== "pro").length;
   const pro = STATE.channels.filter(c => c.tier === "pro").length;
-  $("kpiChannelsSub").textContent = `${free} Free • ${pro} PRO`;
+  setText("kpiChannelsSub", `${free} Free • ${pro} PRO`);
 }
 
 async function loadPlaylists() {
@@ -320,8 +324,8 @@ async function loadPlaylists() {
     updatedAt: p.updatedAt || ""
   }));
   renderPlaylists();
-  $("badgePlaylists").textContent = STATE.playlists.length;
-  $("kpiPlaylists").textContent = STATE.playlists.length;
+  setText("badgePlaylists", STATE.playlists.length);
+  setText("kpiPlaylists", STATE.playlists.length);
 }
 
 async function loadXtream() {
@@ -343,11 +347,11 @@ async function loadXtream() {
     uid: a.uid || ""
   }));
   renderXtream();
-  $("badgeXtream").textContent = STATE.xtreamAccounts.length;
-  $("kpiXtream").textContent = STATE.xtreamAccounts.length;
+  setText("badgeXtream", STATE.xtreamAccounts.length);
+  setText("kpiXtream", STATE.xtreamAccounts.length);
   const active = STATE.xtreamAccounts.filter(a => a.status !== "expired" && a.status !== "suspended").length;
   const expired = STATE.xtreamAccounts.filter(a => a.status === "expired" || (a.expDate && Date.now()/1000 > a.expDate)).length;
-  $("kpiXtreamSub").textContent = `${active} Active • ${expired} Expired`;
+  setText("kpiXtreamSub", `${active} Active • ${expired} Expired`);
 }
 
 async function loadMovies() {
@@ -427,7 +431,7 @@ async function loadSettings() {
   ["stWelcome","stOffline","stPro","stComing","stWa","stTicker"].forEach(id => {
     const el = $(id); if (el) el.value = s[id.replace("st","").toLowerCase()] || "";
   });
-  $("kpiSystem").textContent = "100%";
+  setText("kpiSystem", "100%");
 }
 
 async function loadActivity() {
@@ -445,16 +449,16 @@ async function loadAnalytics() {
   try {
     const data = await apiGet("analytics");
     const s = data.live?.summary || {};
-    $("anOnline").textContent = s.onlineNow ?? 0;
-    $("anSessions").textContent = s.totalSessions ?? 0;
-    $("anPlays").textContent = s.totalPlays ?? 0;
-    $("anAvg").textContent = Math.round((s.avgSessionSec || 0) / 60) + " min";
+    setText("anOnline", s.onlineNow ?? 0);
+    setText("anSessions", s.totalSessions ?? 0);
+    setText("anPlays", s.totalPlays ?? 0);
+    setText("anAvg", Math.round((s.avgSessionSec || 0) / 60) + " min");
     renderVisitorSessions(data.live?.sessions || []);
   } catch {
-    $("anOnline").textContent = "—";
-    $("anSessions").textContent = "—";
-    $("anPlays").textContent = "—";
-    $("anAvg").textContent = "—";
+    setText("anOnline", "—");
+    setText("anSessions", "—");
+    setText("anPlays", "—");
+    setText("anAvg", "—");
   }
 }
 
@@ -478,13 +482,23 @@ async function loadAll() {
 }
 
 /* ==================== Renderers ==================== */
+// Explicit tab→section map (data-tab="apikeys" ka section id "viewApiKeys" hai —
+// naive capitalize se mismatch ho jata tha aur tab dead lagta tha)
+const TAB_VIEWS = {
+  dashboard: "viewDashboard", channels: "viewChannels", playlists: "viewPlaylists",
+  xtream: "viewXtream", movies: "viewMovies", series: "viewSeries",
+  analytics: "viewAnalytics", users: "viewUsers", settings: "viewSettings",
+  resellers: "viewResellers", orders: "viewOrders", stalker: "viewStalker",
+  apikeys: "viewApiKeys"
+};
+
 function switchTab(tab) {
   STATE.tab = tab;
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll("section[id^=view]").forEach(s => hide(s));
-  const el = $(`view${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
-  if (el) show(el);
-  $("pageTitle").textContent = {
+  const el = $(TAB_VIEWS[tab] || `view${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
+  if (el) show(el); else console.warn("switchTab: no view for", tab);
+  setText("pageTitle", {
     dashboard: "📊 Dashboard",
     channels: "📺 Channel Manager",
     playlists: "📋 Playlist Manager",
@@ -498,8 +512,8 @@ function switchTab(tab) {
     orders: "🧾 Orders & Payments",
     stalker: "🛰️ Stalker / MAG Clients",
     apikeys: "🔑 Admin API Keys"
-  }[tab] || tab;
-  $("pageSub").textContent = {
+  }[tab] || tab);
+  setText("pageSub", {
     dashboard: "Real-time IPTV server overview",
     channels: "Manage all live channels — add, edit, order, tier, test streams",
     playlists: "Cloud M3U playlists + Xtream account playlists",
@@ -513,7 +527,7 @@ function switchTab(tab) {
     orders: "JazzCash orders — approve to auto-provision",
     stalker: "MAC-bound clients (portal /portal.php)",
     apikeys: "mzk_ keys for your own external panel"
-  }[tab] || "";
+  }[tab] || "");
   if (tab === "channels") renderChannels();
   if (tab === "playlists") renderPlaylists();
   if (tab === "xtream") renderXtream();
@@ -529,7 +543,9 @@ function switchTab(tab) {
 
 function applySearch(listId) {
   const q = STATE.search.toLowerCase();
-  const rows = $(listId).querySelectorAll("tr[data-row]");
+  const listEl = $(listId);
+  if (!listEl) return;
+  const rows = listEl.querySelectorAll("tr[data-row]");
   rows.forEach(row => {
     const text = row.textContent.toLowerCase();
     row.hidden = !text.includes(q);
@@ -908,7 +924,7 @@ window.app = {
     const form = $("xtForm");
     form.reset();
     if (a) {
-      $("xtModalTitle").textContent = "✎ Edit Xtream User";
+      setText("xtModalTitle", "✎ Edit Xtream User");
       $("xtUser").value = a.username;
       $("xtPass").value = a.password;
       $("xtPlan").value = a.plan;
@@ -916,7 +932,7 @@ window.app = {
       $("xtExp").value = a.expDate ? Math.round((a.expDate * 1000 - Date.now()) / 86400000) : "";
       $("xtEmail").value = a.email;
     } else {
-      $("xtModalTitle").textContent = "⚡ Create Xtream User";
+      setText("xtModalTitle", "⚡ Create Xtream User");
     }
     $("xtResult").innerHTML = "";
     show(modal);
@@ -981,8 +997,10 @@ window.app = {
   },
 
   init() {
-    // Tabs
-    document.querySelectorAll(".nav-btn").forEach(b => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+    if (window.__mzAppInit) return; // double-binding se bachao
+    window.__mzAppInit = true;
+    // Tabs — har nav button hamesha kaam kare
+    document.querySelectorAll(".nav-btn").forEach(b => b.addEventListener("click", () => safe("switchTab", () => switchTab(b.dataset.tab))));
     // Global search
     const gs = $("globalSearch");
     if (gs) gs.addEventListener("input", (e) => { STATE.search = e.target.value; applySearch("chBody"); applySearch("xtBody"); applySearch("mvBody"); applySearch("srBody"); applySearch("usBody"); applySearch("plBody"); });
@@ -993,7 +1011,7 @@ window.app = {
     // Filters
     $("chTierFilter")?.addEventListener("change", () => renderChannels());
     $("chGroupFilter")?.addEventListener("change", () => renderChannels());
-    $("chClearFilters")?.addEventListener("click", () => { $("chSearch").value = ""; $("chTierFilter").value = "ALL"; $("chGroupFilter").value = "ALL"; renderChannels(); });
+    $("chClearFilters")?.addEventListener("click", () => { if ($("chSearch")) $("chSearch").value = ""; if ($("chTierFilter")) $("chTierFilter").value = "ALL"; if ($("chGroupFilter")) $("chGroupFilter").value = "ALL"; safe("renderChannels", renderChannels); });
     // Channel modal
     $("chAddBtn")?.addEventListener("click", () => this.openChannelModal());
     $("qAddChannel")?.addEventListener("click", () => this.openChannelModal());
@@ -1022,7 +1040,7 @@ window.app = {
       const next = cur === "dark" ? "light" : "dark";
       document.documentElement.setAttribute("data-theme", next);
       localStorage.setItem("mz_theme", next);
-      $("btnTheme").textContent = next === "dark" ? "🌙" : "☀️";
+      setText("btnTheme", next === "dark" ? "🌙" : "☀️");
     });
     // Real-time Firebase listeners — instant updates, no polling
     dbWatch("channels", () => loadChannels(), null);
@@ -1168,17 +1186,18 @@ function bindBusinessControls() {
 
 /* ==================== Boot ==================== */
 (async () => {
-  try {
-    bindLockControls();
-    bindBusinessControls();
-    subscribeAuth((u) => { onAuthUser(u); });
-    const authed = await ensureAdmin();
-    if (!authed) { showLock(); return; } // locked — private panel, no data load
-    await loadAll();
-    window.app?.init?.();
-    switchTab("dashboard");
-  } catch (err) {
-    console.error("Admin panel boot failed", err);
-    showLock("Boot error: " + (err?.message || err));
-  }
-})();
+  // 🔧 Rebuild: controls pehle se bind karo taake koi bhi baad ka step fail ho
+  //    toh bhi saare buttons/keys kaam karein. Har step apne try/catch mein.
+  safe("bindLockControls", bindLockControls);
+  safe("bindBusinessControls", bindBusinessControls);
+  safe("app.init", () => window.app?.init?.());
+  safe("subscribeAuth", () => subscribeAuth((u) => { onAuthUser(u).catch((e) => { console.error("onAuthUser", e); showLock("Auth error: " + (e?.message || e)); }); }));
+  let authed = false;
+  try { authed = await ensureAdmin(); } catch (e) { console.error("ensureAdmin failed", e); }
+  if (!authed) { safe("showLock", showLock); return; } // locked — private panel, no data load
+  await loadAll();
+  safe("switchTab", () => switchTab(STATE.tab || "dashboard"));
+})().catch((err) => {
+  console.error("Admin panel boot failed", err);
+  safe("showLock", () => showLock("Boot error: " + (err?.message || err)));
+});
