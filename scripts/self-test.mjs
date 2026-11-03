@@ -69,7 +69,7 @@ check("media is revalidated after branding updates", vercel.headers.some((entry)
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8"));
 const panelData = fs.readFileSync(path.join(ROOT, "data/panel.js"), "utf8");
-check("v6 version metadata and clean page routes are present", pkg.version === "6.1.1" && lock.version === "6.1.1" && lock.packages?.[""]?.version === "6.1.1" && panelData.includes('version: "6.1.1"') && ["/reseller", "/developers", "/guide"].every((route) => sources.includes(route)));
+check("v6 version metadata and clean page routes are present", pkg.version === "6.1.2" && lock.version === "6.1.2" && lock.packages?.[""]?.version === "6.1.2" && panelData.includes('version: "6.1.2"') && ["/reseller", "/developers", "/guide"].every((route) => sources.includes(route)));
 
 console.log("\n🌐 Real HTTP integration");
 const server = createAppServer();
@@ -123,7 +123,7 @@ try {
   r = await request("/embed.js"); check("embed widget loads", r.status === 200 && r.text.includes("data-mizanora-embed"));
   r = await request("/api/embed?action=help"); check("embed help is not a dead link", r.status === 200 && r.body.ok && r.body.actions);
   r = await request("/api/embed?action=health"); check("health reports storage diagnostics", r.status === 200 && r.body.ok && r.body.storage && typeof r.body.storage.durableServerWrites === "boolean");
-  r = await request("/api/panel?action=config"); check("public config and endpoints", r.status === 200 && r.body.brand === "Mizanora IPTV" && r.body.endpoints.magPortal.endsWith("/portal.php") && r.body.version === "6.1.1");
+  r = await request("/api/panel?action=config"); check("public config and endpoints", r.status === 200 && r.body.brand === "Mizanora IPTV" && r.body.endpoints.magPortal.endsWith("/portal.php") && r.body.version === "6.1.2");
   r = await request("/api/embed?action=config"); check("public intro, recharge and developer settings are available", r.status === 200 && r.body.experience?.intro?.url === "/media/welcome/video.mp4" && r.body.experience.intro.durationSec === 8 && r.body.experience.intro.skippable === false && r.body.experience.videos.offline.includes("channel-offline") && r.body.experience.videos.comingSoon.includes("coming-soon") && r.body.links?.resellerPanel.endsWith("/reseller") && r.body.links?.developers.endsWith("/developers"));
   r = await request("/api/embed?action=channels"); check("default live catalog and welcome promo are available", r.status === 200 && r.body.count >= 18 && r.body.channels.some((c) => c.id === "ch_mz_promo" && /Welcome/i.test(c.name)));
   const firstChannel = r.body.channels[0];

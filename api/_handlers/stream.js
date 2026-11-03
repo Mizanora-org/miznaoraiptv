@@ -90,7 +90,13 @@ export default async function streamHandler(req, res) {
     }
 
     if (payload.u !== "public" && (fallback || (media.kind === "live" && (preview || settings.serverlessHlsEnabled !== false)))) {
-      const location = await startHls(base, { ...payload, cv: credentialVersion }, media, target, { fallback, intro: settings.welcomeVideoEnabled !== false });
+      // Conservative reconnect identity: account/credential/source binding is
+      // inside startHls; only an HMAC is persisted, never the raw IP/UA.
+      const reconnectContext = JSON.stringify([
+        String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "").split(",")[0].trim(),
+        String(req.headers["user-agent"] || "").slice(0, 512)
+      ]);
+      const location = await startHls(base, { ...payload, cv: credentialVersion }, media, target, { fallback, intro: settings.welcomeVideoEnabled !== false, reconnectContext });
       res.writeHead(302, { Location: location, "Cache-Control": "no-store", "X-Mizanora-Playout": location === target ? "direct" : "session", ...corsHeaders() });
       return res.end();
     }

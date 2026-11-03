@@ -1,4 +1,4 @@
-# Vercel-native HLS playout (v6.1.1)
+# Vercel-native HLS playout (v6.1.2)
 
 ## The actual playback chain
 
@@ -82,3 +82,12 @@ Every active viewer polls manifests and incurs function/database/manifest-fetch 
 - Browser checks in this revision used a local moving HLS fixture, playback beyond 28 seconds and a transient 4.5-second manifest outage. No decoder/page errors were reported in that check. Test actual providers and target devices before rollout.
 
 Research and implementation rationale: see [PLAYBACK-RELIABILITY.md](PLAYBACK-RELIABILITY.md).
+
+
+## Reconnect behavior (6.1.2)
+
+A player that reconnects through its original Xtream/M3U URL no longer automatically creates another intro. For non-preview sessions, a server-secret HMAC of the authenticated account/credential version, source and request IP/user-agent scopes a resumable session. Raw IP/user-agent values are not persisted in the session. A reconnect within 120 seconds of the last playlist activity resumes the existing timeline; concurrent reconnects use the same transactional generation. After an idle interval, a new generation starts with one fresh intro and old-generation URLs return 410 instead of attaching to that new timeline.
+
+The start-at-zero hint is only emitted during the intro window. Played intro segments are removed once the intro window has passed and at least three target durations of non-intro media are available. Removing the prefix preserves media and discontinuity sequence numbers. This also prevents a player reopening the final playout URL from being directed back to the bumper. Website Retry skips its own already-shown intro; explicitly choosing a channel still starts a normal introduction.
+
+IP/user-agent identification is a reconnect heuristic, not a device identifier: two devices sharing an account, IP and user-agent may share the recent timeline, while an IP/user-agent change can create a new intro. Use separate accounts for independent simultaneous viewers. Owner Studio previews remain independent. The fix does not repair an unavailable upstream source or prove that a particular production/player reconnect was caused only by the intro logic.

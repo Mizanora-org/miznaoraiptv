@@ -1,4 +1,4 @@
-# 📺 Mizanora IPTV — Reseller Suite v6.1.1
+# 📺 Mizanora IPTV — Reseller Suite v6.1.2
 
 ![Animated Mizanora IPTV reseller suite banner](docs/assets/reseller-suite.gif)
 
@@ -7,6 +7,12 @@
 [Quick start](#run-and-verify-locally) · [Reseller API](docs/RESELLER.md) · [Deployment](docs/VERCEL.md) · [Changelog](CHANGELOG.md)
 
 **Live TV, animated welcome intro, M3U imports, XMLTV guides, Xtream Codes, MAG/Stalker, owner admin, reseller workspace and website integrations.** A **Mizanora Projects** product by **Muaaz Iqbal** (Kasur, Punjab, Pakistan).
+
+## What's fixed in v6.1.2
+
+- Recent Xtream/M3U reconnects resume the current timeline instead of restarting the intro.
+- Already-played intro segments retire from live playlists; website Retry skips the intro.
+- Transactional session generations prevent stale URLs attaching to a later retune.
 
 ## What's fixed in v6.1.1
 
@@ -143,7 +149,7 @@ The suites cover real HTTP flows (imports, EPG, public/admin/reseller, Xtream, s
 
 ## Playback and channel management
 
-- **Website player:** each channel selection starts the welcome video (8 seconds by default) with the selected channel name and loading indicator, then loads that channel. Retry starts a fresh intro. Browsers may block autoplay, and an intro load error advances to the channel. In **Admin → Settings**, change the intro URL/duration and enable or disable the skip button. Existing saved settings take precedence over the new defaults; set the duration to 8 and enable the intro there if an older installation still uses another value.
+- **Website player:** each channel selection starts the welcome video (8 seconds by default) with the selected channel name and loading indicator, then loads that channel. Retry reconnects without repeating the already-shown intro. Browsers may block autoplay, and an intro load error advances to the channel. In **Admin → Settings**, change the intro URL/duration and enable or disable the skip button. Existing saved settings take precedence over the new defaults; set the duration to 8 and enable the intro there if an older installation still uses another value.
 - **Website fallback videos:** a detected playback error shows the configured offline video and retry button. A PRO-only public preview displays the configured unlock/recharge video and trial link. The Movies & Series section can play the coming-soon announcement.
 - **Xtream/M3U/MAG:** compatible live HLS uses Vercel playout: eight-second intro → source media, with offline/frozen-source detection and recovery. Expired authenticated live links play a recharge loop; missing movie/episode streams play a coming-soon loop. All three cards are rotating live playlists, not finite VOD files. Actual configured movie/episode URLs remain direct playback. New expired logins remain disabled.
 - **Admin → Broadcast Studio:** private signed previews of the real HLS engine, channel selector, four broadcast cards and a live manifest inspector.

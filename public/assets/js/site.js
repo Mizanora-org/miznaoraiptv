@@ -435,7 +435,7 @@
   $("playerClose")?.addEventListener("click", closePlayer);
   $("playerDialog")?.addEventListener("cancel", (event) => { event.preventDefault(); closePlayer(); });
   $("playerSkip")?.addEventListener("click", () => { if (introFinish) introFinish(); });
-  $("playerRetry")?.addEventListener("click", () => { if (currentChannel) openChannel(currentChannel.id); });
+  $("playerRetry")?.addEventListener("click", () => { if (currentChannel) openChannel(currentChannel.id, { skipIntro: true }); });
   $("playerTrial")?.addEventListener("click", closePlayer);
   $("playerRecharge")?.addEventListener("click", closePlayer);
   $("playerDialog")?.addEventListener("click", (event) => { if (event.target === $("playerDialog")) closePlayer(); });
