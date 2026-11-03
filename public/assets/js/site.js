@@ -150,6 +150,7 @@
   let introActive = false;
   let playerMode = "idle";
   let liveWatchdog = null;
+  let liveRecoveryTimer = null;
   let introCountdownTimer = null;
   const video = $("liveVideo");
   function playerStatus(message, error = false) {
@@ -159,7 +160,7 @@
     status.classList.toggle("err", error);
   }
   function destroyVideo() {
-    clearTimeout(liveWatchdog);
+    clearTimeout(liveWatchdog); clearTimeout(liveRecoveryTimer);
     if (hls) { try { hls.destroy(); } catch {} hls = null; }
     if (video) { video.pause(); video.loop = false; video.removeAttribute("src"); video.load(); }
   }
@@ -281,7 +282,9 @@
     liveWatchdog = setTimeout(() => { video.removeEventListener("playing", onPlaying); if (!started && request === playerRequest && playerMode === "live") showFallback("offline", "Channel did not start in time. It may be offline or blocked by your browser.", request); }, 20000);
     const isHls = /\.m3u8(?:$|\?)/i.test(url) || url.includes("/s/");
     if (isHls && window.Hls?.isSupported()) {
-      hls = new window.Hls({ enableWorker: true, backBufferLength: 30, manifestLoadingTimeOut: 15000, levelLoadingTimeOut: 15000 });
+      hls = new window.Hls({ enableWorker: true, backBufferLength: 30, maxBufferLength: 30, maxMaxBufferLength: 60, capLevelToPlayerSize: true, liveSyncDurationCount: 3, liveMaxLatencyDurationCount: 8, manifestLoadingTimeOut: 15000, levelLoadingTimeOut: 15000 });
+      const liveHls = hls;
+      let networkRetries = 0, mediaRetries = 0, recoveryWindow = Date.now();
       hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
         if (request !== playerRequest || playerMode !== "live") return;
         playerStatus("Ready — press play if your browser paused autoplay.");
@@ -289,7 +292,18 @@
       });
       hls.on(window.Hls.Events.ERROR, (_event, data) => {
         if (!data?.fatal || request !== playerRequest || playerMode !== "live") return;
-        showFallback("offline", "Channel is offline or cannot be loaded. Retry when available.", request);
+        if (Date.now() - recoveryWindow > 60000) { networkRetries = 0; mediaRetries = 0; recoveryWindow = Date.now(); }
+        if (data.type && data.type === window.Hls.ErrorTypes?.NETWORK_ERROR && networkRetries < 2 && typeof liveHls.startLoad === "function") {
+          const delay = ++networkRetries * 1000;
+          playerStatus("Connection interrupted — retrying stream…");
+          clearTimeout(liveRecoveryTimer);
+          liveRecoveryTimer = setTimeout(() => { if (request === playerRequest && hls === liveHls && playerMode === "live") liveHls.startLoad(); }, delay);
+          return;
+        }
+        if (data.type && data.type === window.Hls.ErrorTypes?.MEDIA_ERROR && mediaRetries++ < 1 && typeof liveHls.recoverMediaError === "function") {
+          clearTimeout(liveRecoveryTimer); playerStatus("Recovering video playback…"); liveHls.recoverMediaError(); return;
+        }
+        showFallback("offline", "Channel is offline or cannot be loaded after recovery attempts. Retry when available.", request);
       });
       hls.loadSource(url);
       hls.attachMedia(video);

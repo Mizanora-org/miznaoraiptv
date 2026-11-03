@@ -492,6 +492,7 @@ function channelForm(channel) {
     { name: "channelNumber", label: "Channel number (remote-control number)", type: "number", value: existing.channelNumber || STATE.channels.length + 1, min: 1, max: 999999, required: true, help: "Unique and stable. Reordering does not change this number or the stream ID." },
     { name: "position", label: "Channel number / playlist position", type: "number", value: existing.id ? STATE.channels.findIndex((c) => c.id === existing.id) + 1 : STATE.channels.length + 1, min: 1, max: existing.id ? Math.max(1, STATE.channels.length) : STATE.channels.length + 1, required: true, help: "Controls the order shown in the website, M3U, Xtream and MAG lists." },
     { name: "status", label: "Visibility", value: existing.status || "active", options: [["active", "Active / online"], ["offline", "Offline — show standby video"], ["inactive", "Hidden / inactive"]] },
+    { name: "playbackMode", label: "Playback compatibility", value: existing.playbackMode || "auto", options: [["auto", "Auto — intro where compatible; preserve original source otherwise"], ["direct", "Direct — original adaptive stream, no external intro"]], help: "Use Direct for channels whose codecs/devices do not tolerate intro transitions. This does not change subscription checks before playback." },
     { name: "tier", label: "Access", value: existing.tier || "free", options: [["free", "Free preview"], ["pro", "PRO subscribers"]] }
   ], async (values) => {
     const position = Number(values.position);
@@ -942,7 +943,7 @@ async function inspectStudio() {
   if (!response.ok) throw new Error("Preview manifest unavailable");
   studioUrl = response.url || studioUrl;
   setText("studioManifest", text);
-  setText("studioMode", response.headers.get("x-mizanora-playout") || "HLS preview");
+  setText("studioMode", (response.headers.get("x-mizanora-playout") || "Direct-source preview") + (response.headers.get("x-mizanora-recovery") === "retrying-source" ? " · retrying source" : ""));
 }
 async function startStudio(card = "") {
   stopStudio();

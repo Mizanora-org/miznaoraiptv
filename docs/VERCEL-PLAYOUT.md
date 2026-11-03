@@ -1,4 +1,4 @@
-# Vercel-native HLS playout (v6.1)
+# Vercel-native HLS playout (v6.1.1)
 
 ## The actual playback chain
 
@@ -29,29 +29,31 @@ Use HTTPS sources and verify redistribution rights. Generated manifests use `Cac
 
 ## How continuity is preserved
 
-Each tune-in gets a random session and a signed capability. A small RTDB record tracks the next output segment number, upstream cursor, intro progress, loop cursor and discontinuity count. ETag/If-Match transactions serialize simultaneous refreshes across independent Vercel instances. The first intro segment is published immediately; the remaining intro segments become available across the intro window. `EXT-X-START` requests playback from the beginning.
+Each tune-in gets a random session and a signed capability. A small RTDB record tracks the next output segment number, upstream cursor, intro progress, loop cursor and discontinuity count. ETag/If-Match transactions serialize simultaneous refreshes across independent Vercel instances. All four intro segments and available initial live segments are published upfront in playback order. This avoids starving clients while they wait for the next playlist reload. `EXT-X-START` requests playback from the beginning.
 
 Source media numbers are remapped to the output timeline. AES-128 keys keep explicit upstream-derived IVs, so changing the media sequence does not change decryption. Relative source/variant/key URLs are resolved against the final fetched playlist URL. The implementation resolves masters to a supported muxed AVC variant rather than treating a master as a media playlist.
 
-Fallbacks retain increasing output sequence numbers; broken source URLs are removed when transitioning to offline/recharge. Short lookahead on the known loop clips keeps the next segments available. Windows are bounded to 18 output segments. Session lifetime is four hours; expired sessions are deleted opportunistically in bounded batches when new sessions start. Idle records can remain until expiry/cleanup but do not run a background process. Schedule additional database cleanup if your traffic/storage policy requires it.
+Fallbacks retain increasing output sequence numbers; broken source URLs are removed when transitioning to offline/recharge. Short lookahead on the known loop clips keeps the next segments available. Windows normally retain 18 segments, extending when needed to retain at least three target durations, with a hard cap of 90. Playback capabilities last seven days; active session records renew a six-hour idle expiry (never beyond the signed capability). Owner previews still last at most 15 minutes. Password changes invalidate new long-lived capabilities. Expired sessions are deleted opportunistically in bounded batches when new sessions start. Idle records can remain until expiry/cleanup but do not run a background process. Schedule additional database cleanup if your traffic/storage policy requires it.
 
 ## Failure and recovery
 
-- Every live playlist refresh checks the upstream playlist and samples its latest segment with a bounded HTTP request.
-- An HTTP failure, empty/unsupported manifest or failed sampled segment switches to offline.
-- An unchanged source sequence for more than `max(20 seconds, 3 × target duration)` also switches to offline.
+- Rendition discovery is pinned after success, with a bounded 1.5-second per-instance cache and concurrent request coalescing. A failed pinned rendition can be rediscovered through the master.
+- Per-refresh segment probes have been removed. A server-side Range request being denied is not evidence that the client cannot play that feed.
+- A healthy session retains its buffered media through temporary manifest fetch failures for `max(15 seconds, 3 × target duration)`. Sustained failures then switch to offline. An initially unavailable source may show standby sooner because no healthy source buffer exists.
+- An unchanged media sequence for more than `max(30 seconds, 4 × target duration)` also switches to offline.
+- Unsupported stitching formats and server-side HTTP 401/403/429 preserve the original provider URL rather than producing a false offline card. This does not bypass the provider's own authorization.
 - New healthy source segments resume live without resetting the output media sequence.
 - An expired subscription changes an existing playlist to recharge; a suspended/deleted account is denied. New expired Xtream/MAG logins remain disabled, so some apps will not request the recharge URL after login failure.
 - Subscription checks follow the existing account-read/cache behavior, not immediate push notifications. Players can continue showing already-buffered media briefly.
-- If an unavailable source later returns with a segment duration larger than the session's initial target duration, retune to establish a fresh target. The function does not mutate the target duration mid-playlist.
+- Declared target duration is preserved, with RFC-rounded segment duration validation. A genuine incompatible target change hands playback to the original provider instead of mutating the target mid-playlist or declaring the channel offline.
 
 ## Supported formats and honest limits
 
 Supported: ordinary **muxed MPEG-TS HLS**, clear or AES-128, with segments up to 30 seconds. A compatible HLS VOD source used as a live channel can also rotate on its segment timeline.
 
-Not remuxed/transcoded by Vercel: fMP4/EXT-X-MAP, byte ranges, low-latency partial playlists, separate audio renditions, DRM/SAMPLE-AES, DASH, raw continuous TS and arbitrary MP4 inputs. These produce an explicit compatibility failure/offline card in HLS mode. Turn off serverless HLS for direct playback, or use a real transcoder where needed. Source codecs, audio layout, resolution transitions and player discontinuity support still affect interoperability. Do not promise every firmware will honor the same start position or recover identically.
+Not remuxed/transcoded by Vercel: fMP4/EXT-X-MAP, byte ranges, low-latency partial playlists, separate audio renditions, DRM/SAMPLE-AES, DASH, raw continuous TS and arbitrary MP4 inputs. These automatically use original-source playback, without the external intro stitch. Admin → Channels → Edit → Playback compatibility can also force Direct mode for an individual channel. The player still needs support/licensing for that source; the app does not remove DRM. Source codecs, audio layout, resolution transitions and player discontinuity support still affect interoperability. Do not promise every firmware will honor the same start position or recover identically.
 
-Segments and encryption keys remain direct provider requests. Provider CORS can block browser Studio playback even when external IPTV apps work. A segment may also fail after the server's sample; this implementation cannot detect every client-side network/decoder error. It probes one current segment, not the entire feed.
+Segments and encryption keys remain direct provider requests. Provider CORS can block browser Studio playback even when external IPTV apps work. The server no longer samples every segment. Segment-only failures and client-specific decoding failures cannot reliably be inferred from a successful manifest fetch. The website has bounded network/media recovery attempts, but third-party players control their own error recovery.
 
 The serverless package uses the four bundled H.264/AAC cards. **It does not dynamically burn channel/payment text into frames.** The playlist includes a channel title; the website supplies dynamic overlays. Rebuild bundled videos when their baked owner contact/payment details change. Per-reseller burned-in video needs pre-rendered assets or the optional encoder. Custom website MP4 URLs do not automatically become serverless segmented cards.
 
@@ -68,4 +70,15 @@ Local Chromium checks also exercise owner login, desktop/mobile layout and actua
 
 ## Cost and operations
 
-Every active viewer polls manifests and incurs function/database/source-probe requests. ETAG transactions perform remote reads and conditional writes; contention retries and upstream errors add latency. Monitor Vercel durations/errors, Firebase bandwidth/transaction traffic and source limits before customer rollout. This implementation has no global per-account concurrent-viewer enforcement or distributed bitrate scheduler. Existing API rate limits are not a substitute for deployment-level abuse controls and load testing.
+Every active viewer polls manifests and incurs function/database/manifest-fetch requests. ETAG transactions perform remote reads and conditional writes; contention retries and upstream errors add latency. Monitor Vercel durations/errors, Firebase bandwidth/transaction traffic and source limits before customer rollout. This implementation has no global per-account concurrent-viewer enforcement or distributed bitrate scheduler. Existing API rate limits are not a substitute for deployment-level abuse controls and load testing.
+
+
+## Compatibility and long-session acceptance (6.1.1)
+
+- Every requested XMLTV/short-EPG channel now receives explicitly labelled “Schedule unavailable” notices for gaps in the next 48 hours. Imported programme data wins; no programme names are invented. Notices are generated on read, not stored as real guide data.
+- Direct compatibility mode preserves provider adaptive variants/audio/subtitles, but cannot enforce server-side intro/fallback/recharge behavior after the redirect. Provider URL expiry, geoblocks and codec support still apply.
+- Seven-day capability life is not an uninterrupted-playback guarantee. Network outages, provider restarts, upstream signed-URL expiry, device memory and Vercel/Firebase availability remain external constraints. Retune after capability expiry or six hours without activity.
+- Tests include an accelerated **72-hour timeline simulation** with monotonically increasing sequence numbers and bounded state. This is not a real three-day hardware soak or a production CDN load test.
+- Browser checks in this revision used a local moving HLS fixture, playback beyond 28 seconds and a transient 4.5-second manifest outage. No decoder/page errors were reported in that check. Test actual providers and target devices before rollout.
+
+Research and implementation rationale: see [PLAYBACK-RELIABILITY.md](PLAYBACK-RELIABILITY.md).

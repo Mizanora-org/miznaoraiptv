@@ -123,3 +123,33 @@ export function programmeXml(programme, escapeXml) {
   if (p.isPremiere) out += "<premiere/>";
   return out + "</programme>\n";
 }
+
+
+/** Explicit availability notices fill guide gaps; never invent programme names.
+ * Real imported programmes take precedence and placeholders cannot overlap them.
+ */
+export function guideWithAvailability(channel, listings, at = Date.now()) {
+  const start = Math.floor(at / 3600000) * 3600000, end = start + 48 * 3600000;
+  const channelId = String(channel.epgId || channel.id || channel.streamId);
+  const real = listings.filter(p => Number(p.stop) > start && Number(p.start) < end)
+    .sort((a,b) => Number(a.start) - Number(b.start));
+  const output = [], seen = new Set();
+  const gap = (from, to) => {
+    while (from < to) {
+      const stop = Math.min(to, from + 6 * 3600000);
+      output.push({ id: `unavailable-${channelId}-${from}`, channelId, start: from, stop,
+        title: 'Schedule unavailable', category: 'Information', placeholder: true,
+        description: `${channel.name || channelId}: no XMLTV programme data is available for this time. This is a guide availability notice, not the name of a broadcast programme.` });
+      from = stop;
+    }
+  };
+  let cursor = start;
+  for (const p of real) {
+    if (p.start > cursor) gap(cursor, p.start);
+    const key = `${p.start}:${p.stop}:${p.title}`;
+    if (!seen.has(key)) { output.push(p); seen.add(key); }
+    cursor = Math.max(cursor, Number(p.stop));
+  }
+  if (cursor < end) gap(cursor, end);
+  return output;
+}

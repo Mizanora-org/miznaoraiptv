@@ -1,3 +1,11 @@
+## 6.1.1 — Playback reliability
+
+- Fix false-offline handling for fractional EXTINF values, declared target durations, provider probe restrictions and incompatible stitching formats.
+- Publish intro/live buffers upfront; preserve delayed-refresh segments; pin/coalesce source discovery with bounded caching and retry grace.
+- Add automatic original-source compatibility and per-channel Direct mode.
+- Extend new playback capabilities to seven days with rolling idle cleanup and password-change revocation; keep short owner previews.
+- Add bounded browser recovery, guide-availability notices across XMLTV/short EPG/public guide, and simulated 72-hour stability tests.
+
 ## 6.1.0 — 2026-11-03
 
 - Vercel-native HLS manifest playout enabled by default for compatible live sources: eight-second intro, live media, offline recovery, recharge and coming-soon loops.

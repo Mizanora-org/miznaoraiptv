@@ -31,7 +31,7 @@ export default async function embedHandler(req, res) {
         widget: `${base}/embed.js`
       });
     }
-    if (action === "config") return sendJson(res, 200, { ...S.publicConfig(base), embed: true, version: "6.1.0", experience: await S.getPublicExperience(), links: { resellerPanel: `${base}/reseller`, developers: `${base}/developers` } }, "public, max-age=60");
+    if (action === "config") return sendJson(res, 200, { ...S.publicConfig(base), embed: true, version: "6.1.1", experience: await S.getPublicExperience(), links: { resellerPanel: `${base}/reseller`, developers: `${base}/developers` } }, "public, max-age=60");
     if (action === "channels") {
       const list = (await S.listChannels()).filter((c) => c.status !== "inactive").map((c) => ({
         id: c.id, streamId: c.streamId, name: c.name, logo: c.logo,
