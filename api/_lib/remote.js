@@ -64,12 +64,13 @@ async function readBounded(response, maxBytes) {
 }
 
 export async function fetchRemoteText(value, { maxBytes = 5_000_000, timeoutMs = 20_000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
   let url = await validateRemoteUrl(value);
   for (let redirect = 0; redirect < 4; redirect++) {
     const response = await fetch(url, {
       redirect: "manual",
       headers: { Accept: "application/xml,text/xml,text/plain,application/vnd.apple.mpegurl,application/x-mpegurl,application/gzip,*/*", "User-Agent": "Mizanora-Importer/5.0" },
-      signal: AbortSignal.timeout(timeoutMs)
+      signal: AbortSignal.timeout(Math.max(1, deadline - Date.now()))
     });
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("location");
@@ -78,7 +79,7 @@ export async function fetchRemoteText(value, { maxBytes = 5_000_000, timeoutMs =
       url = await validateRemoteUrl(new URL(location, url).toString());
       continue;
     }
-    if (!response.ok) throw fail(`Remote import returned HTTP ${response.status}.`, 422);
+    if (!response.ok) { await response.body?.cancel(); throw Object.assign(fail(`Remote import returned HTTP ${response.status}.`, 422), { upstreamStatus: response.status }); }
     let buffer = await readBounded(response, maxBytes);
     if (buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) {
       try { buffer = zlib.gunzipSync(buffer, { maxOutputLength: maxBytes }); }

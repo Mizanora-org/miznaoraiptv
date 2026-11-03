@@ -14,7 +14,7 @@
  */
 
 export const PANEL = {
-  version: "6.1.0",
+  version: "6.1.1",
   currency: "PKR",
   resellerPerUserMonthly: 100,
   directPerUserMonthly: 200,

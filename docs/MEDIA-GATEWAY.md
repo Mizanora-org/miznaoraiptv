@@ -10,7 +10,7 @@ The Node/FFmpeg worker in `gateway/` is an opt-in stateful HLS transcoder for au
 2. Transcodes the bundled welcome video for eight seconds, burning the selected channel name/number and configured owner/reseller payment/contact text into the video.
 3. Appends the live source to the same rolling HLS playlist with a discontinuity boundary.
 4. Switches to the bundled offline loop if the source exits/fails or stops producing segments. Retune the channel to retry the source.
-5. Rechecks the subscription approximately every 20 seconds (plus request timeout), stopping revoked/expired sessions. Sessions also expire after four hours; retune for a fresh session.
+5. Rechecks the subscription approximately every 20 seconds (plus request timeout), stopping revoked/expired sessions. Sessions also expire after seven days; retune for a fresh session.
 6. Stops idle sessions after 90 seconds without playlist/segment requests and removes their temporary files. Per-process capacity defaults to four simultaneous viewers.
 
 The website's public player continues using its own intro and direct playback, avoiding a second intro. Movies and series remain direct source playback. Expired-account recharge handling remains in the existing Xtream handler.
@@ -91,7 +91,7 @@ Before enabling customers:
 - Verify the first eight seconds in VLC and each supported MAG/TV app; some players choose a different live start position or buffer longer. Do not promise universal timing across arbitrary firmware.
 - Test a known-good live HLS source, a silent/no-audio source, an outage, a stalled feed and a source with redirects/CDN segments.
 - Suspend a test client during playback and confirm it stops within the authorization interval plus any already buffered media.
-- Confirm dynamic payment details, EPG/channel order, renewal and retuning after four hours.
+- Confirm dynamic payment details, EPG/channel order, renewal and retuning after seven days.
 - Load-test at intended concurrency and confirm source redistribution/transcoding rights.
 
 No production domain, VPS or device was configured by the implementation tests. Deployment requires your infrastructure administrator to perform the above steps.

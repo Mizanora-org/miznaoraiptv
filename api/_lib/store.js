@@ -1,3 +1,4 @@
+import { guideWithAvailability } from "./epg.js";
 /**
  * Mizanora IPTV — domain store: clients, Xtream mirror, resellers, orders,
  * payments, trials, API keys, audit, settings, analytics. Fresh rebuild.
@@ -614,6 +615,7 @@ function channelPatch(input = {}, existing = {}) {
   return {
     ...existing,
     name, url, category,
+    playbackMode: (input.playbackMode ?? existing.playbackMode) === "direct" ? "direct" : "auto",
     categoryId: String(input.categoryId ?? existing.categoryId ?? category).slice(0, 40),
     logo: cleanMediaUrl(input.logo ?? existing.logo),
     epgId: String(input.epgId ?? existing.epgId ?? "").slice(0, 120),
@@ -915,7 +917,7 @@ function publicProgramme(p) {
   return {
     id: p.id, channelId: p.channelId, start: Number(p.start), stop: Number(p.stop),
     title: p.title, subTitle: p.subTitle || "", description: p.description || "",
-    category: p.category || "", icon: p.icon || "", episode: p.episode || "",
+    placeholder: !!p.placeholder, category: p.category || "", icon: p.icon || "", episode: p.episode || "",
     rating: p.rating || "", isNew: !!p.isNew, isPremiere: !!p.isPremiere
   };
 }
@@ -948,12 +950,12 @@ export async function getEpgGuide(channels, { at = Date.now(), channelId = "" } 
     const ids = new Set([channel.epgId, channel.id, String(channel.streamId || "")].filter(Boolean));
     for (const id of nameIds.get(String(channel.name || "").trim().toLowerCase()) || []) ids.add(id);
     const listings = [...ids].flatMap((id) => byChannel.get(id) || []);
-    return guideEntry(channel, listings, Number(at));
+    return guideEntry(channel, guideWithAvailability(channel, listings, Number(at)), Number(at));
   });
 }
 export async function getShortEpg(channel, { at = Date.now(), limit = 10 } = {}) {
   const data = await getEpgData();
-  const listings = channelProgrammes(data, channel).sort((a, b) => Number(a.start) - Number(b.start));
+  const listings = guideWithAvailability(channel, channelProgrammes(data, channel), Number(at));
   const startIndex = listings.findIndex((p) => Number(p.stop) > at);
   if (startIndex < 0) return [];
   return listings.slice(startIndex, startIndex + Math.max(1, Math.min(50, Number(limit) || 10))).map(publicProgramme);
@@ -988,7 +990,7 @@ export async function resolveMedia(kind, reference) {
       const settings = await getSettings();
       return { kind, id: channel.id, title: channel.name, url: settings.channelOfflineVideoUrl, logo: channel.logo || "", tier: channel.tier || "free", offline: true, channelNumber: channel.channelNumber };
     }
-    return { kind, id: channel.id, title: channel.name, url, logo: channel.logo || "", tier: channel.tier || "free", channelNumber: channel.channelNumber };
+    return { kind, id: channel.id, title: channel.name, playbackMode: channel.playbackMode || "auto", url, logo: channel.logo || "", tier: channel.tier || "free", channelNumber: channel.channelNumber };
   }
   if (kind === "movie") {
     const ref = stripExt(parts[parts.length - 1]);
@@ -1057,7 +1059,7 @@ export async function listStalkerClients() {
 export function publicConfig(base) {
   return {
     ok: true,
-    version: "6.1.0",
+    version: "6.1.1",
     brand: BRAND.name,
     tagline: BRAND.tagline,
     siteUrl: base,

@@ -7,7 +7,7 @@ import { rtdbGet } from "../_lib/rtdb.js";
 import {
   listChannels, listMovies, listSeries, signStreamFor, getShortEpg, getEpgData, getSettings
 } from "../_lib/store.js";
-import { programmeXml } from "../_lib/epg.js";
+import { programmeXml, guideWithAvailability } from "../_lib/epg.js";
 
 const nowTs = () => Math.floor(Date.now() / 1000);
 const asArray = (value) => Array.isArray(value) ? value.filter(Boolean) : typeof value === "string" ? (value ? [value] : []) : Object.values(value || {}).filter(Boolean);
@@ -24,7 +24,7 @@ function epgListing(programme, channel, index) {
     id: String(index + 1), epg_id: String(channel.epgId || channel.id), title: epgText(programme.title), lang: "en",
     start: epgDate(programme.start), end: epgDate(programme.stop), description: epgText(programme.description),
     channel_id: String(programme.channelId), start_timestamp: String(start), stop_timestamp: String(stop),
-    now_playing: start <= nowTs() && stop > nowTs() ? 1 : 0, has_archive: 0
+    is_placeholder: programme.placeholder ? 1 : 0, now_playing: start <= nowTs() && stop > nowTs() ? 1 : 0, has_archive: 0
   };
 }
 
@@ -343,6 +343,18 @@ export default async function xtreamHandler(req, res) {
         declared.add(programme.channelId);
         const source = sourceChannels.get(String(programme.channelId));
         out += `<channel id="${xml(programme.channelId)}"><display-name>${xml(source?.name || programme.channelId)}</display-name>${source?.icon ? `<icon src="${xml(source.icon)}"/>` : ""}</channel>\n`;
+      }
+      // Keep existing source programmes; add clearly marked gap notices for
+      // every listed channel so M3U/XMLTV and short-EPG never silently omit it.
+      const byGuideId = new Map();
+      for (const p of mappedProgrammes) { if (!byGuideId.has(p.channelId)) byGuideId.set(p.channelId, []); byGuideId.get(p.channelId).push(p); }
+      const covered = new Set();
+      for (const channel of channels) {
+        const id = String(channel.epgId || channel.id || channel.streamId);
+        if (covered.has(id)) continue;
+        covered.add(id);
+        const listings = byGuideId.get(id) || [];
+        for (const notice of guideWithAvailability(channel, listings, now).filter(p => p.placeholder)) mappedProgrammes.push(notice);
       }
       for (const programme of mappedProgrammes) out += programmeXml(programme, xml);
       out += "</tv>";

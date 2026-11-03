@@ -1,4 +1,4 @@
-# 📺 Mizanora IPTV — Reseller Suite v6.1.0
+# 📺 Mizanora IPTV — Reseller Suite v6.1.1
 
 ![Animated Mizanora IPTV reseller suite banner](docs/assets/reseller-suite.gif)
 
@@ -7,6 +7,15 @@
 [Quick start](#run-and-verify-locally) · [Reseller API](docs/RESELLER.md) · [Deployment](docs/VERCEL.md) · [Changelog](CHANGELOG.md)
 
 **Live TV, animated welcome intro, M3U imports, XMLTV guides, Xtream Codes, MAG/Stalker, owner admin, reseller workspace and website integrations.** A **Mizanora Projects** product by **Muaaz Iqbal** (Kasur, Punjab, Pakistan).
+
+## What's fixed in v6.1.1
+
+- Stop false offline transitions from target-duration rounding, server-only segment probes and unsupported stitching formats.
+- Prebuffer intro/live media; preserve missed segments on delayed reload; pin/cache rendition discovery and tolerate transient manifest failures.
+- Automatically preserve the original provider stream for unsupported formats, with a per-channel Direct override.
+- Seven-day playback capabilities, rolling six-hour idle cleanup and credential-change invalidation; no four-hour cutoff for new sessions.
+- Every channel gets explicit availability notices in EPG gaps, without fabricated programming.
+- See [research, compatibility boundaries and validation](docs/PLAYBACK-RELIABILITY.md).
 
 ## What's new in v6.1
 

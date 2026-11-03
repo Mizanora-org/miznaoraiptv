@@ -109,7 +109,7 @@
         <button class="broadcast-card" data-studio-card="comingSoon"><img src="/media/coming-soon/poster.jpg" alt="Cinema coming soon video"><span class="broadcast-card-copy"><b>Coming to your screen</b><small>Unconfigured VOD · live loop</small><i>↗</i></span></button>
       </div>
       <div class="manifest-panel card"><div class="section-caption"><h3>Manifest inspector</h3><button class="btn btn-ghost btn-sm" id="studioInspect" type="button">↻ Refresh manifest</button></div><p>Inspect the actual media sequence, discontinuities and segment URLs. Signed links are private — do not share screenshots of source credentials.</p><pre id="studioManifest">Start a preview to inspect its live .m3u8 playlist.</pre></div>
-      <p class="studio-compatibility">Compatibility: muxed MPEG-TS HLS, clear or AES-128. Separate audio, fMP4, DRM and non-HLS feeds need direct mode or a transcoder. External players use the baked brand cards; dynamic channel/payment overlays remain available on the website or optional encoder.</p>
+      <p class="studio-compatibility">Compatibility: muxed MPEG-TS HLS, clear or AES-128. Separate audio, fMP4 and non-HLS feeds automatically keep their original source instead of being labelled offline. Per-channel Direct mode is available; DRM still needs a licensed compatible player. External players use the baked brand cards; dynamic channel/payment overlays remain available on the website or optional encoder.</p>
     </section>
 
     <section id="viewChannels" hidden>
@@ -249,6 +249,6 @@
 <div id="toasts" aria-live="polite"></div>
 <script src="/assets/vendor/hls.min.js?v=1.7.4" defer></script>
 <script src="/assets/js/academy.js?v=6.0.0" defer></script>
-<script type="module" src="/assets/js/admin.js?v=6.1.0"></script>
+<script type="module" src="/assets/js/admin.js?v=6.1.1"></script>
 </body>
 </html>

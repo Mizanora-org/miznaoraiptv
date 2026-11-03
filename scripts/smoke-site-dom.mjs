@@ -39,8 +39,11 @@ class HlsStub {
   on(event, callback) { this.handlers[event] = callback; }
   loadSource(url) { this.url = url; }
   attachMedia(video) { this.video = video; this.handlers.manifest?.(); }
+  startLoad() { this.restarts = (this.restarts || 0) + 1; }
+  recoverMediaError() { this.recoveries = (this.recoveries || 0) + 1; }
   destroy() { this.destroyed = true; }
 }
+HlsStub.ErrorTypes = { NETWORK_ERROR: "networkError", MEDIA_ERROR: "mediaError" };
 HlsStub.Events = { MANIFEST_PARSED: "manifest", ERROR: "error" };
 window.Hls = HlsStub;
 
@@ -89,6 +92,12 @@ check("intro gates secure stream fetching", $("playerDialog").hasAttribute("open
 $("playerSkip").click(); await sleep();
 check("skipping intro attaches signed HLS", latestHls?.url.includes("/s/") && latestHls?.video === $("liveVideo") && streamRequests === requestsBeforeIntro + 1);
 const failedLiveHls = latestHls;
+failedLiveHls.handlers.error(null, { fatal: true, type: "networkError" });
+await sleep(1100);
+check("transient network error retries the same player instead of offline video", latestHls === failedLiveHls && failedLiveHls.restarts === 1);
+failedLiveHls.handlers.error(null, { fatal: true, type: "mediaError" });
+check("recoverable decoder error receives one media recovery attempt", latestHls === failedLiveHls && failedLiveHls.recoveries === 1);
+
 failedLiveHls.handlers.error(null, { fatal: true });
 check("fatal stream error plays offline video with retry", $("playerStatus").classList.contains("err") && !$("playerRetry").hidden && latestHls?.url.includes("channel-offline"));
 const fallbackHls = latestHls;
