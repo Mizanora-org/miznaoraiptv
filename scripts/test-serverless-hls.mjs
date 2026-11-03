@@ -98,6 +98,7 @@ try {
   let text = await response.text(); const sessionUrl = response.url;
   check('Xtream resolves to Vercel media playlist, not external redirect', response.ok && sessionUrl.startsWith(base+'/playout/'));
   check('Startup prebuffers all eight intro seconds and live media', text.includes('/welcome/seg0.ts') && text.includes('/welcome/seg3.ts') && text.includes('/media/100.ts') && !text.includes('#EXT-X-ENDLIST'));
+  const startupManifest = text;
   const token = new URL(sessionUrl).pathname.split('/')[2];
   const claims = JSON.parse(Buffer.from(token.split('.')[0],'base64url').toString());
   const recordPath = `hlsSessions/${claims.hid}`;
@@ -105,9 +106,10 @@ try {
   await rtdbTransaction(recordPath, record => ({...record,created:record.created-9000}));
   let live = await fetch(sessionUrl); text = await live.text();
   check('Master is resolved to absolute media segments after intro', live.headers.get('x-mizanora-playout') === 'live' && text.includes(upstream+'/media/100.ts') && !text.includes('STREAM-INF'));
-  check('Intro remains exactly four segments in stitched source window', (text.match(/\/welcome\/seg\d\.ts/g)||[]).length === 4);
+  check('Reloading the final playout URL after intro cannot rewind into the bumper', !text.includes('/media/welcome/') && !text.includes('#EXT-X-START:TIME-OFFSET=0'));
+  check('Initial stitched window still contains exactly four intro segments', (startupManifest.match(/\/welcome\/seg\d\.ts/g)||[]).length === 4);
   if (process.env.FFMPEG) {
-    const playlist = path.join(dir,'stitched.m3u8'); await fs.writeFile(playlist,text+'#EXT-X-ENDLIST\n');
+    const playlist = path.join(dir,'stitched.m3u8'); await fs.writeFile(playlist,startupManifest+'#EXT-X-ENDLIST\n');
     const decoder = spawn(process.env.FFMPEG,['-hide_banner','-loglevel','error','-protocol_whitelist','file,http,https,tcp,tls,crypto','-i',playlist,'-t','12','-f','null','-'],{stdio:['ignore','ignore','pipe']});
     let errors=''; decoder.stderr.on('data',b=>errors+=b);
     const [code] = await once(decoder,'exit');
@@ -176,6 +178,28 @@ try {
   check('Concurrent refreshes produce valid bounded manifests', previews.every(p=>p.startsWith('#EXTM3U') && p.length<15000));
   await rtdbTransaction('hlsSessions/old',()=>({expires:1})); await pruneHlsSessions();
   check('Expired session cleanup removes stale records', !(await rtdbGet('hlsSessions/old',{useCache:false})));
+  // Reopening the original Xtream entry must resume, not mint a new bumper.
+  const beforeResume = await rtdbGet(recordPath,{useCache:false});
+  const reconnects = await Promise.all(Array.from({length:3},()=>fetch(base+'/live/test_viewer/test_pass_123/7001.m3u8')));
+  for (const reopened of reconnects) {
+    const resumedToken = new URL(reopened.url).pathname.split('/')[2];
+    const resumedClaims = JSON.parse(Buffer.from(resumedToken.split('.')[0],'base64url').toString());
+    assert.equal(resumedClaims.hid, claims.hid); assert.equal(resumedClaims.gen, claims.gen);
+    const manifest = await reopened.text();
+    assert.ok(!manifest.includes('/media/welcome/'));
+    assert.ok(!manifest.includes('#EXT-X-START:TIME-OFFSET=0'));
+  }
+  check('Repeated/concurrent Xtream reconnects resume the same generation without replaying intro', true);
+  const afterResume = await rtdbGet(recordPath,{useCache:false});
+  check('Reconnect preserves media and discontinuity sequence rather than resetting', afterResume.next>=beforeResume.next && afterResume.discontinuities>=beforeResume.discontinuities && afterResume.segments[0].n>=4);
+  const secondPlayer = await fetch(base+'/live/test_viewer/test_pass_123/7001.m3u8',{headers:{'user-agent':'Distinct-player-test'}});
+  const secondClaims = JSON.parse(Buffer.from(new URL(secondPlayer.url).pathname.split('/')[2].split('.')[0],'base64url').toString());
+  check('Different player identity starts a separate playout session', secondClaims.hid!==claims.hid && (await secondPlayer.text()).includes('/media/welcome/'));
+  await rtdbTransaction(recordPath, record=>({...record,lastAccessAt:Date.now()-125000}));
+  const retuned = await fetch(base+'/live/test_viewer/test_pass_123/7001.m3u8');
+  const retuneClaims = JSON.parse(Buffer.from(new URL(retuned.url).pathname.split('/')[2].split('.')[0],'base64url').toString());
+  check('An idle retune starts a new generation with one fresh intro', retuneClaims.gen!==claims.gen && (await retuned.text()).includes('/media/welcome/'));
+  check('Old generation tokens cannot attach to the new retune', (await fetch(sessionUrl)).status===410);
   // Exercise production ETag retry/fail-closed semantics without external Firebase.
   const originalFetch = globalThis.fetch;
   const privateKey = generateKeyPairSync('rsa', {modulusLength:2048}).privateKey.export({type:'pkcs8',format:'pem'});

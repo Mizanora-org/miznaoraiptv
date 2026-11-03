@@ -1,3 +1,11 @@
+## 6.1.2 — Reconnect intro-loop fix
+
+- Resume recent authenticated Xtream/M3U entries instead of creating a new intro on every reconnect.
+- Retire played intro segments once the live window has sufficient duration; remove the start-at-zero hint after the intro window.
+- Preserve media/discontinuity sequences across reconnects and invalidate old generation tokens after a genuine idle retune.
+- Website Retry reconnects without replaying its already-shown intro.
+- Add reconnect, concurrent retry, player identity and generation-isolation regression coverage.
+
 ## 6.1.1 — Playback reliability
 
 - Fix false-offline handling for fractional EXTINF values, declared target durations, provider probe restrictions and incompatible stitching formats.

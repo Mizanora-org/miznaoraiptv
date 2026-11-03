@@ -1059,7 +1059,7 @@ export async function listStalkerClients() {
 export function publicConfig(base) {
   return {
     ok: true,
-    version: "6.1.1",
+    version: "6.1.2",
     brand: BRAND.name,
     tagline: BRAND.tagline,
     siteUrl: base,

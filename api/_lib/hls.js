@@ -9,6 +9,7 @@ import { rtdbGet, rtdbTransaction, pruneHlsSessions } from './rtdb.js';
 import { signPayload, serverSecret } from './util.js';
 const SECRET = serverSecret('MZ_STREAM_SECRET', 'mizanora-iptv-stream-v3');
 export const PLAYOUT_TTL = 7 * 86400;
+const RECONNECT_WINDOW_MS = 120000;
 const compatibility = message => Object.assign(new Error(message), { status: 422, compatibility: true });
 const problem = message => Object.assign(new Error(message), { status: 422 });
 const absolute = (value, base) => {
@@ -105,17 +106,28 @@ function add(state, segment, mode) {
   while (state.segments.length > 18 && duration - state.segments[0].duration >= state.target * 3) duration -= state.segments.shift().duration;
   while (state.segments.length > 90) state.segments.shift();
 }
+function retirePlayedIntro(state, now) {
+  if (!state.intro || now < state.created + state.intro * 1000) return state;
+  const content = state.segments.filter(segment => segment.mode !== 'intro');
+  // Preserve RFC live-window headroom before removing the old bumper. Static
+  // intro segments stay available to clients that already buffered their URIs.
+  if (content.reduce((sum, segment) => sum + segment.duration, 0) >= state.target * 3) {
+    state.segments = content;
+    state.intro = 0;
+  }
+  return state;
+}
 export function advanceHls(previous, { now, source = null, fallback = '', base, error = '' }) {
   const s = structuredClone(previous);
   s.segments ||= [];
   // Publish enough playable media up front. Delaying each intro segment by
   // wall-clock time starved standard clients polling once per target duration.
   if (s.intro && s.next === 0) for (const segment of cardSegments(base, 'intro')) add(s, segment, 'intro');
-  if (!source && !fallback && !error && s.mode === 'intro') return s;
+  if (!source && !fallback && !error && s.mode === 'intro') return retirePlayedIntro(s, now);
   if (!fallback && !source && s.mode === 'live') {
     s.failureSince ||= now;
     s.error = error;
-    if (now - s.failureSince < Math.max(15000, s.target * 3000)) return s;
+    if (now - s.failureSince < Math.max(15000, s.target * 3000)) return retirePlayedIntro(s, now);
   } else if (source || fallback) s.failureSince = 0;
   let mode = fallback;
   if (!mode && !source) mode = 'offline';
@@ -130,7 +142,7 @@ export function advanceHls(previous, { now, source = null, fallback = '', base, 
       s.cursor = identity; s.cursorSeq = latest.seq; s.sourceAdvanced = now;
     } else if (now - (s.sourceAdvanced || s.created) > Math.max(30_000, s.target * 4000)) mode = 'offline';
     s.error = error;
-    if (!mode) return s;
+    if (!mode) return retirePlayedIntro(s, now);
   }
   const looping = mode ? cardSegments(base, mode) : source.segments;
   mode ||= 'vodLive';
@@ -144,12 +156,12 @@ export function advanceHls(previous, { now, source = null, fallback = '', base, 
     s.loopIndex++; s.nextAt += seg.duration * 1000;
   }
   s.error = error;
-  return s;
+  return retirePlayedIntro(s, now);
 }
 export function renderHls(state) {
   const first = state.segments[0];
   const lines = ['#EXTM3U', '#EXT-X-VERSION:3', `#EXT-X-TARGETDURATION:${state.target}`, `#EXT-X-MEDIA-SEQUENCE:${first?.n || 0}`, `#EXT-X-DISCONTINUITY-SEQUENCE:${first ? first.ds - Number(first.disc) : 0}`];
-  if ((first?.n || 0) === 0) lines.push('#EXT-X-START:TIME-OFFSET=0,PRECISE=YES');
+  if ((first?.n || 0) === 0 && Date.now() < state.created + state.intro * 1000) lines.push('#EXT-X-START:TIME-OFFSET=0,PRECISE=YES');
   for (const seg of state.segments) {
     if (seg.disc) lines.push('#EXT-X-DISCONTINUITY');
     lines.push(seg.key ? `#EXT-X-KEY:METHOD=AES-128,URI="${seg.key.url}",IV=${seg.key.iv}` : '#EXT-X-KEY:METHOD=NONE');
@@ -157,10 +169,40 @@ export function renderHls(state) {
   }
   return lines.join('\n') + '\n'; // Deliberately no ENDLIST: cards are live.
 }
-export async function startHls(base, payload, media, url, { fallback = '', intro = true } = {}) {
+function reusableSession(record, payload, media, url, now) {
+  return record && record.user === payload.u && record.mediaId === media.id && record.inputUrl === url
+    && record.expires * 1000 > now && record.capExpires * 1000 > now
+    && now - (record.lastAccessAt || record.created) < RECONNECT_WINDOW_MS;
+}
+function resumeSession(record, now) {
+  const next = structuredClone(record);
+  next.lastAccessAt = now;
+  // A reconnect after the bumper must not rewind into it. Preserve numbering
+  // and discontinuity counts when removing only the already-played prefix.
+  if (now >= next.created + next.intro * 1000 && next.segments.some(segment => segment.mode !== 'intro')) {
+    next.segments = next.segments.filter(segment => segment.mode !== 'intro');
+    next.intro = 0;
+  }
+  return next;
+}
+function sessionLocation(base, payload, id, record) {
+  const ttl = Math.max(1, record.capExpires - Math.floor(Date.now() / 1000));
+  const token = signPayload({ u: payload.u, f: payload.f, k: payload.k || 'live', hid: id, gen: record.generation,
+    ...(payload.cv ? { cv: payload.cv } : {}), ...(payload.preview ? { preview: true, card: payload.card || '' } : {}) }, SECRET, ttl);
+  return `${base}/playout/${encodeURIComponent(token)}/index.m3u8`;
+}
+export async function startHls(base, payload, media, url, { fallback = '', intro = true, reconnectContext = '' } = {}) {
   await pruneHlsSessions().catch(() => {});
-  const id = crypto.randomBytes(18).toString('hex');
+  const id = reconnectContext && !payload.preview
+    ? crypto.createHmac('sha256', SECRET).update(JSON.stringify([base, payload.u, payload.cv || '', media.id, url, reconnectContext])).digest('hex').slice(0, 36)
+    : crypto.randomBytes(18).toString('hex');
+  const sessionPath = `hlsSessions/${id}`;
   let now = Date.now();
+  const previous = reconnectContext && !payload.preview ? await rtdbGet(sessionPath, { useCache: false }) : null;
+  if (reusableSession(previous, payload, media, url, now)) {
+    const resumed = await rtdbTransaction(sessionPath, latest => reusableSession(latest, payload, media, url, Date.now()) ? resumeSession(latest, Date.now()) : latest);
+    if (reusableSession(resumed, payload, media, url, Date.now())) return sessionLocation(base, payload, id, resumed);
+  }
   let source = null, error = '';
   if (!fallback) {
     // Do not download a raw video just to discover that it is not stitchable.
@@ -169,19 +211,18 @@ export async function startHls(base, payload, media, url, { fallback = '', intro
   }
   now = Date.now(); // Start the intro clock after bounded upstream discovery.
   const ttl = payload.preview ? Math.max(1, Math.min(900, payload.exp - Math.floor(now / 1000))) : PLAYOUT_TTL;
-  const session = { created: now, expires: Math.floor(now / 1000) + Math.min(ttl, 6 * 3600), user: payload.u,
+  const session = { created: now, lastAccessAt: now, generation: crypto.randomBytes(16).toString('hex'), capExpires: Math.floor(now / 1000) + ttl, expires: Math.floor(now / 1000) + Math.min(ttl, 6 * 3600), user: payload.u,
     inputUrl: url, mediaUrl: source?.mediaUrl || "", mediaId: media.id, title: String(media.title || "Mizanora IPTV").replace(/[\r\n]/g, " ").slice(0, 120), target: source?.target || 2, intro: intro && !fallback ? 8 : 0,
     segments: [], next: 0, discontinuities: 0, mode: '', error, sourceAdvanced: now };
   const initial = advanceHls(session, { now, source, fallback, base, error });
-  await rtdbTransaction(`hlsSessions/${id}`, () => initial);
-  const token = signPayload({ u: payload.u, f: payload.f, k: payload.k || 'live', hid: id, ...(payload.cv ? { cv: payload.cv } : {}), ...(payload.preview ? { preview: true, card: payload.card || '' } : {}) }, SECRET, ttl);
-  return `${base}/playout/${encodeURIComponent(token)}/index.m3u8`;
+  const stored = await rtdbTransaction(sessionPath, latest => reusableSession(latest, payload, media, url, Date.now()) ? resumeSession(latest, Date.now()) : initial);
+  return sessionLocation(base, payload, id, stored);
 }
 export async function serveHls(base, payload, url, fallback = '') {
   if (!/^[a-f0-9]{36}$/.test(payload.hid || '')) throw problem('Invalid playout session');
   const path = `hlsSessions/${payload.hid}`;
   const record = await rtdbGet(path, { useCache: false });
-  if (!record || record.user !== payload.u || record.expires * 1000 <= Date.now()) throw Object.assign(new Error('Playout session expired; retune channel'), { status: 410 });
+  if (!record || (record.generation && payload.gen !== record.generation) || record.user !== payload.u || record.expires * 1000 <= Date.now()) throw Object.assign(new Error('Playout session expired; retune channel'), { status: 410 });
   let source = null, error = '';
   if (!fallback) {
     try {
@@ -199,8 +240,9 @@ export async function serveHls(base, payload, url, fallback = '') {
     }
   }
   const result = await rtdbTransaction(path, latest => {
-    if (!latest || latest.user !== payload.u) throw problem('Session unavailable');
+    if (!latest || (latest.generation && payload.gen !== latest.generation) || latest.user !== payload.u) throw Object.assign(new Error('Session changed; reopen channel'), { status: 410 });
     const updated = advanceHls(latest, { now: Date.now(), source, fallback, base, error });
+    updated.lastAccessAt = Date.now();
     updated.expires = Math.min(payload.exp, Math.floor(Date.now() / 1000) + 6 * 3600);
     if (source?.mediaUrl) { updated.inputUrl = url; updated.mediaUrl = source.mediaUrl; }
     return updated;
