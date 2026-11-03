@@ -1,7 +1,11 @@
 /** Signed, short-lived stream resolver for live TV, movies and series. */
-import { handleOptions, parseQuery, sendJson, getRequestBaseUrl, verifyPayload, corsHeaders, serverSecret } from "../_lib/util.js";
+import { handleOptions, parseQuery, sendJson, getRequestBaseUrl, verifyPayload, corsHeaders, serverSecret, signPayload } from "../_lib/util.js";
 import { rtdbGet } from "../_lib/rtdb.js";
-import { resolveMedia } from "../_lib/store.js";
+import { resolveMedia, getSettings, getClient, getResellerByCode } from "../_lib/store.js";
+
+import { gatewayConfig, gatewayAuthorized, gatewayLink } from "../_lib/gateway.js";
+
+import { startHls, serveHls } from "../_lib/hls.js";
 
 const STREAM_SECRET = serverSecret("MZ_STREAM_SECRET", "mizanora-iptv-stream-v3");
 
@@ -20,7 +24,9 @@ export default async function streamHandler(req, res) {
 
     // Public preview tokens are only valid for free live channels. Client tokens
     // stop working when the subscription is suspended or expires.
-    if (payload.u !== "public") {
+    const preview = payload.preview === true && payload.u === "owner-preview";
+    let expired = false;
+    if (payload.u !== "public" && !preview) {
       const username = String(payload.u || "").toLowerCase();
       let acc = await rtdbGet(`xtreamAccounts/${username}`);
       if (!acc) {
@@ -28,19 +34,56 @@ export default async function streamHandler(req, res) {
         const client = Object.values(clients).find((c) => c.username === username);
         if (client) acc = { status: client.status, expDate: client.expDate };
       }
-      const expired = acc?.expDate && Number(acc.expDate) < Math.floor(Date.now() / 1000);
-      if (!acc || String(acc.status || "").toLowerCase() === "suspended" || expired) {
+      expired = acc?.expDate && Number(acc.expDate) < Math.floor(Date.now() / 1000);
+      if (!acc || String(acc.status || "").toLowerCase() === "suspended") {
         res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8", ...corsHeaders() });
         return res.end("Subscription is inactive or expired");
       }
     }
 
-    const media = await resolveMedia(String(payload.k || "live"), payload.f);
+    const previewCard = preview && ["offline", "recharge", "comingSoon"].includes(payload.card) ? payload.card : "";
+    const media = previewCard ? { id: "preview-card", kind: "live", url: "/media/welcome/index.m3u8" } : await resolveMedia(String(payload.k || "live"), payload.f);
     if (!media?.url || (payload.u === "public" && (media.kind !== "live" || media.tier === "pro"))) {
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", ...corsHeaders() });
       return res.end("Stream is not configured or is no longer available");
     }
     const target = /^https?:\/\//i.test(media.url) ? media.url : base + (media.url.startsWith("/") ? media.url : "/" + media.url);
+
+    const settings = await getSettings();
+    const fallback = previewCard || (expired ? "recharge" : media.comingSoon ? "comingSoon" : media.offline ? "offline" : "");
+    if (expired && settings.proUnlockVideoEnabled === false) return sendJson(res, 403, { ok: false, error: "Subscription expired" });
+    if (payload.hid) {
+      const result = await serveHls(base, payload, target, fallback);
+      res.writeHead(200, { "Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-store, max-age=0", "X-Mizanora-Playout": result.mode, ...corsHeaders() });
+      return res.end(result.manifest);
+    }
+
+    // Gateway authorization is server-to-server only; browser/public previews
+    // keep their existing player-controlled intro and direct source behavior.
+    const gateway = gatewayConfig();
+    if (q.gateway === "authorize") {
+      if (expired || !gateway || !gatewayAuthorized(req, gateway) || payload.u === "public" || media.kind !== "live") return sendJson(res, 403, { ok: false, error: "Gateway access denied" });
+      const settings = await getSettings();
+      const client = await getClient(String(payload.u).toLowerCase());
+      const reseller = client?.resellerCode ? await getResellerByCode(client.resellerCode) : null;
+      const branding = reseller?.branding || {};
+      return sendJson(res, 200, { ok: true, url: target, offline: !!media.offline,
+        title: `#${media.channelNumber || ""} ${media.title || "Live TV"}`,
+        payment: `${branding.paymentMethod || settings.paymentMethod || ""} ${branding.paymentAccount || settings.paymentAccountNumber || ""} | ${branding.paymentTitle || settings.paymentAccountTitle || ""}`,
+        contact: reseller?.whatsapp || settings.proWhatsapp || "", expires: payload.exp });
+    }
+    if (gateway && !preview && !expired && payload.u !== "public" && media.kind === "live") {
+      const token = signPayload({ u: payload.u, f: payload.f, k: "live" }, STREAM_SECRET, 4 * 3600);
+      const callback = `${base}/api/stream?token=${encodeURIComponent(token)}&gateway=authorize`;
+      res.writeHead(302, { Location: gatewayLink(gateway, callback), "Cache-Control": "no-store", ...corsHeaders() });
+      return res.end();
+    }
+
+    if (payload.u !== "public" && (fallback || (media.kind === "live" && (preview || settings.serverlessHlsEnabled !== false)))) {
+      const location = await startHls(base, payload, media, target, { fallback, intro: settings.welcomeVideoEnabled !== false });
+      res.writeHead(302, { Location: location, "Cache-Control": "no-store", ...corsHeaders() });
+      return res.end();
+    }
 
     // Redirect to the actual source instead of wrapping it in a synthetic HLS
     // master playlist. The source may itself be a master playlist (which cannot

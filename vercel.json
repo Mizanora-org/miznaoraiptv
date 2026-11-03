@@ -1,46 +1,221 @@
 {
   "version": 2,
   "headers": [
-    { "source": "/", "headers": [
-      { "key": "Cache-Control", "value": "no-cache" },
-      { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
-    ]},
-    { "source": "/admin", "headers": [
-      { "key": "Cache-Control", "value": "no-cache" },
-      { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
-      { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
-    ]},
-    { "source": "/admin.html", "headers": [
-      { "key": "Cache-Control", "value": "no-cache" },
-      { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
-      { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
-    ]},
-    { "source": "/reseller", "headers": [
-      { "key": "Cache-Control", "value": "no-cache" },
-      { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
-    ]},
-    { "source": "/assets/(.*)", "headers": [ { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" } ] },
-    { "source": "/media/(.*)\\.(ts|m2ts)", "headers": [ { "key": "Content-Type", "value": "video/mp2t" }, { "key": "Access-Control-Allow-Origin", "value": "*" }, { "key": "Cache-Control", "value": "no-cache" } ] },
-    { "source": "/media/(.*)", "headers": [ { "key": "Access-Control-Allow-Origin", "value": "*" }, { "key": "Cache-Control", "value": "no-cache" } ] },
-    { "source": "/api/(.*)", "headers": [ { "key": "Access-Control-Allow-Origin", "value": "*" } ] }
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin-allow-popups"
+        }
+      ]
+    },
+    {
+      "source": "/admin",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin-allow-popups"
+        }
+      ]
+    },
+    {
+      "source": "/admin.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin-allow-popups"
+        }
+      ]
+    },
+    {
+      "source": "/reseller",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/media/(.*)\\.(ts|m2ts)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "video/mp2t"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/media/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    },
+    {
+      "source": "/academy",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    }
   ],
   "rewrites": [
-    { "source": "/player_api.php", "destination": "/api/xtream?ep=player" },
-    { "source": "/panel_api.php", "destination": "/api/xtream?ep=player" },
-    { "source": "/get.php", "destination": "/api/xtream?ep=get" },
-    { "source": "/xmltv.php", "destination": "/api/xtream?ep=xmltv" },
-    { "source": "/live/(.*)", "destination": "/api/xtream?ep=file&kind=live&rest=$1" },
-    { "source": "/movie/(.*)", "destination": "/api/xtream?ep=file&kind=movie&rest=$1" },
-    { "source": "/series/(.*)", "destination": "/api/xtream?ep=file&kind=series&rest=$1" },
-    { "source": "/portal.php", "destination": "/api/portal?ep=portal" },
-    { "source": "/stalker_portal/(.*)", "destination": "/api/portal?ep=stalker&rest=$1" },
-    { "source": "/c/portal.php", "destination": "/api/portal?ep=c" },
-    { "source": "/c/(.*)", "destination": "/api/portal?ep=c" },
-    { "source": "/s/(.*)", "destination": "/api/stream?ep=signed&token=$1" },
-    { "source": "/api/panel", "destination": "/api/panel" },
-    { "source": "/admin", "destination": "/admin.html" },
-    { "source": "/reseller", "destination": "/reseller.html" },
-    { "source": "/developers", "destination": "/developers.html" },
-    { "source": "/guide", "destination": "/developers.html" }
-  ]
+    {
+      "source": "/media/(welcome|channel-offline|pro-unlock|coming-soon)/seg([0-3]).ts",
+      "destination": "/media/$1/seg$2.m2ts"
+    },
+    {
+      "source": "/playout/(.*)/index.m3u8",
+      "destination": "/api/stream?token=$1"
+    },
+    {
+      "source": "/player_api.php",
+      "destination": "/api/xtream?ep=player"
+    },
+    {
+      "source": "/panel_api.php",
+      "destination": "/api/xtream?ep=player"
+    },
+    {
+      "source": "/get.php",
+      "destination": "/api/xtream?ep=get"
+    },
+    {
+      "source": "/xmltv.php",
+      "destination": "/api/xtream?ep=xmltv"
+    },
+    {
+      "source": "/live/(.*)",
+      "destination": "/api/xtream?ep=file&kind=live&rest=$1"
+    },
+    {
+      "source": "/movie/(.*)",
+      "destination": "/api/xtream?ep=file&kind=movie&rest=$1"
+    },
+    {
+      "source": "/series/(.*)",
+      "destination": "/api/xtream?ep=file&kind=series&rest=$1"
+    },
+    {
+      "source": "/portal.php",
+      "destination": "/api/portal?ep=portal"
+    },
+    {
+      "source": "/stalker_portal/(.*)",
+      "destination": "/api/portal?ep=stalker&rest=$1"
+    },
+    {
+      "source": "/c/portal.php",
+      "destination": "/api/portal?ep=c"
+    },
+    {
+      "source": "/c",
+      "destination": "/portal.html"
+    },
+    {
+      "source": "/c/",
+      "destination": "/portal.html"
+    },
+    {
+      "source": "/c/index.html",
+      "destination": "/portal.html"
+    },
+    {
+      "source": "/c/(.*)",
+      "destination": "/api/portal?ep=c"
+    },
+    {
+      "source": "/s/(.*)",
+      "destination": "/api/stream?ep=signed&token=$1"
+    },
+    {
+      "source": "/api/panel",
+      "destination": "/api/panel"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    },
+    {
+      "source": "/reseller",
+      "destination": "/reseller.html"
+    },
+    {
+      "source": "/developers",
+      "destination": "/developers.html"
+    },
+    {
+      "source": "/guide",
+      "destination": "/developers.html"
+    },
+    {
+      "source": "/academy",
+      "destination": "/academy.html"
+    }
+  ],
+  "functions": {
+    "api/stream.js": {
+      "maxDuration": 60
+    }
+  }
 }

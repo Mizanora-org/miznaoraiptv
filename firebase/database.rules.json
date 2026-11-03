@@ -39,6 +39,13 @@
     "$other": {
       ".read": false,
       ".write": false
+    },
+    "hlsSessions": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "expires"
+      ]
     }
   }
 }

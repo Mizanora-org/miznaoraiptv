@@ -44,7 +44,7 @@ const adminHtml = fs.readFileSync(path.join(ROOT, "public/admin.html"), "utf8");
 const adminJs = fs.readFileSync(path.join(ROOT, "public/assets/js/admin.js"), "utf8");
 check("admin lock controls present", ["adminLock", "lockGoogleBtn", "lockGoogleRedirectBtn", "lockPinIn", "lockPinBtn", "lockErr"].every((id) => adminHtml.includes(`id="${id}"`)));
 check("admin has real CRUD and dialog bindings", ["admin/channel-create", "admin/playlist-save", "admin/movie-update", "data-ch-edit", "openForm"].every((text) => adminJs.includes(text)));
-check("14 tabs ↔ views consistent", Object.values({ dashboard:"viewDashboard", channels:"viewChannels", playlists:"viewPlaylists", epg:"viewEpg", xtream:"viewXtream", movies:"viewMovies", series:"viewSeries", analytics:"viewAnalytics", users:"viewUsers", settings:"viewSettings", resellers:"viewResellers", orders:"viewOrders", stalker:"viewStalker", apikeys:"viewApiKeys" }).every((id) => adminHtml.includes(`id="${id}"`)));
+check("16 tabs ↔ views consistent", Object.values({ studio:"viewStudio", academy:"viewAcademy", dashboard:"viewDashboard", channels:"viewChannels", playlists:"viewPlaylists", epg:"viewEpg", xtream:"viewXtream", movies:"viewMovies", series:"viewSeries", analytics:"viewAnalytics", users:"viewUsers", settings:"viewSettings", resellers:"viewResellers", orders:"viewOrders", stalker:"viewStalker", apikeys:"viewApiKeys" }).every((id) => adminHtml.includes(`id="${id}"`)));
 const { parseBody } = await import("../api/_lib/util.js");
 check("Vercel pre-parsed JSON bodies are accepted", (await parseBody({ body: { action: "admin/me" } })).action === "admin/me");
 const { parseM3U } = await import("../api/_lib/m3u.js");
@@ -69,7 +69,7 @@ check("media is revalidated after branding updates", vercel.headers.some((entry)
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "package-lock.json"), "utf8"));
 const panelData = fs.readFileSync(path.join(ROOT, "data/panel.js"), "utf8");
-check("v5 version metadata and clean page routes are present", pkg.version === "5.1.0" && lock.version === "5.1.0" && lock.packages?.[""]?.version === "5.1.0" && panelData.includes('version: "5.1.0"') && ["/reseller", "/developers", "/guide"].every((route) => sources.includes(route)));
+check("v6 version metadata and clean page routes are present", pkg.version === "6.1.0" && lock.version === "6.1.0" && lock.packages?.[""]?.version === "6.1.0" && panelData.includes('version: "6.1.0"') && ["/reseller", "/developers", "/guide"].every((route) => sources.includes(route)));
 
 console.log("\n🌐 Real HTTP integration");
 const server = createAppServer();
@@ -123,7 +123,7 @@ try {
   r = await request("/embed.js"); check("embed widget loads", r.status === 200 && r.text.includes("data-mizanora-embed"));
   r = await request("/api/embed?action=help"); check("embed help is not a dead link", r.status === 200 && r.body.ok && r.body.actions);
   r = await request("/api/embed?action=health"); check("health reports storage diagnostics", r.status === 200 && r.body.ok && r.body.storage && typeof r.body.storage.durableServerWrites === "boolean");
-  r = await request("/api/panel?action=config"); check("public config and endpoints", r.status === 200 && r.body.brand === "Mizanora IPTV" && r.body.endpoints.magPortal.endsWith("/portal.php") && r.body.version === "5.1.0");
+  r = await request("/api/panel?action=config"); check("public config and endpoints", r.status === 200 && r.body.brand === "Mizanora IPTV" && r.body.endpoints.magPortal.endsWith("/portal.php") && r.body.version === "6.1.0");
   r = await request("/api/embed?action=config"); check("public intro, recharge and developer settings are available", r.status === 200 && r.body.experience?.intro?.url === "/media/welcome/video.mp4" && r.body.experience.intro.durationSec === 8 && r.body.experience.intro.skippable === false && r.body.experience.videos.offline.includes("channel-offline") && r.body.experience.videos.comingSoon.includes("coming-soon") && r.body.links?.resellerPanel.endsWith("/reseller") && r.body.links?.developers.endsWith("/developers"));
   r = await request("/api/embed?action=channels"); check("default live catalog and welcome promo are available", r.status === 200 && r.body.count >= 18 && r.body.channels.some((c) => c.id === "ch_mz_promo" && /Welcome/i.test(c.name)));
   const firstChannel = r.body.channels[0];
@@ -169,7 +169,7 @@ try {
   r = await request(`/xmltv.php?username=${U}&password=${P}`); check("XMLTV contains escaped channels", r.status === 200 && r.text.includes("<tv") && r.text.includes("<display-name>"));
   r = await request(`/live/${U}/${P}/${liveStreams[0].stream_id}.m3u8`, { redirect: "manual" }); check("live URL redirects to signed /s/", r.status === 302 && r.headers.get("location")?.includes("/s/"));
   const signedPath = new URL(r.headers.get("location")).pathname;
-  r = await request(signedPath, { redirect: "manual" }); check("signed live URL redirects to the real source without nesting playlists", r.status === 302 && !!r.headers.get("location"));
+  r = await request(signedPath, { redirect: "manual" }); check("signed live URL opens a playout session without nesting playlists", r.status === 302 && !!r.headers.get("location"));
   r = await request(`/live/${U}/${P}/does-not-exist.m3u8`, { redirect: "manual" }); const missingPath = new URL(r.headers.get("location")).pathname;
   r = await request(missingPath); check("unknown stream is 404, never random channel fallback", r.status === 404);
   r = await request("/s/tampered.token"); check("tampered signed token is rejected", r.status === 403);
@@ -189,6 +189,8 @@ try {
   ]);
   r = await request(`/player_api.php?username=${U}&password=${P}&action=get_live_streams`);
   check("Xtream listing uses active IDs and legacy positions", r.body.map((c) => c.stream_id).join(",") === "2,42,3");
+  const originalSettings = await rtdbGet("settings/defaults");
+  await rtdbSet("settings/defaults", { ...originalSettings, serverlessHlsEnabled: false });
   const masterResponse = await fetch(`${base}/live/${U}/${P}/2.m3u8`);
   const master = await masterResponse.text();
   check("Xtream follows the correct channel to the original HLS master", masterResponse.status === 200 && masterResponse.url === `${remoteBase}/hls/master.m3u8?token=test` && master.includes("variant/index.m3u8"));
@@ -201,6 +203,7 @@ try {
   r = await request(`/live/${U}/wrong/2.m3u8`); check("live stream rejects incorrect password", r.status === 401);
   r = await request(`/live/${U}/${P}/99.m3u8`); check("inactive channel cannot play", r.status === 404);
   await rtdbSet("channels", originalChannels);
+  await rtdbSet("settings/defaults", originalSettings);
 
   console.log("\n🛡️ Owner admin + CRUD");
   r = await request("/api/panel?action=admin/me"); check("admin requires auth", r.status === 401);
@@ -227,6 +230,18 @@ try {
   r = await request(`/player_api.php?username=${U}&password=${P}&action=get_short_epg&stream_id=${importedChannel?.streamId || 0}&limit=4`); check("Xtream short EPG returns current programme", r.status === 200 && Buffer.from(r.body.epg_listings?.[0]?.title || "", "base64").toString("utf8") === "Live Test & News");
   r = await panelPost({ action: "admin/channel-update", id: "ch_mz_test_one", patch: { epgId: "" } }, keyHeaders); check("channel can fall back to XMLTV display-name mapping", r.status === 200 && r.body.channel.epgId === "");
   r = await request(`/xmltv.php?username=${U}&password=${P}`); check("authenticated XMLTV includes mapped programme entries", r.status === 200 && r.text.includes('<channel id="ch_mz_test_one">') && r.text.includes('channel="ch_mz_test_one"') && r.text.includes("Live Test &amp; News"));
+  r = await panelPost({ action: "admin/epg-map", id: "ch_mz_test_one", epgId: "missing.guide" }, keyHeaders);
+  check("EPG mapping rejects unknown XMLTV IDs", r.status === 404);
+  r = await panelPost({ action: "admin/epg-map", id: "ch_mz_test_one", epgId: "mz.test.one" }, keyHeaders);
+  check("explicit EPG mapping persists imported ID", r.status === 200 && r.body.channel?.epgId === "mz.test.one");
+  r = await panelPost({ action: "admin/channel-update", id: "ch_mz_test_one", patch: { channelNumber: 900001 } }, keyHeaders);
+  check("channel number is independently editable", r.status === 200 && r.body.channel?.channelNumber === 900001 && r.body.channel?.streamId === importedChannel.streamId);
+  r = await panelPost({ action: "admin/channel-update", id: "ch_mz_test_two", patch: { channelNumber: 900001 } }, keyHeaders);
+  check("duplicate channel numbers are rejected", r.status === 409 || r.status === 400);
+  r = await panelPost({ action: "admin/channel-sort", mode: "number-desc" }, keyHeaders);
+  check("channel sorting publishes successfully", r.status === 200 && r.body.ok);
+  r = await request("/api/embed?action=channels");
+  check("saved channel order and numbers reach public API", r.body.channels?.[0]?.id === "ch_mz_test_one" && r.body.channels[0].channelNumber === 900001);
   if (epgSourceId) {
     r = await panelPost({ action: "admin/epg-refresh", id: epgSourceId }, keyHeaders); check("remote EPG source can be refreshed", r.status === 200 && r.body.programmes === 2);
     r = await panelPost({ action: "admin/epg-delete", id: epgSourceId }, keyHeaders); check("EPG source deletion succeeds", r.status === 200 && r.body.ok);
@@ -257,7 +272,7 @@ try {
   r = await panelPost({ action: "admin/xtream/create", username: "selftest_x", name: "Selftest", mac: "00:1A:79:00:00:01", days: 30 }, keyHeaders); check("Xtream create binds MAC", r.status === 200 && r.body.client?.mac === "00:1A:79:00:00:01");
   const XU = r.body.client.username, XP = r.body.client.password;
   r = await panelPost({ action: "admin/xtream/update", username: XU, expDate: Math.floor(Date.now() / 1000) - 60 }, keyHeaders);
-  r = await request(`/live/${XU}/${XP}/1001.m3u8`, { redirect: "manual" }); check("expired authenticated live link redirects to recharge video", r.status === 302 && r.headers.get("location")?.endsWith("/media/pro-unlock/index.m3u8"));
+  r = await request(`/live/${XU}/${XP}/1001.m3u8`); check("expired authenticated live link plays continuous recharge HLS", r.status === 200 && r.text.includes("/media/pro-unlock/seg0.ts") && !r.text.includes("#EXT-X-ENDLIST"));
   r = await request(`/live/${XU}/wrong/1001.m3u8`, { redirect: "manual" }); check("expired account with wrong password is not given access", r.status === 401);
   r = await panelPost({ action: "admin/xtream/update", username: XU, expDate: Math.floor(Date.now() / 1000) + 30 * 86400 }, keyHeaders);
   r = await panelPost({ action: "admin/xtream/create", username: "selftest_x", name: "Duplicate" }, keyHeaders); check("duplicate username cannot overwrite client", r.status === 409);
@@ -298,10 +313,10 @@ try {
   const resellerCode = r.body.reseller.code;
   const resellerKey = r.body.reseller.apiKey;
   const resellerHeaders = { "x-api-key": resellerKey };
-  r = await panelPost({ action: "reseller/client-create", name: "MAG Client", mac: "00:1A:79:AB:CD:01", days: 9999, startTs: 3000000000, collectAmount: 300 }, resellerHeaders); check("reseller creates MAC client + links and cannot override plan days", r.status === 200 && r.body.links?.m3u && r.body.stalker?.portalUrl.endsWith("/portal.php") && r.body.client.expDate - r.body.client.startDate === 30 * 86400 && Math.abs(r.body.client.startDate - Date.now() / 1000) < 60);
+  r = await panelPost({ action: "reseller/client-create", name: "MAG Client", mac: "00:1A:79:AB:CD:01", days: 9999, startTs: 3000000000, collectAmount: 300 }, resellerHeaders); check("reseller creates MAC client + links and cannot override plan days", r.status === 200 && r.body.links?.m3u && r.body.stalker?.portalUrl.endsWith("/c/") && r.body.client.expDate - r.body.client.startDate === 30 * 86400 && Math.abs(r.body.client.startDate - Date.now() / 1000) < 60);
   const clientUsername = r.body.client.username, initialExpiry = r.body.client.expDate;
   r = await panelPost({ action: "recharge/contact", username: clientUsername }); check("public recharge finds the correct reseller contact", r.status === 200 && r.body.resellerName === "Self Dealer" && r.body.whatsapp.includes("03005550001"));
-  r = await panelPost({ action: "reseller/credentials", username: clientUsername }, resellerHeaders); check("initial payment does not double-extend expiry", r.status === 200 && r.body.client?.expDate === initialExpiry && r.body.credentials?.magPortal?.endsWith("/portal.php"));
+  r = await panelPost({ action: "reseller/credentials", username: clientUsername }, resellerHeaders); check("initial payment does not double-extend expiry", r.status === 200 && r.body.client?.expDate === initialExpiry && r.body.credentials?.magPortal?.endsWith("/c/"));
   r = await panelPost({ action: "reseller/payment-record", username: clientUsername, amount: 300, months: 1, via: "cash" }, resellerHeaders); check("payment-record extension consumes one credit", r.status === 200 && r.body.creditsLeft === 1 && r.body.creditsUsed === 1);
   r = await panelPost({ action: "reseller/client-update", username: clientUsername, note: "updated", devices: 2 }, resellerHeaders); check("reseller client update works", r.status === 200 && r.body.client?.note === "updated" && r.body.client?.devices === 2);
   r = await panelPost({ action: "reseller/client-renew", username: clientUsername }, resellerHeaders); check("reseller renewal consumes credit", r.status === 200 && typeof r.body.creditsLeft === "number");
@@ -325,7 +340,55 @@ try {
   r = await panelPost({ action: "reseller/me" }, resellerHeaders); check("old reseller key is invalid after rotation", r.status === 401);
   r = await panelPost({ action: "reseller/me" }, { "x-api-key": newResellerKey }); check("new reseller key works", r.status === 200 && r.body.ok);
   r = await panelPost({ action: "reseller/client-create", name: "No Credit", planId: "quarterly" }, { "x-api-key": newResellerKey }); check("multi-month plan requires its full credit cost", r.status === 402);
-  r = await panelPost({ action: "reseller/client-delete", username: clientUsername }, { "x-api-key": newResellerKey }); check("reseller deletes owned client", r.status === 200 && r.body.ok);
+  console.log("\n🆕 v6 security, credentials and portal regression");
+  r = await request("/c/"); check("MAG setup landing is available", r.status === 200 && r.text.includes("MAG"));
+  r = await request("/academy"); check("Academy route is available", r.status === 200 && r.text.includes("academy.js"));
+  r = await panelPost({ action: "reseller/login-password", code: resellerCode, password: "pass1234" });
+  check("password login exchanges credentials for a session", r.status === 200 && r.body.resellerToken?.startsWith("mzs_"));
+  const oldSession = { "x-reseller-token": r.body.resellerToken };
+  r = await panelPost({ action: "reseller/profile-update", username: "v6_dealer", currentPassword: "wrongpass" }, oldSession);
+  check("profile credentials require current password", r.status === 401);
+  r = await panelPost({ action: "reseller/profile-update", username: "v6_dealer", currentPassword: "pass1234", newPassword: "newpass5678", confirmPassword: "newpass5678" }, oldSession);
+  check("reseller can change own username and password", r.status === 200 && r.body.reseller?.username === "v6_dealer" && !!r.body.resellerToken);
+  const newSession = { "x-reseller-token": r.body.resellerToken };
+  r = await panelPost({ action: "reseller/me" }, oldSession); check("password change invalidates old session", r.status === 401);
+  r = await panelPost({ action: "reseller/login-password", code: "v6_dealer", password: "newpass5678" });
+  check("new reseller username can authenticate", r.status === 200 && !!r.body.resellerToken);
+  r = await panelPost({ action: "reseller/client-update", username: clientUsername, newUsername: "v6_renamed_client", password: "newclient5678" }, newSession);
+  check("reseller renames client and updates password", r.status === 200 && r.body.client?.username === "v6_renamed_client");
+  r = await request("/player_api.php?username=v6_renamed_client&password=newclient5678");
+  check("renamed client authenticates in Xtream", r.body.user_info?.auth === 1);
+  r = await panelPost({ action: "reseller/credentials", username: clientUsername }, newSession); check("old client username is removed", r.status === 404);
+  r = await panelPost({ action: "reseller/report" }, newSession); check("rename migrates payment references", r.body.report?.finance?.collectedTotal === 600 && !JSON.stringify(r.body.report?.payments || []).includes(clientUsername));
+  r = await panelPost({ action: "reseller/client-update", username: "v6_renamed_client", newUsername: clientUsername }, newSession);
+  check("username-only client edit works", r.status === 200 && r.body.client?.username === clientUsername);
+  r = await request("/c/portal.php?type=stb&action=handshake&mac=00:1A:79:AB:CD:01");
+  check("c portal handshake issues MAC session", r.status === 200 && !!r.body.js?.token);
+  const cToken = r.body.js?.token;
+  r = await request(`/c/portal.php?type=itv&action=get_ordered_list&mac=00:1A:79:AB:CD:01&token=${cToken}&per_page=1`);
+  check("MAG paginated list respects page size", r.status === 200 && r.body.js?.data?.length === 1 && r.body.js.max_page_items === 1);
+  r = await request(`/c/portal.php?type=itv&action=get_genres&mac=00:1A:79:AB:CD:02&token=${cToken}`);
+  check("MAG token cannot be reused for another MAC", r.status === 403);
+  const { signStreamFor } = await import("../api/_lib/store.js");
+  const { verifyPayload } = await import("../api/_lib/util.js");
+  process.env.MZ_GATEWAY_URL = "https://media.example.test";
+  process.env.MZ_GATEWAY_SECRET = "test-gateway-signing-secret-at-least-32";
+  try {
+    const signed = signStreamFor(base, clientUsername, "ch_mz_test_one", "live");
+    r = await request(signed.url, { redirect: "manual" });
+    check("configured external stream redirects to gateway", r.status === 302 && r.headers.get("location")?.startsWith("https://media.example.test/start?ticket="));
+    const ticket = new URL(r.headers.get("location")).searchParams.get("ticket");
+    const claims = verifyPayload(ticket, process.env.MZ_GATEWAY_SECRET);
+    r = await request(claims.callback);
+    check("gateway source authorization requires private server header", r.status === 403);
+    r = await request(claims.callback, { headers: { "x-mizanora-gateway": process.env.MZ_GATEWAY_SECRET } });
+    check("gateway receives current source and dynamic identity", r.status === 200 && r.body.ok && r.body.title.includes("MZ Test") && !!r.body.payment && r.body.expires > Date.now()/1000);
+    await panelPost({ action: "reseller/client-suspend", username: clientUsername, suspended: true }, newSession);
+    r = await request(claims.callback, { headers: { "x-mizanora-gateway": process.env.MZ_GATEWAY_SECRET } });
+    check("gateway authorization immediately rejects suspended client", r.status === 403);
+    await panelPost({ action: "reseller/client-suspend", username: clientUsername, suspended: false }, newSession);
+  } finally { delete process.env.MZ_GATEWAY_URL; delete process.env.MZ_GATEWAY_SECRET; }
+  r = await panelPost({ action: "reseller/client-delete", username: clientUsername }, newSession); check("reseller deletes owned client", r.status === 200 && r.body.ok);
 
   const cleanupImport1 = await panelPost({ action: "admin/channel-delete", id: "ch_mz_test_one" }, pinHeaders);
   const cleanupImport2 = await panelPost({ action: "admin/channel-delete", id: "ch_mz_test_two" }, pinHeaders);

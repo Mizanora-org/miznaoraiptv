@@ -1,3 +1,24 @@
+## 6.1.0 — 2026-11-03
+
+- Vercel-native HLS manifest playout enabled by default for compatible live sources: eight-second intro, live media, offline recovery, recharge and coming-soon loops.
+- Durable Firebase ETag/CAS session timelines, bounded media windows, expiry cleanup, explicit AES-128 IV preservation and authenticated playlist refreshes.
+- MPEG-TS `.ts` aliases for external-player compatibility; bounded master resolution and segment probes.
+- Owner Broadcast Studio with signed playback previews and manifest inspection; responsive graphite/emerald/gold dashboard redesign.
+- Serverless HLS integration/reducer tests and real FFmpeg stitched-media decoding.
+
+## 6.0.0 — 2026-11-03
+
+- Added opt-in VPS HLS gateway: dynamic branded intro, live transcoding, offline failover, subscription rechecks, bounded sessions, Docker deployment and real-FFmpeg integration tests.
+- Added Academy DOM regression tests.
+
+- Secure reseller login usernames, scrypt credentials, revocable sessions and client username/password changes.
+- Stable channel numbering, persisted sorting, EPG mapping and bounded source probes.
+- Searchable movie/series management and public catalog with honest availability labels.
+- `/c/` MAG setup and authenticated Stalker protocol actions.
+- Embedded owner/reseller Academy with checklists and quizzes.
+- Replaced all four bundled broadcast cards with animated eight-second MP4/HLS files and posters; dynamic website channel/payment overlays.
+- Added regression coverage for session invalidation, client renames and MAC-bound portal pagination.
+
 # Changelog
 
 ## 5.1.2 — 2026-11-02

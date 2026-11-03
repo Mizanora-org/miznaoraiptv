@@ -175,8 +175,11 @@ async function submitDialog(values = {}) {
   $("dialogForm").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
   await sleep(260);
 }
-const VIEWMAP = { dashboard:"viewDashboard", channels:"viewChannels", playlists:"viewPlaylists", epg:"viewEpg", xtream:"viewXtream", movies:"viewMovies", series:"viewSeries", analytics:"viewAnalytics", users:"viewUsers", settings:"viewSettings", resellers:"viewResellers", orders:"viewOrders", stalker:"viewStalker", apikeys:"viewApiKeys" };
+const VIEWMAP = { studio:"viewStudio", academy:"viewAcademy", dashboard:"viewDashboard", channels:"viewChannels", playlists:"viewPlaylists", epg:"viewEpg", xtream:"viewXtream", movies:"viewMovies", series:"viewSeries", analytics:"viewAnalytics", users:"viewUsers", settings:"viewSettings", resellers:"viewResellers", orders:"viewOrders", stalker:"viewStalker", apikeys:"viewApiKeys" };
 
+window.HTMLMediaElement.prototype.pause = function () {};
+window.HTMLMediaElement.prototype.load = function () {};
+window.HTMLMediaElement.prototype.play = function () { return Promise.resolve(); };
 window.eval(bundle);
 await sleep(350);
 check("unauthenticated lock is shown", $("adminLock").classList.contains("show"));
@@ -185,7 +188,7 @@ check("wrong PIN stays locked", $("adminLock").classList.contains("show"));
 $("lockPinIn").value = "03062015326"; $("lockPinBtn").click(); await sleep(650);
 check("owner PIN unlocks and loads dashboard", !$("adminLock").classList.contains("show") && $("viewDashboard").hidden === false && $("userName").textContent.includes("Owner"));
 const navs = [...document.querySelectorAll(".nav-btn")].map((b) => b.dataset.tab);
-check("all 14 navigation tabs exist", navs.length === 14);
+check("all 16 navigation tabs exist", navs.length === 16);
 for (const tab of navs) {
   const button = document.querySelector(`.nav-btn[data-tab="${tab}"]`); button.click(); await sleep(25);
   check(`tab ${tab} switches view`, $(VIEWMAP[tab]).hidden === false && button.classList.contains("active"));

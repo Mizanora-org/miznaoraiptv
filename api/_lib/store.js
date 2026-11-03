@@ -8,12 +8,13 @@
  *   panel/settings                    panel/analytics/…      panel/clientErrors/<id>
  *   channels, movies, series, playlists, stalkerSessions/<mac>
  */
-import { rtdbGet, rtdbSet } from "./rtdb.js";
+import { rtdbGet, rtdbSet, rtdbUpdate } from "./rtdb.js";
+import { hashPassword, validatePassword, validateUsername } from "./password.js";
 import { sha256, randomHex, randomPassword, signPayload, normalizeMac, isValidEmail, serverSecret, WA_LINK, WA_NUMBER, OWNER_EMAIL } from "./util.js";
 import { hashApiKey, generateAdminApiKey, generateResellerApiKey } from "./auth.js";
 import { BRAND, DEFAULT_SETTINGS, DEFAULT_CHANNELS } from "../../data/catalog.js";
 import { DEFAULT_MOVIES, DEFAULT_SERIES } from "../../data/imdb-seed.js";
-import { PANEL, SELF_SERVE, PLANS, getPlan } from "../../data/panel.js";
+import { PANEL, SELF_SERVE, PLANS, PAYMENT, getPlan } from "../../data/panel.js";
 import { parseM3U } from "./m3u.js";
 import { parseXmlTv } from "./epg.js";
 
@@ -81,7 +82,7 @@ export async function getClient(username) {
 }
 export async function createClient(input = {}) {
   const plan = getPlan(input.planId) || PLANS.find((p) => p.id === "monthly") || PLANS[1];
-  const requested = String(input.username || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24);
+  const requested = input.username ? validateUsername(input.username, "Client username") : "";
   let username = requested;
   if (username && await getClient(username)) throw fail(`Username '${username}' already exists.`, 409);
   if (!username) {
@@ -92,7 +93,8 @@ export async function createClient(input = {}) {
     }
   }
   if (!username) throw fail("Could not allocate a unique username. Please retry.", 503);
-  const password = String(input.password || "").trim().slice(0, 80) || randomPassword(10);
+  const password = input.password ? validatePassword(input.password, "Client password").slice(0, 80) : randomPassword(12);
+  if (input.password && String(input.password).length > 80) throw fail("Client password cannot exceed 80 characters.");
   const days = Math.max(1, Math.min(3650, Number(input.days) || plan.days || 30));
   const startTs = Number(input.startTs) || Math.floor(Date.now() / 1000);
   const mac = normalizeMac(input.mac || "") || "";
@@ -146,11 +148,49 @@ export async function updateClient(username, patch = {}) {
   }
   if (clean.status !== undefined) clean.status = clean.status === "suspended" ? "suspended" : "active";
   if (clean.devices !== undefined) clean.devices = Math.max(1, Math.min(20, Number(clean.devices) || 1));
+  if (clean.password !== undefined) {
+    validatePassword(clean.password, "Client password");
+    if (String(clean.password).length > 80) throw fail("Client password cannot exceed 80 characters.");
+  }
+  if (clean.expDate !== undefined && (!Number.isSafeInteger(Number(clean.expDate)) || Number(clean.expDate) < 0)) throw fail("Invalid expiry timestamp.");
   const updated = { ...client, ...clean, username: client.username };
   await writeNode(`clients/${client.username}`, updated);
   await mirrorXtream(updated);
   return updated;
 }
+
+/** Rename the canonical client and its protocol mirror in one database PATCH. */
+export async function renameClient(oldUsername, newUsername) {
+  const oldKey = String(oldUsername || "").toLowerCase();
+  const nextKey = validateUsername(newUsername, "Client username");
+  const client = await getClient(oldKey);
+  if (!client) throw fail("Client not found.", 404);
+  if (nextKey === oldKey) return client;
+  if (await getClient(nextKey) || await rtdbGet(`xtreamAccounts/${nextKey}`)) throw fail("Username is already in use.", 409);
+  const updated = { ...client, username: nextKey, previousUsername: oldKey, updatedAt: nowIso() };
+  delete updated.daysLeft; delete updated.expired;
+  const mirror = {
+    username: nextKey, password: updated.password, uid: updated.resellerCode || "panel",
+    displayName: updated.name || nextKey, plan: "pro", planId: updated.planId || "monthly",
+    status: updated.status === "suspended" ? "Suspended" : "Active", tier: "pro",
+    maxConnections: Number(updated.devices) || 1, resellerCode: updated.resellerCode || "",
+    mac: updated.mac || "", expDate: Number(updated.expDate) || 0, createdAt: updated.createdAt || nowIso()
+  };
+  const updates = {
+    [`${ROOT}/clients/${oldKey}`]: null, [`${ROOT}/clients/${nextKey}`]: updated,
+    [`xtreamAccounts/${oldKey}`]: null, [`xtreamAccounts/${nextKey}`]: mirror
+  };
+  // Keep current ledger/order references usable; audit entries retain history.
+  const payments = (await readNode("payments")) || {};
+  for (const [id, payment] of Object.entries(payments)) if (payment.username === oldKey) updates[`${ROOT}/payments/${id}/username`] = nextKey;
+  const orders = (await readNode("orders")) || {};
+  for (const [id, order] of Object.entries(orders)) if (order.clientUsername === oldKey) updates[`${ROOT}/orders/${id}/clientUsername`] = nextKey;
+  await rtdbUpdate(updates);
+  clearPanelCache();
+  await pushAudit("client.renamed", { username: nextKey, previousUsername: oldKey, resellerCode: client.resellerCode || "" });
+  return normalizeClient(updated);
+}
+
 export async function renewClient(username, { planId = "monthly" } = {}) {
   const plan = getPlan(planId) || PLANS.find((p) => p.id === "monthly");
   const client = await getClient(username);
@@ -180,7 +220,7 @@ export async function deleteClient(username) {
 /* ---------------- resellers ---------------- */
 export function resellerPublic(r) {
   if (!r) return null;
-  const { passwordHash, apiKeyHash, ...pub } = r;
+  const { passwordHash, apiKeyHash, authVersion, ...pub } = r;
   return pub;
 }
 export async function listResellers() {
@@ -191,6 +231,15 @@ export async function getResellerByCode(code) {
   const all = (await readNode("resellers")) || {};
   const r = all[String(code || "").toUpperCase()];
   return r ? { code: String(code).toUpperCase(), ...r } : null;
+}
+export async function getResellerByLogin(login) {
+  const needle = String(login || "").trim().toLowerCase();
+  if (!needle) return null;
+  const all = (await readNode("resellers")) || {};
+  for (const [code, record] of Object.entries(all)) {
+    if (code.toLowerCase() === needle || String(record.username || "").toLowerCase() === needle) return { ...record, code };
+  }
+  return null;
 }
 export async function getResellerByApiKey(key) {
   if (!String(key || "").startsWith("mzr_")) return null;
@@ -203,29 +252,51 @@ export async function getResellerByApiKey(key) {
 }
 export async function createReseller(input = {}) {
   const code = String(input.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20) || "RS" + randomHex(4).toUpperCase();
+  if (code.length < 3) throw fail("Reseller code must contain at least 3 letters/numbers.");
   if (await getResellerByCode(code)) throw fail(`Reseller code '${code}' already exists.`, 409);
+  const username = validateUsername(input.username || code, "Reseller username");
+  if (await getResellerByLogin(username)) throw fail("Reseller username is already in use.", 409);
   const credits = Number(input.credits ?? SELF_SERVE.signupCredits);
   if (!Number.isSafeInteger(credits) || credits < 0 || credits > 100000) throw fail("Starting credits must be a whole number between 0 and 100000.");
   const apiKey = generateResellerApiKey();
   const rec = {
-    code, name: String(input.name || "").slice(0, 80),
-    email: String(input.email || "").toLowerCase().slice(0, 120),
-    whatsapp: String(input.whatsapp || "").slice(0, 30),
-    passwordHash: sha256(String(input.password || randomPassword(10))),
-    apiKeyHash: hashApiKey(apiKey),
-    credits,
-    creditsUsed: 0,
-    pricing: { monthly: SELF_SERVE.monthlyDefault, connectionFee: SELF_SERVE.connectionFeeDefault },
+    code, username, name: String(input.name || "").trim().slice(0, 80),
+    email: String(input.email || "").toLowerCase().trim().slice(0, 120),
+    whatsapp: String(input.whatsapp || "").trim().slice(0, 30),
+    passwordHash: await hashPassword(input.password || randomPassword(14)),
+    apiKeyHash: hashApiKey(apiKey), authVersion: 1,
+    credits, creditsUsed: 0,
+    pricing: { monthly: SELF_SERVE.monthlyDefault, quarterly: SELF_SERVE.quarterlyDefault, yearly: SELF_SERVE.yearlyDefault, connectionFee: SELF_SERVE.connectionFeeDefault },
+    branding: { paymentMethod: "", paymentAccount: "", paymentTitle: "", tagline: "Mizanora IPTV reseller — live TV, movies and series." },
     status: "active", createdAt: nowIso(), lastLoginAt: ""
   };
   await writeNode(`resellers/${code}`, rec);
   await pushAudit("reseller.created", { resellerCode: code });
   return { ...rec, apiKey };
 }
+export async function setResellerCredentials(code, { username, password } = {}, { resetKey = false } = {}) {
+  const record = await getResellerByCode(code);
+  if (!record) throw fail("Reseller not found.", 404);
+  const patch = { authVersion: Number(record.authVersion || 0) + 1, credentialsUpdatedAt: nowIso() };
+  if (username !== undefined && String(username).toLowerCase() !== String(record.username || record.code).toLowerCase()) {
+    const alias = validateUsername(username, "Reseller username");
+    const clash = await getResellerByLogin(alias);
+    if (clash && clash.code !== record.code) throw fail("Reseller username is already in use.", 409);
+    patch.username = alias;
+  }
+  if (password !== undefined) patch.passwordHash = await hashPassword(password);
+  let apiKey;
+  if (resetKey) { apiKey = generateResellerApiKey(); patch.apiKeyHash = hashApiKey(apiKey); }
+  const updated = await updateReseller(code, patch);
+  await pushAudit("reseller.credentials_updated", { resellerCode: code, usernameChanged: !!patch.username, passwordChanged: !!patch.passwordHash, keyRotated: !!apiKey });
+  return { ...updated, ...(apiKey ? { apiKey } : {}) };
+}
 export async function updateReseller(code, patch = {}) {
   const r = await getResellerByCode(code);
   if (!r) return null;
-  const next = { ...r, ...patch, code };
+  const allowed = ["username", "name", "email", "whatsapp", "passwordHash", "apiKeyHash", "authVersion", "credentialsUpdatedAt", "credits", "creditsUsed", "pricing", "branding", "status", "lastLoginAt"];
+  const clean = Object.fromEntries(Object.entries(patch).filter(([key]) => allowed.includes(key)));
+  const next = { ...r, ...clean, code };
   delete next.daysLeft;
   await writeNode(`resellers/${code}`, next);
   return next;
@@ -377,13 +448,17 @@ export async function setSettings(patch = {}) {
   const cur = await getSettings();
   const clean = {};
   const urlFields = new Set(["welcomeVideoUrl", "channelOfflineVideoUrl", "comingSoonVideoUrl", "proUnlockVideoUrl"]);
-  const boolFields = new Set(["welcomeVideoEnabled", "welcomeSkippable", "proUnlockVideoEnabled"]);
-  const textFields = new Set(["proWhatsapp", "proWhatsappIntl", "proBannerTitle", "proBannerSubtitle", "proPriceNote", "siteAnnouncement", "rechargeNote", "resellerContactNote"]);
+  const boolFields = new Set(["serverlessHlsEnabled","welcomeVideoEnabled", "welcomeSkippable", "proUnlockVideoEnabled"]);
+  const textFields = new Set(["paymentMethod", "paymentAccountNumber", "paymentAccountTitle", "businessIntroText", "proWhatsapp", "proWhatsappIntl", "proBannerTitle", "proBannerSubtitle", "proPriceNote", "siteAnnouncement", "rechargeNote", "resellerContactNote"]);
   for (const [key, value] of Object.entries(patch || {})) {
     if (urlFields.has(key)) clean[key] = cleanMediaUrl(value);
     else if (boolFields.has(key)) clean[key] = value === true || value === "true";
     else if (textFields.has(key)) clean[key] = String(value ?? "").slice(0, key === "siteAnnouncement" || key.endsWith("Note") ? 500 : 1000);
   }
+  for (const key of ["paymentMethod", "paymentAccountNumber", "paymentAccountTitle"]) {
+    if (clean[key] !== undefined && !clean[key].trim()) throw fail(`${key} cannot be blank.`, 400);
+  }
+  if (clean.paymentAccountNumber && !/^[+0-9 ()-]{7,30}$/.test(clean.paymentAccountNumber)) throw fail("Payment account number must be a valid phone/account number.");
   if (patch.welcomeDurationSec !== undefined) clean.welcomeDurationSec = Math.max(1, Math.min(30, Number(patch.welcomeDurationSec) || 8));
   const next = { ...cur, ...clean, updatedAt: nowIso() };
   await rtdbSet("settings/defaults", next);
@@ -403,6 +478,14 @@ export async function getPublicExperience() {
     announcement: settings.siteAnnouncement || "",
     rechargeNote: settings.rechargeNote || "JazzCash / EasyPaisa / WhatsApp se recharge karein.",
     resellerContactNote: settings.resellerContactNote || "Reseller account aur credit top-up ke liye support se rabta karein.",
+    branding: {
+      service: "Mizanora IPTV",
+      business: settings.businessIntroText || "Start your IPTV reseller business",
+      paymentMethod: settings.paymentMethod || PAYMENT.method,
+      paymentAccount: settings.paymentAccountNumber || PAYMENT.accountNumber,
+      paymentTitle: settings.paymentAccountTitle || PAYMENT.accountTitle,
+      support: settings.proWhatsapp || WA_NUMBER
+    },
     pro: {
       whatsapp: settings.proWhatsapp || WA_NUMBER,
       whatsappIntl: settings.proWhatsappIntl || WA_LINK.split("/").pop(),
@@ -518,7 +601,9 @@ export async function revokeApiKeyByHash(hashOrId) {
 /* ---------------- channels / playlists / VOD catalogs ---------------- */
 export async function listChannels() {
   const arr = asArray(await rtdbGet("channels"));
-  return [...(arr.length ? arr : DEFAULT_CHANNELS)].sort((a, b) => (Number(a.order) || 999999) - (Number(b.order) || 999999));
+  return [...(arr.length ? arr : DEFAULT_CHANNELS)]
+    .sort((a, b) => (Number(a.order) || 999999) - (Number(b.order) || 999999))
+    .map((channel, index) => ({ ...channel, channelNumber: Number(channel.channelNumber) || index + 1, status: channel.status || "active" }));
 }
 
 function channelPatch(input = {}, existing = {}) {
@@ -533,8 +618,9 @@ function channelPatch(input = {}, existing = {}) {
     logo: cleanMediaUrl(input.logo ?? existing.logo),
     epgId: String(input.epgId ?? existing.epgId ?? "").slice(0, 120),
     tier: String(input.tier ?? existing.tier ?? "free").toLowerCase() === "pro" ? "pro" : "free",
-    status: String(input.status ?? existing.status ?? "active").toLowerCase() === "inactive" ? "inactive" : "active",
-    updatedAt: nowIso()
+    status: ["active", "inactive", "offline"].includes(String(input.status ?? existing.status ?? "active").toLowerCase()) ? String(input.status ?? existing.status ?? "active").toLowerCase() : "active",
+    updatedAt: nowIso(),
+    ...(input.lastHealthCheck && typeof input.lastHealthCheck === "object" ? { lastHealthCheck: input.lastHealthCheck } : existing.lastHealthCheck ? { lastHealthCheck: existing.lastHealthCheck } : {})
   };
 }
 
@@ -543,7 +629,10 @@ export async function createChannel(input = {}) {
   const id = String(input.id || "ch_" + randomHex(5)).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 48);
   if (channels.some((c) => String(c.id) === id)) throw fail("Channel ID already exists.", 409);
   const streamId = Math.max(1000, ...channels.map((c) => Number(c.streamId) || 0)) + 1;
-  const channel = { ...channelPatch(input), id, streamId, order: channels.length + 1, createdAt: nowIso() };
+  const channelNumber = input.channelNumber === undefined ? Math.max(0, ...channels.map((c) => Number(c.channelNumber) || 0)) + 1 : Number(input.channelNumber);
+  if (!Number.isSafeInteger(channelNumber) || channelNumber < 1 || channelNumber > 999999) throw fail("Channel number must be a whole number from 1 to 999999.");
+  if (channels.some((c) => Number(c.channelNumber) === channelNumber)) throw fail("Channel number is already assigned.", 409);
+  const channel = { ...channelPatch(input), id, streamId, channelNumber, order: channels.length + 1, createdAt: nowIso() };
   channels.push(channel);
   await rtdbSet("channels", channels);
   await pushAudit("channel.created", { id, name: channel.name });
@@ -554,7 +643,13 @@ export async function updateChannel(id, input = {}) {
   const channels = await listChannels();
   const index = channels.findIndex((c) => String(c.id) === String(id));
   if (index < 0) throw fail("Channel not found.", 404);
+  if (input.channelNumber !== undefined) {
+    const number = Number(input.channelNumber);
+    if (!Number.isSafeInteger(number) || number < 1 || number > 999999) throw fail("Channel number must be a whole number from 1 to 999999.");
+    if (channels.some((c, i) => i !== index && Number(c.channelNumber) === number)) throw fail("Channel number is already assigned.", 409);
+  }
   channels[index] = channelPatch(input, channels[index]);
+  if (input.channelNumber !== undefined) channels[index].channelNumber = Number(input.channelNumber);
   await rtdbSet("channels", channels);
   await pushAudit("channel.updated", { id });
   return channels[index];
@@ -573,6 +668,33 @@ export async function moveChannel(id, position) {
   return ordered;
 }
 
+export async function sortChannels(mode = "number-asc") {
+  const channels = await listChannels();
+  const text = (value) => String(value || "").toLocaleLowerCase();
+  const comparators = {
+    "number-asc": (a, b) => a.channelNumber - b.channelNumber,
+    "number-desc": (a, b) => b.channelNumber - a.channelNumber,
+    "name-asc": (a, b) => text(a.name).localeCompare(text(b.name)),
+    "name-desc": (a, b) => text(b.name).localeCompare(text(a.name)),
+    "category-asc": (a, b) => text(a.category).localeCompare(text(b.category)) || a.channelNumber - b.channelNumber,
+    "epg-first": (a, b) => Number(!!b.epgId) - Number(!!a.epgId) || a.channelNumber - b.channelNumber
+  };
+  if (!comparators[mode]) throw fail("Unknown channel sort mode.");
+  const ordered = channels.sort(comparators[mode]).map((channel, index) => ({ ...channel, order: index + 1 }));
+  await rtdbSet("channels", ordered);
+  await pushAudit("channel.sorted", { mode, count: ordered.length });
+  return ordered;
+}
+export async function reorderChannels(ids) {
+  const channels = await listChannels();
+  if (!Array.isArray(ids) || ids.length !== channels.length || new Set(ids).size !== ids.length || ids.some((id) => !channels.some((c) => c.id === id))) throw fail("A complete, unique list of channel IDs is required.");
+  const byId = new Map(channels.map((c) => [c.id, c]));
+  const ordered = ids.map((id, index) => ({ ...byId.get(id), order: index + 1 }));
+  await rtdbSet("channels", ordered);
+  await pushAudit("channel.bulk_reordered", { count: ordered.length });
+  return ordered;
+}
+
 export async function deleteChannel(id) {
   const channels = await listChannels();
   const next = channels.filter((c) => String(c.id) !== String(id));
@@ -582,13 +704,41 @@ export async function deleteChannel(id) {
   return true;
 }
 
+export function sortEpisodes(value) {
+  return asArray(value).sort((a, b) => Number(a.season || 0) - Number(b.season || 0) || Number(a.episode || 0) - Number(b.episode || 0) || String(a.title || "").localeCompare(String(b.title || "")));
+}
+export function sortCatalogRecords(records, mode = "") {
+  const list = [...records];
+  const title = (item) => String(item.title || item.name || "");
+  const year = (item) => Number(item.year || String(item.release_date || "").slice(0, 4)) || 0;
+  const rating = (item) => Number(item.imdbRating ?? item.rating ?? 0) || 0;
+  const ready = (item) => item.streamUrl ? 1 : asArray(item.episodes).some((ep) => ep.streamUrl) ? 1 : 0;
+  const comparators = {
+    "title-asc": (a, b) => title(a).localeCompare(title(b)),
+    "title-desc": (a, b) => title(b).localeCompare(title(a)),
+    "year-desc": (a, b) => year(b) - year(a) || title(a).localeCompare(title(b)),
+    "year-asc": (a, b) => year(a) - year(b) || title(a).localeCompare(title(b)),
+    "rating-desc": (a, b) => rating(b) - rating(a) || title(a).localeCompare(title(b)),
+    "ready-first": (a, b) => ready(b) - ready(a) || title(a).localeCompare(title(b))
+  };
+  if (mode && !comparators[mode]) throw fail("Unknown catalog sort mode.");
+  return list.sort(comparators[mode] || ((a, b) => (Number(a.catalogOrder) || 999999) - (Number(b.catalogOrder) || 999999)));
+}
+export async function sortCatalog(kind, mode) {
+  if (!["movies", "series"].includes(kind)) throw fail("Invalid catalog kind.");
+  const records = kind === "movies" ? await listMovies() : await listSeries();
+  const ordered = sortCatalogRecords(records, mode).map((item, index) => ({ ...item, catalogOrder: index + 1 }));
+  await rtdbSet(kind, ordered);
+  await pushAudit("catalog.sorted", { kind, mode, count: ordered.length });
+  return { kind, mode, count: ordered.length };
+}
 export async function listMovies() {
   const list = asArray(await rtdbGet("movies"));
-  return list.length ? list : DEFAULT_MOVIES;
+  return sortCatalogRecords(list.length ? list : DEFAULT_MOVIES);
 }
 export async function listSeries() {
   const list = asArray(await rtdbGet("series"));
-  return list.length ? list : DEFAULT_SERIES;
+  return sortCatalogRecords(list.length ? list : DEFAULT_SERIES).map((series) => ({ ...series, episodes: sortEpisodes(series.episodes) }));
 }
 export async function updateMovie(id, input = {}) {
   const movies = await listMovies();
@@ -834,7 +984,11 @@ export async function resolveMedia(kind, reference) {
     if (/\.mpd(?:$|\?)/i.test(url) && !/\.mpd$/i.test(raw)) {
       url = asArray(channel.backupUrls).find((u) => /\.m3u8(?:$|\?)/i.test(u)) || url;
     }
-    return { kind, id: channel.id, title: channel.name, url, logo: channel.logo || "", tier: channel.tier || "free" };
+    if (channel.status === "offline" || !url) {
+      const settings = await getSettings();
+      return { kind, id: channel.id, title: channel.name, url: settings.channelOfflineVideoUrl, logo: channel.logo || "", tier: channel.tier || "free", offline: true, channelNumber: channel.channelNumber };
+    }
+    return { kind, id: channel.id, title: channel.name, url, logo: channel.logo || "", tier: channel.tier || "free", channelNumber: channel.channelNumber };
   }
   if (kind === "movie") {
     const ref = stripExt(parts[parts.length - 1]);
@@ -903,7 +1057,7 @@ export async function listStalkerClients() {
 export function publicConfig(base) {
   return {
     ok: true,
-    version: "5.1.0",
+    version: "6.1.0",
     brand: BRAND.name,
     tagline: BRAND.tagline,
     siteUrl: base,
@@ -916,8 +1070,41 @@ export function publicConfig(base) {
     player: { recommended: PANEL.recommendedPlayer, name: PANEL.recommendedPlayerName },
     endpoints: {
       playerApi: `${base}/player_api.php`, m3u: `${base}/get.php`, epg: `${base}/xmltv.php`,
-      magPortal: `${base}/portal.php`, embed: `${base}/api/embed`, panel: `${base}/api/panel`,
+      magPortal: `${base}/portal.php`, magSetup: `${base}/c/`, academy: `${base}/academy`, embed: `${base}/api/embed`, panel: `${base}/api/panel`,
       guide: `${base}/api/embed?action=guide`, resellerPanel: `${base}/reseller`, developers: `${base}/developers`
     }
   };
+}
+
+/** Explicit EPG mappings, with a conservative unique-name auto-mapper. */
+export async function getEpgMapping() {
+  const [channels, data] = await Promise.all([listChannels(), getEpgData()]);
+  const counts = new Map();
+  for (const programme of data.programmes) counts.set(programme.channelId, (counts.get(programme.channelId) || 0) + 1);
+  return {
+    channels: channels.filter((c) => c.status !== "inactive").map((c) => ({ id: c.id, name: c.name, channelNumber: c.channelNumber, epgId: c.epgId || "", mapped: !!c.epgId && counts.has(c.epgId), programmeCount: counts.get(c.epgId) || 0 })),
+    sources: data.channels.map((c) => ({ id: c.id, name: c.name, sourceId: c.sourceId, programmeCount: counts.get(c.id) || 0 })),
+    updatedAt: data.updatedAt
+  };
+}
+export async function autoMapEpg() {
+  const normalize = (value) => String(value || "").normalize("NFKC").toLowerCase().replace(/\b(fhd|uhd|hd|sd|4k)\b/g, "").replace(/[^a-z0-9]/g, "");
+  const [channels, data] = await Promise.all([listChannels(), getEpgData()]);
+  const byName = new Map();
+  for (const source of data.channels) {
+    const key = normalize(source.name);
+    if (!key) continue;
+    if (!byName.has(key)) byName.set(key, new Set());
+    byName.get(key).add(source.id);
+  }
+  let mapped = 0;
+  const next = channels.map((channel) => {
+    if (channel.epgId) return channel;
+    const matches = byName.get(normalize(channel.name));
+    if (matches?.size !== 1) return channel;
+    mapped++;
+    return { ...channel, epgId: [...matches][0], updatedAt: nowIso() };
+  });
+  if (mapped) { await rtdbSet("channels", next); await pushAudit("epg.auto_mapped", { mapped }); }
+  return { mapped, unchanged: channels.length - mapped };
 }

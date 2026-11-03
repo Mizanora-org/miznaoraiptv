@@ -83,7 +83,7 @@ function categoryIdFor(item, categories, prefix, index) {
 function liveStream(ch, index, categories) {
   const streamId = Number(ch.streamId) || index + 1;
   return {
-    num: index + 1,
+    num: Number(ch.channelNumber) || index + 1,
     name: ch.name,
     stream_type: "live",
     stream_id: streamId,
@@ -165,7 +165,8 @@ export default async function xtreamHandler(req, res) {
       if (ep === "file" && String(q.kind || "live") === "live" && acc && acc.password === p && String(acc.status || "").toLowerCase() !== "suspended" && acc.expDate && Number(acc.expDate) < nowTs()) {
         const settings = await getSettings();
         if (settings.proUnlockVideoEnabled !== false && settings.proUnlockVideoUrl) {
-          const url = new URL(settings.proUnlockVideoUrl, base).href;
+          const reference = fileParts.slice(2).join("/") || "index.m3u8";
+          const url = signStreamFor(base, acc.username, reference, "live").url;
           res.writeHead(302, { Location: url, "Cache-Control": "no-store", ...corsHeaders() });
           return res.end();
         }
@@ -269,7 +270,7 @@ export default async function xtreamHandler(req, res) {
           max_connections: String(acc.maxConnections || 1), allowed_output_formats: ["m3u8"]
         },
         server_info: {
-          url: server.hostname, xui: true, version: "Mizanora-5.1", revision: 5,
+          url: server.hostname, xui: true, version: "Mizanora-6.0", revision: 5,
           url_without_port: server.hostname, port: serverPort,
           https_port: server.protocol === "https:" ? serverPort : "443", server_protocol: server.protocol.replace(":", ""), rtmp_port: "",
           timezone: "Asia/Karachi", timestamp_now: nowTs(), time_now: new Date().toISOString()
@@ -286,7 +287,7 @@ export default async function xtreamHandler(req, res) {
       let out = `#EXTM3U x-tvg-url="${m3uAttr(`${base}/xmltv.php?username=${encodeURIComponent(u)}&password=${encodeURIComponent(p)}`)}"\n`;
       for (const [i, ch] of channels.entries()) {
         const id = Number(ch.streamId) || i + 1;
-        out += `#EXTINF:-1 tvg-id="${m3uAttr(ch.epgId || ch.id || id)}" tvg-name="${m3uAttr(ch.name)}" tvg-logo="${m3uAttr(ch.logo || "")}" group-title="${m3uAttr(ch.category || "General")}",${String(ch.name).replace(/[\r\n]/g, " ")}\n`;
+        out += `#EXTINF:-1 tvg-id="${m3uAttr(ch.epgId || ch.id || id)}" tvg-chno="${Number(ch.channelNumber) || i + 1}" tvg-name="${m3uAttr(ch.name)}" tvg-logo="${m3uAttr(ch.logo || "")}" group-title="${m3uAttr(ch.category || "General")}",${String(ch.name).replace(/[\r\n]/g, " ")}\n`;
         out += `${base}/live/${encodeURIComponent(u)}/${encodeURIComponent(p)}/${id}.m3u8\n`;
       }
       for (const [i, movie] of movies.entries()) {

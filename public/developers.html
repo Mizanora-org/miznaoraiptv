@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Developer &amp; Setup Guide — Mizanora IPTV v5</title>
+<title>Developer &amp; Setup Guide — Mizanora IPTV v6</title>
 <meta name="description" content="Embed Mizanora IPTV channels, integrate reseller APIs, configure Xtream/M3U/XMLTV and deploy on Vercel.">
-<link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/assets/css/site.css?v=5.1.0"><link rel="stylesheet" href="/assets/css/guide.css?v=5.1.0">
+<link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/assets/css/site.css?v=6.0.0"><link rel="stylesheet" href="/assets/css/guide.css?v=6.0.0">
 </head>
 <body class="docs-body">
-<header><div class="wrap nav"><img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora IPTV"><div class="brand">Mizanora IPTV<small>DEVELOPER GUIDE · V5</small></div><nav><a href="/">← Main site</a><a href="/reseller">Reseller panel</a><a href="https://github.com/Mizanora-org/miznaoraiptv" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">GitHub</a></nav></div></header>
+<header><div class="wrap nav"><img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora IPTV"><div class="brand">Mizanora IPTV<small>DEVELOPER GUIDE · V6</small></div><nav><a href="/">← Main site</a><a href="/reseller">Reseller panel</a> · <a href="/academy">Academy</a><a href="https://github.com/Mizanora-org/miznaoraiptv" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">GitHub</a></nav></div></header>
 <main class="wrap docs-main">
   <div class="docs-hero"><span class="eyebrow">COMPLETE INTEGRATION HANDBOOK</span><h1>Build with <span class="gold">Mizanora IPTV</span></h1><p>Website embeds, public API, Xtream, M3U/XMLTV, reseller automation and Vercel deployment—one practical guide.</p></div>
   <nav class="docs-nav" aria-label="Guide sections"><a href="#embed">Embed</a><a href="#public-api">Public API</a><a href="#xtream">Xtream</a><a href="#imports">M3U + EPG</a><a href="#reseller-api">Reseller API</a><a href="#vercel">Vercel</a><a href="#troubleshooting">Troubleshooting</a></nav>
@@ -26,7 +26,7 @@
 
   <section class="docs-section" id="xtream"><h2>3. Xtream, M3U and EPG apps</h2><p>Create a trial or client first, then use its returned credentials in IPTV Smarters, TiviMate or another compatible player.</p>
     <div class="code-head"><h3>Connection formats</h3><button class="btn btn-ghost btn-sm" data-copy="xtreamExample">📋 Copy</button></div><pre><code id="xtreamExample"></code></pre>
-    <ul><li><b>Xtream:</b> server origin + username + password.</li><li><b>M3U:</b> <code>get.php</code> URL with <code>type=m3u_plus&amp;output=m3u8</code>.</li><li><b>EPG:</b> authenticated <code>xmltv.php</code> URL.</li><li><b>MAG/Stalker:</b> assign the MAC in admin/reseller panel and use <code>/portal.php</code>.</li></ul>
+    <ul><li><b>Xtream:</b> server origin + username + password.</li><li><b>M3U:</b> <code>get.php</code> URL with <code>type=m3u_plus&amp;output=m3u8</code>.</li><li><b>EPG:</b> authenticated <code>xmltv.php</code> URL.</li><li><b>MAG/Stalker:</b> assign the MAC in admin/reseller panel and use <code>/c/</code> (protocol endpoint: <code>/c/portal.php</code>).</li></ul>
   </section>
 
   <section class="docs-section" id="imports"><h2>4. Import M3U playlists and XMLTV guides</h2><ol><li>Open <a href="/admin"><b>Owner Admin → Channels</b></a>.</li><li>Choose a local <code>.m3u/.m3u8</code> file or paste its HTTPS URL.</li><li>Select Free/PRO defaults. Matching IDs update; new channels receive stable unique stream IDs.</li><li>Enable linked EPG import when the playlist has <code>x-tvg-url</code>.</li><li>For standalone EPG, open <b>Admin → EPG Guide</b> and import <code>.xml/.xmltv</code> or a remote URL.</li><li>Match each channel's <b>EPG ID</b> with XMLTV <code>channel id</code> or <code>tvg-id</code>.</li></ol><div class="callout">Only import playlists and EPG sources you are authorized to use. A playlist/metadata record is not proof of stream rights or availability.</div>
@@ -34,7 +34,7 @@
 
   <section class="docs-section" id="reseller-api"><h2>5. Reseller API integration</h2><p>Dealers can use the <a href="/reseller">visual reseller panel</a> or automate the same actions with an <code>mzr_</code> key. Keep that key in server environment variables.</p>
     <div class="code-head"><h3>Node.js backend example</h3><button class="btn btn-ghost btn-sm" data-copy="resellerExample">📋 Copy</button></div><pre><code id="resellerExample"></code></pre>
-    <p>Common actions: <code>reseller/me</code>, <code>clients</code>, <code>client-create</code>, <code>credentials</code>, <code>client-renew</code>, <code>client-suspend</code>, <code>client-delete</code>, <code>payment-record</code>, <code>pricing-set</code>, <code>ledger</code>, <code>key-rotate</code>. Full machine-readable index: <a href="/api/panel?action=help"><code>/api/panel?action=help</code></a>.</p>
+    <p>The visual panel exchanges credentials for a 12-hour session. Use <code>reseller/profile-update</code> with the current password to change your login username/password. Client credentials can be changed with <code>reseller/client-update</code> and <code>newUsername</code>/<code>password</code>. Never store passwords or automation keys in public website code.</p><p><b>Vercel HLS playout:</b> compatible live links serve an eight-second intro, live source and rotating offline/recharge playlists. Metadata-only VOD uses a coming-soon live loop. The owner Broadcast Studio previews the actual manifests; unsupported formats can use direct mode.</p><p>Common actions: <code>reseller/me</code>, <code>clients</code>, <code>client-create</code>, <code>credentials</code>, <code>client-renew</code>, <code>client-suspend</code>, <code>client-delete</code>, <code>payment-record</code>, <code>pricing-set</code>, <code>ledger</code>, <code>key-rotate</code>. Full machine-readable index: <a href="/api/panel?action=help"><code>/api/panel?action=help</code></a>.</p>
     <div class="warning"><b>Never put mzr_ or mzk_ keys in public JavaScript.</b> Browser → your backend → Mizanora API is the safe integration pattern. Owner <code>mzk_</code> keys have full admin privileges.</div>
   </section>
 
@@ -44,6 +44,6 @@
   <section class="docs-section" id="troubleshooting"><h2>7. Troubleshooting</h2><div class="faq"><h3>Intro plays but the channel does not</h3><p>Check upstream availability, HTTPS mixed content and the provider's browser CORS policy. Xtream apps may work even when browser playback is blocked.</p><h3>Movies/episodes say Metadata only</h3><p>Configure a licensed MP4/HLS URL in Admin. IMDb metadata alone is not a video stream.</p><h3>Guide has channel info but no timed programmes</h3><p>Import XMLTV and verify EPG IDs. Use Admin → EPG Guide refresh for remote sources.</p><h3>Vercel saves fail</h3><p>Check service-account JSON, private key newlines, RTDB URL and Firebase permissions, then redeploy.</p><h3>Reseller key stopped working</h3><p>Key rotation revokes the previous key immediately. Update your backend secret.</p></div>
   </section>
 </main>
-<footer><div class="wrap"><p>Mizanora IPTV v5 · <a href="/">Main site</a> · <a href="/reseller">Reseller panel</a> · <a href="/api/panel?action=help">API index</a></p></div></footer>
-<div class="toast" id="toast" role="status" aria-live="polite"></div><script src="/assets/js/guide.js?v=5.1.0" defer></script>
+<footer><div class="wrap"><p>Mizanora IPTV v6 · <a href="/">Main site</a> · <a href="/reseller">Reseller panel</a> · <a href="/academy">Academy</a> · <a href="/api/panel?action=help">API index</a></p></div></footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div><script src="/assets/js/guide.js?v=6.0.0" defer></script>
 </body></html>

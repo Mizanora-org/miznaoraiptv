@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.ico">
 <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
-<link rel="stylesheet" href="/assets/css/site.css?v=5.1.2">
+<link rel="stylesheet" href="/assets/css/site.css?v=6.0.0">
 </head>
 <body data-bw-app="site">
 <header>
@@ -21,6 +21,7 @@
       <a href="#guide" class="hide-m">TV Guide</a>
       <a href="#pricing" class="hide-m">Pricing</a>
       <a href="/reseller" class="hide-m">Reseller</a>
+      <a href="/academy" class="hide-m">🎓 Academy</a>
       <a href="#trial">Free Trial</a>
       <a href="/admin" class="btn btn-ghost btn-sm">🛡️ Admin</a>
       <a href="https://wa.me/923062015326" data-pro-whatsapp class="btn btn-gold btn-sm" target="_blank" rel="noopener">💬 WhatsApp</a>
@@ -33,7 +34,7 @@
   <div class="wrap hero">
     <img class="logo" src="/assets/img/brand/miznaoraiptv-logo.png" alt="">
     <h1>Premium <span class="gold">IPTV</span> — Live TV, Movies,<br>Series &amp; Xtream in One Panel</h1>
-    <p>Animated welcome intro, 4K live channels, XMLTV now/next guide, M3U imports, free Xtream trial, MAG/Stalker and a complete reseller panel + API — <b>Mizanora IPTV v5</b>, a Mizanora Projects product by Muaaz Iqbal.</p>
+    <p>Animated welcome intro, 4K live channels, XMLTV now/next guide, M3U imports, free Xtream trial, MAG/Stalker and a complete reseller panel + API — <b>Mizanora IPTV v6</b>, a Mizanora Projects product by Muaaz Iqbal.</p>
     <div class="cta">
       <a href="#trial" class="btn btn-primary">🎁 Claim FREE 1-Day Trial</a>
       <a href="https://wa.me/923062015326" data-pro-whatsapp class="btn btn-gold" target="_blank" rel="noopener">👑 PRO VIP — WhatsApp 0306-2015326</a>
@@ -65,7 +66,7 @@
 
   <section id="channels"><div class="wrap">
     <div class="sec-head"><h2>Live channels &amp; welcome promo</h2><p>Start with the Mizanora promo channel or choose a network. Intro plays before secure channel fetch.</p></div>
-    <div class="channel-tools"><input id="channelSearch" type="search" placeholder="🔍 Search channels…" aria-label="Search channels"><select id="channelCategory" aria-label="Filter channel category"><option value="">All categories</option></select><span id="channelResultCount">Loading…</span></div>
+    <div class="channel-tools"><input id="channelSearch" type="search" placeholder="🔍 Search channels…" aria-label="Search channels"><select id="channelCategory" aria-label="Filter channel category"><option value="">All categories</option></select><select id="channelSort" aria-label="Sort channels"><option value="order">Saved order</option><option value="number">Channel number</option><option value="name">Name A–Z</option><option value="category">Category A–Z</option></select><span id="channelResultCount">Loading…</span></div>
     <div class="ch-grid" id="chGrid"><div class="ch"><span>Loading channels…</span></div></div>
     <div class="center"><button class="btn btn-ghost" id="chLoadMore" type="button" hidden>Show more channels</button></div>
   </div></section>
@@ -79,7 +80,7 @@
 
   <section id="cinema"><div class="wrap">
     <div class="sec-head"><h2>🎬 Movies &amp; Series</h2><p>Our cinema service is being prepared. Licensed titles will be added as they become available.</p></div>
-    <div class="card"><h3>Coming soon</h3><p>Watch the Mizanora coming-soon announcement while the movie and series catalog is being built.</p><button id="cinemaPreview" class="btn btn-gold" type="button">▶ Play coming-soon video</button></div>
+    <div class="catalog-tools"><div class="segmented" role="group" aria-label="Catalog type"><button id="catalogMoviesTab" class="active" type="button">🎬 Movies</button><button id="catalogSeriesTab" type="button">📺 Series</button></div><input id="catalogSearch" type="search" placeholder="Search title, year, genre…" aria-label="Search movies and series"><select id="catalogSort" aria-label="Sort catalog"><option value="title-asc">Title A–Z</option><option value="title-desc">Title Z–A</option><option value="year-desc">Newest year</option><option value="year-asc">Oldest year</option><option value="rating-desc">Highest rated</option><option value="ready-first">Playable first</option></select><select id="catalogCategory" aria-label="Filter catalog category"><option value="">All categories</option></select><label class="catalog-ready"><input id="catalogReady" type="checkbox"> Playable only</label></div><p id="catalogStatus" class="guide-status" role="status">Loading catalog…</p><div id="catalogGrid" class="catalog-grid"></div><div class="center catalog-pagination"><button class="btn btn-ghost btn-sm" id="catalogPrev" type="button">← Previous</button><button class="btn btn-ghost btn-sm" id="catalogNext" type="button">Next →</button><button id="cinemaPreview" class="btn btn-gold btn-sm" type="button">▶ Service announcement</button></div>
   </div></section>
 
   <section id="pricing"><div class="wrap">
@@ -152,15 +153,21 @@
   <div class="player-head"><div><h2 id="playerTitle">Live TV</h2><span id="playerGroup"></span></div><button class="btn btn-ghost btn-sm" id="playerClose" type="button" aria-label="Close player">✕</button></div>
   <div class="player-stage">
     <video id="liveVideo" controls playsinline preload="metadata"></video>
-    <div id="introOverlay" class="intro-overlay" hidden><div class="intro-rings"><i></i><i></i><img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora"></div><b>WELCOME TO MIZANORA IPTV</b><span id="introChannel"></span><span>Channel loading…</span><div class="intro-progress"><i></i></div></div>
+    <div id="introOverlay" class="intro-overlay" hidden>
+      <div class="intro-channel-card"><div class="intro-rings"><i></i><i></i><img src="/assets/img/brand/miznaoraiptv-logo.png" alt="Mizanora"></div><div><b id="introService">MIZANORA IPTV</b><span id="introChannel"></span><small id="introChannelMeta">Your channel is next · <span id="introCountdown">8</span>s</small></div></div>
+      <div class="intro-payment-card"><span class="intro-eyebrow">RECHARGE · RESELLER BUSINESS</span><strong id="introBusiness">Start your IPTV reseller business</strong><span id="introPayment"></span><small id="introSupport"></small></div>
+      <div class="intro-progress"><i></i></div>
+    </div>
+    <div id="fallbackOverlay" class="fallback-overlay" hidden><span id="fallbackBadge">CHANNEL OFFLINE</span><b id="fallbackChannel"></b><small id="fallbackContact"></small></div>
   </div>
   <button class="btn btn-ghost btn-sm" id="playerSkip" type="button" hidden>Skip intro →</button>
   <div id="playerStatus" class="player-status" role="status">Loading stream…</div>
   <div id="playerPro" class="player-pro" hidden><p>Ye PRO channel hai. Free 1-day trial se tamam PRO channels test karein.</p><a class="btn btn-gold" href="#trial" id="playerTrial">🎁 Get free trial</a></div>
   <button class="btn btn-ghost btn-sm" id="playerRetry" type="button" hidden>↻ Retry stream</button>
+  <a class="btn btn-gold btn-sm" id="playerRecharge" href="#recharge" hidden>💳 Recharge / contact reseller</a>
 </dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/assets/vendor/hls.min.js?v=1.7.4" defer></script>
-<script src="/assets/js/site.js?v=5.1.1" defer></script>
+<script src="/assets/js/site.js?v=6.0.0" defer></script>
 </body>
 </html>

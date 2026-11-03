@@ -96,7 +96,9 @@ failedLiveHls.handlers.error(null, { fatal: true }); failedLiveHls.handlers.mani
 check("stale live callbacks cannot replace offline fallback", latestHls === fallbackHls && $("playerStatus").textContent.includes("offline"));
 const previousHls = latestHls;
 $("playerRetry").click(); await sleep();
-check("retry skips repeated intro and creates a fresh player", $("introOverlay").hidden && latestHls !== previousHls && !latestHls.destroyed);
+check("retry restarts branded intro", !$("introOverlay").hidden);
+$("playerSkip").click(); await sleep();
+check("retry creates a fresh live player after intro", $("introOverlay").hidden && latestHls !== previousHls && !latestHls.destroyed);
 $("playerClose").click();
 check("closing player destroys HLS instance", latestHls.destroyed && !$("playerDialog").hasAttribute("open"));
 

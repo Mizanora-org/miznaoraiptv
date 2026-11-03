@@ -1,18 +1,24 @@
 {
   "name": "miznaoraiptv",
-  "version": "5.1.0",
+  "version": "6.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
-  "description": "Mizanora IPTV v5 — animated live TV, M3U/XMLTV imports, Xtream/MAG, owner and reseller panels, recharge and developer integrations",
+  "engines": {
+    "node": ">=20"
+  },
+  "description": "Mizanora IPTV v6 \u2014 animated live TV, M3U/XMLTV imports, Xtream/MAG, owner and reseller panels, recharge and developer integrations",
   "scripts": {
     "dev": "node scripts/dev-server.mjs",
     "start": "node scripts/dev-server.mjs",
-    "test": "node scripts/self-test.mjs && node scripts/smoke-admin-dom.mjs && node scripts/smoke-site-dom.mjs && node scripts/smoke-reseller-dom.mjs && node scripts/smoke-guide-dom.mjs",
-    "test:dom": "node scripts/smoke-admin-dom.mjs && node scripts/smoke-site-dom.mjs && node scripts/smoke-reseller-dom.mjs && node scripts/smoke-guide-dom.mjs",
+    "test": "node scripts/self-test.mjs && node scripts/smoke-admin-dom.mjs && node scripts/smoke-site-dom.mjs && node scripts/smoke-reseller-dom.mjs && node scripts/smoke-guide-dom.mjs && node scripts/smoke-academy-dom.mjs && node scripts/test-serverless-hls.mjs",
+    "test:dom": "node scripts/smoke-admin-dom.mjs && node scripts/smoke-site-dom.mjs && node scripts/smoke-reseller-dom.mjs && node scripts/smoke-guide-dom.mjs && node scripts/smoke-academy-dom.mjs",
     "test:site": "node scripts/smoke-site-dom.mjs",
     "test:reseller": "node scripts/smoke-reseller-dom.mjs",
-    "test:guide": "node scripts/smoke-guide-dom.mjs"
+    "test:guide": "node scripts/smoke-guide-dom.mjs",
+    "gateway": "node gateway/server.mjs",
+    "test:gateway": "node scripts/test-gateway.mjs",
+    "test:academy": "node scripts/smoke-academy-dom.mjs",
+    "test:playout": "node scripts/test-serverless-hls.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
