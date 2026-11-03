@@ -28,6 +28,7 @@ export const BRAND = {
 };
 
 export const DEFAULT_SETTINGS = {
+  serverlessHlsEnabled: true,
   welcomeVideoUrl: "/media/welcome/video.mp4",
   welcomeVideoEnabled: true,
   welcomeDurationSec: 8,
@@ -36,6 +37,10 @@ export const DEFAULT_SETTINGS = {
   comingSoonVideoUrl: "/media/coming-soon/index.m3u8",
   proUnlockVideoUrl: "/media/pro-unlock/index.m3u8",
   proUnlockVideoEnabled: true,
+  paymentMethod: "JazzCash",
+  paymentAccountNumber: "03062015326",
+  paymentAccountTitle: "Muaaz Iqbal",
+  businessIntroText: "Start your IPTV reseller business",
   proWhatsapp: "03062015326",
   proWhatsappIntl: "923062015326",
   proBannerTitle: "Unlock Mizanora IPTV PRO VIP",
@@ -958,23 +963,23 @@ export const DEFAULT_BLOGS = [
   },
   {
     slug: "hls-m3u8-discontinuity-intro-video-stitching-architecture",
-    title: "Inside Mizanora Engineering: How Muaaz Iqbal Built Live HLS (.m3u8) Pre-Roll & Pro-Gate Video Stitching",
-    excerpt: "A technical deep dive into stateless HLS manifest rewriting, #EXT-X-DISCONTINUITY pre-roll bumper injection, and live looping premium unlock streams on Vercel.",
+    title: "Mizanora Playback: Branded Introductions and Offline Recovery",
+    excerpt: "How the website plays its eight-second introduction and recovers from unavailable live sources, and what external IPTV apps can support.",
     category: "Mizanora Engineering",
     author: "Muaaz Iqbal",
-    publishedAt: "2026-10-28T07:45:00Z",
-    readTime: "8 min read",
-    tags: ["HLS Architecture", "M3U8 Stitching", "EXT-X-DISCONTINUITY", "Muaaz Iqbal", "Vercel Serverless"],
+    publishedAt: "2026-11-03T07:45:00Z",
+    readTime: "4 min read",
+    tags: ["HLS", "Playback", "Mizanora IPTV"],
     content: `
-      <h2>Solving Dynamic Video Injection Inside Stateless Live HLS</h2>
-      <p>Traditional IPTV panels can only forward raw streams or block unauthorized requests with HTTP 403 errors — which causes external players like VLC or Smarters to show ugly playback error dialogs. Under <strong>Mizanora Projects</strong>, architect <strong>Muaaz Iqbal</strong> designed a smarter HLS manifest engine for Mizanora IPTV.</p>
-      <h3>1. Stateless Session-Stamped Pre-Roll Bumpers</h3>
-      <p>When a viewer opens a channel, Mizanora's edge router serves a lightweight master manifest stamped with the session start epoch (<code>st</code>). During the initial intro window, the media playlist prepends Mizanora's H.264/AAC welcome bumper segments followed by an RFC 8216 <code>#EXT-X-DISCONTINUITY</code> tag and the live broadcast segments. As the live media sequence advances, the welcome segments naturally slide out of the playlist window — delivering a true television network bumper without re-buffering!</p>
-      <h3>2. Continuous Live Loop for Locked PRO Channels</h3>
-      <p>When a Free-tier Xtream user tunes into a <code>[PRO VIP]</code> channel, the server dynamically synthesizes a live sliding-window HLS manifest from the Admin's configured <strong>Premium Unlock Video</strong> with incrementing <code>#EXT-X-MEDIA-SEQUENCE</code> counters and discontinuity boundaries. Every IPTV app plays a crystal-clear HD broadcast instructing the viewer how to unlock PRO access via <strong>0306-2015326</strong>.</p>
+      <h2>Eight-second branded channel introduction</h2>
+      <p>The Mizanora website plays a branded welcome video before opening a channel. A live overlay supplies the selected channel name, channel number, recharge details and reseller contact from the current settings.</p>
+      <h3>Offline and recharge cards</h3>
+      <p>The website shows the configured offline video when playback fails or the live-start watchdog expires. Retry starts the channel again. Subscription restrictions use a recharge card; contact your reseller to renew.</p>
+      <h3>External player limitations</h3>
+      <p>The Vercel HLS engine assembles compatible MPEG-TS playlists with the branded introduction and live-source segments. It detects manifest/segment failures and frozen source sequences, switching to an offline loop. Expired live subscriptions receive a recharge loop. Unsupported formats can use direct mode or the optional transcoder. Test each target device; manifest stitching does not convert codecs.</p>
     `,
     faqs: [
-      { q: "Can the Admin change the Welcome and Pro Unlock videos anytime?", a: "Yes! In Admin -> Stream Defaults, any custom .m3u8 or .mp4 video URL can be set and takes effect immediately across Web and Xtream players." }
+      { q: "Can the owner replace the videos?", a: "Yes. Use Admin settings. The bundled welcome, offline, recharge and cinema cards are available as MP4 and HLS. Timed introduction control is provided by the website player." }
     ]
   },
   {
@@ -1416,7 +1421,7 @@ export const DEFAULT_FAQS = [
   },
   {
     q: "What happens if a live TV channel stream goes temporarily offline?",
-    a: "Mizanora automatically checks backup servers first, and if an external broadcaster is down, smoothly plays our HD 'Stream Temporarily Offline — Auto-Recovering' broadcast instead of crashing your player."
+    a: "In Vercel HLS mode, detected manifest or sampled-segment failures switch to the offline broadcast. Compatible live sources resume when new healthy segments appear. Browser CORS and unsupported codecs can still cause player errors; retry or contact support."
   },
   {
     q: "Can I create my own custom M3U8 playlist?",

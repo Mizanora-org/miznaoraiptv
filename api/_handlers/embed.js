@@ -31,11 +31,11 @@ export default async function embedHandler(req, res) {
         widget: `${base}/embed.js`
       });
     }
-    if (action === "config") return sendJson(res, 200, { ...S.publicConfig(base), embed: true, version: "5.1.0", experience: await S.getPublicExperience(), links: { resellerPanel: `${base}/reseller`, developers: `${base}/developers` } }, "public, max-age=60");
+    if (action === "config") return sendJson(res, 200, { ...S.publicConfig(base), embed: true, version: "6.1.0", experience: await S.getPublicExperience(), links: { resellerPanel: `${base}/reseller`, developers: `${base}/developers` } }, "public, max-age=60");
     if (action === "channels") {
       const list = (await S.listChannels()).filter((c) => c.status !== "inactive").map((c) => ({
         id: c.id, streamId: c.streamId, name: c.name, logo: c.logo,
-        category: c.category, group: c.category, tier: c.tier || "free",
+        category: c.category, group: c.category, tier: c.tier || "free", channelNumber: c.channelNumber, order: c.order, status: c.status,
         epgId: c.epgId || "", nowPlaying: c.nowPlaying || ""
       }));
       return sendJson(res, 200, { ok: true, count: list.length, channels: list }, "public, max-age=60");
@@ -59,10 +59,19 @@ export default async function embedHandler(req, res) {
       if (channel.tier === "pro") return sendJson(res, 403, { ok: false, error: "PRO channel — free trial ya subscription activate karein.", trialUrl: `${base}/#trial` });
       return sendJson(res, 200, { ok: true, channel: { id: channel.id, name: channel.name, logo: channel.logo }, ...S.signStreamFor(base, "public", String(channel.id), "live") });
     }
+    if (action === "branding") {
+      const record = await S.getResellerByCode(String(q.reseller || q.code || ""));
+      if (!record || record.status === "suspended") return sendJson(res, 404, { ok: false, error: "Reseller branding not found" });
+      const branding = record.branding || {};
+      return sendJson(res, 200, { ok: true, branding: { service: record.name || "Mizanora IPTV reseller", business: branding.tagline || "Mizanora IPTV reseller business", paymentMethod: branding.paymentMethod || "", paymentAccount: branding.paymentAccount || "", paymentTitle: branding.paymentTitle || "", support: record.whatsapp || "" } }, "public, max-age=60");
+    }
     if (action === "movies" || action === "series") {
       const source = action === "movies" ? await S.listMovies() : await S.listSeries();
       const search = String(q.q || q.search || "").trim().toLowerCase();
-      const filtered = search ? source.filter((m) => `${m.title || m.name || ""} ${m.year || ""} ${(Array.isArray(m.genres) ? m.genres : []).join(" ")} ${m.category || ""}`.toLowerCase().includes(search)) : source;
+      let filtered = search ? source.filter((m) => `${m.title || m.name || ""} ${m.year || ""} ${(Array.isArray(m.genres) ? m.genres : []).join(" ")} ${m.category || ""}`.toLowerCase().includes(search)) : source;
+      if (q.category) filtered = filtered.filter((m) => String(m.category || "") === String(q.category));
+      if (q.ready === "1") filtered = filtered.filter((m) => m.streamUrl || Object.values(m.episodes || {}).some((ep) => ep.streamUrl));
+      if (q.sort) filtered = S.sortCatalogRecords(filtered, String(q.sort));
       const limit = Math.max(1, Math.min(200, Number(q.limit) || 60));
       const offset = Math.max(0, Number(q.offset) || 0);
       const list = filtered.slice(offset, offset + limit).map((m) => ({
@@ -80,7 +89,7 @@ export default async function embedHandler(req, res) {
         episodeCount: action === "series" ? Object.values(m.episodes || {}).length : undefined,
         episodes: action === "series" ? Object.values(m.episodes || {}).map((ep) => ({ id: ep.id, title: ep.title, season: ep.season, episode: ep.episode, streamAvailable: !!ep.streamUrl })) : undefined
       }));
-      return sendJson(res, 200, { ok: true, count: list.length, total: filtered.length, offset, limit, [action]: list }, "public, max-age=300");
+      return sendJson(res, 200, { ok: true, count: list.length, total: filtered.length, offset, limit, categories: [...new Set(source.map((item) => item.category).filter(Boolean))].sort(), [action]: list }, "public, max-age=60");
     }
     if (action === "order" && isPost) {
       if (!String(body.name || "").trim() || !isValidEmail(body.email) || String(body.whatsapp || "").replace(/\D/g, "").length < 10) {

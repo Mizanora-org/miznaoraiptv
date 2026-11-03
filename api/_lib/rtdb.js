@@ -173,6 +173,34 @@ export async function rtdbSet(path, value, { token } = {}) {
 
 export async function rtdbDelete(path, opts = {}) { return rtdbSet(path, null, opts); }
 
+/** Atomic multi-path update. Used for credential renames so the client and
+ * Xtream mirror cannot be left half-renamed by a failed sequential write. */
+export async function rtdbUpdate(updates, { token } = {}) {
+  const clean = Object.fromEntries(Object.entries(updates).map(([key, value]) => [key.replace(/^\/+|\/+$/g, ""), value]));
+  let remoteOk = false;
+  let failure = null;
+  try {
+    if (process.env.MZ_RTDB_OFFLINE === "1") throw new Error("Firebase offline test mode");
+    const access = token || await serviceAccessToken();
+    const qs = access ? `?${token ? "auth" : "access_token"}=${encodeURIComponent(access)}` : "";
+    const response = await fetch(`${RTDB_URL}/.json${qs}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(clean), signal: AbortSignal.timeout(8000)
+    });
+    if (!response.ok) throw new Error(`RTDB atomic update ${response.status}: ${(await response.text()).slice(0, 180)}`);
+    remoteOk = true;
+    HEALTH.lastWriteOk = true;
+    HEALTH.lastError = "";
+  } catch (error) { failure = error; HEALTH.lastWriteOk = false; HEALTH.lastError = error.message; }
+  const mirror = readMirror();
+  for (const [key, value] of Object.entries(clean)) { setPath(mirror, key, value); invalidate(key); }
+  writeMirror(mirror);
+  if (!remoteOk && (process.env.VERCEL === "1" || process.env.MZ_REQUIRE_PERSISTENCE === "1")) {
+    throw new Error(`Firebase atomic save failed — configure a service account. ${failure?.message || ""}`);
+  }
+  return remoteOk;
+}
+
 export function rtdbHealth() {
   return {
     database: RTDB_URL,
@@ -206,3 +234,45 @@ export async function verifyFirebaseIdToken(idToken) {
 }
 
 export function rtdbUrl() { return RTDB_URL; }
+
+/** Compare-and-swap for HLS timeline updates across concurrent Vercel instances.
+ * No cache or production mirror fallback: sequence numbers must be durable. */
+export async function rtdbTransaction(path, update) {
+  const clean = String(path).replace(/^\/+|\/+$/g, "");
+  if (process.env.MZ_RTDB_OFFLINE === "1" || (!hasServiceAccount() && process.env.VERCEL !== "1" && process.env.MZ_REQUIRE_PERSISTENCE !== "1")) {
+    const mirror = readMirror();
+    const value = update(getPath(mirror, clean) ?? null);
+    setPath(mirror, clean, value); writeMirror(mirror); invalidate(clean);
+    return value;
+  }
+  const access = await serviceAccessToken();
+  if (!access) throw new Error("HLS sessions require a Firebase service account on Vercel");
+  const url = `${RTDB_URL}/${clean}.json?access_token=${encodeURIComponent(access)}`;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const read = await fetch(url, { headers: { "X-Firebase-ETag": "true" }, signal: AbortSignal.timeout(5000) });
+    if (!read.ok || !read.headers.get("etag")) throw new Error("HLS session read failed");
+    const value = update(await read.json());
+    const write = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json", "if-match": read.headers.get("etag") }, body: JSON.stringify(value), signal: AbortSignal.timeout(5000) });
+    if (write.status === 412) { await write.body?.cancel(); continue; }
+    if (!write.ok) throw new Error("HLS session transaction failed");
+    await write.body?.cancel(); invalidate(clean); return value;
+  }
+  throw new Error("HLS session busy; retry playlist");
+}
+
+/** Opportunistic bounded TTL cleanup; add hlsSessions/.indexOn expires rules. */
+export async function pruneHlsSessions(now = Math.floor(Date.now() / 1000)) {
+  if (process.env.MZ_RTDB_OFFLINE === "1" || (!hasServiceAccount() && process.env.VERCEL !== "1")) {
+    const mirror = readMirror();
+    for (const [id, record] of Object.entries(mirror.hlsSessions || {})) if (Number(record.expires) < now) delete mirror.hlsSessions[id];
+    writeMirror(mirror); return;
+  }
+  const access = await serviceAccessToken();
+  if (!access) return;
+  const url = `${RTDB_URL}/hlsSessions.json?access_token=${encodeURIComponent(access)}&orderBy=%22expires%22&endAt=${now}&limitToFirst=20`;
+  const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  if (!response.ok) { await response.body?.cancel(); return; }
+  const records = await response.json();
+  const updates = Object.fromEntries(Object.keys(records || {}).map(id => [`hlsSessions/${id}`, null]));
+  if (Object.keys(updates).length) await rtdbUpdate(updates);
+}

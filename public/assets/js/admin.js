@@ -2,7 +2,7 @@
 import {
   subscribeAuth, loginWithGoogle, loginWithGoogleRedirect, finishRedirect,
   logoutUser, getFirebaseIdToken, isAdminEmail, ADMIN_EMAIL
-} from "/assets/js/firebase-client.js?v=5.1.0";
+} from "/assets/js/firebase-client.js?v=6.0.0";
 
 const $ = (id) => document.getElementById(id);
 const setText = (id, value) => { const el = $(id); if (el) el.textContent = String(value ?? ""); };
@@ -30,17 +30,18 @@ const debounce = (fn, wait = 220) => {
 
 const STATE = {
   user: null, tab: "dashboard", global: "", loaded: false, entering: null,
-  filters: { channels: "", xtream: "", users: "", resellers: "" },
+  filters: { channels: "", xtream: "", users: "", resellers: "" }, catalog: { movies: { offset: 0, total: 0 }, series: { offset: 0, total: 0 } },
   channels: [], playlists: [], xtream: [], movies: [], series: [],
   clients: [], resellers: [], orders: [], stalker: [], keys: [], audit: [], epgSources: []
 };
 const TAB_VIEWS = {
-  dashboard: "viewDashboard", channels: "viewChannels", playlists: "viewPlaylists", epg: "viewEpg",
+  dashboard: "viewDashboard", studio: "viewStudio", channels: "viewChannels", playlists: "viewPlaylists", epg: "viewEpg",
   xtream: "viewXtream", movies: "viewMovies", series: "viewSeries",
   analytics: "viewAnalytics", users: "viewUsers", settings: "viewSettings",
-  resellers: "viewResellers", orders: "viewOrders", stalker: "viewStalker", apikeys: "viewApiKeys"
+  resellers: "viewResellers", orders: "viewOrders", stalker: "viewStalker", apikeys: "viewApiKeys", academy: "viewAcademy"
 };
 const TAB_TITLES = {
+  studio: ["Broadcast Studio", "Preview, inspect and control your channel playout"],
   dashboard: ["📊 Dashboard", "Real-time IPTV server overview"],
   channels: ["📺 Channel Manager", "Add, edit and remove live channels"],
   playlists: ["📋 Playlists", "Cloud M3U playlists and import history"],
@@ -54,7 +55,8 @@ const TAB_TITLES = {
   resellers: ["🏪 Resellers", "Dealers, credits and top-up"],
   orders: ["🧾 Orders", "Approve once to auto-provision Xtream"],
   stalker: ["🛰️ Stalker / MAG", "MAC-bound clients and portal URL"],
-  apikeys: ["🔑 API Keys", "Create and revoke owner API keys"]
+  apikeys: ["🔑 API Keys", "Create and revoke owner API keys"],
+  academy: ["🎓 IPTV Academy", "Owner operations, reseller business and setup training"]
 };
 
 /* ---------- auth + API ---------- */
@@ -122,7 +124,7 @@ function paintUser() {
   const user = STATE.user;
   if (!user) return;
   setText("userName", user.displayName || user.email || "Admin");
-  setText("userRole", isAdminEmail(user.email) ? "👑 Super Admin (Owner)" : "Admin");
+  setText("userRole", isAdminEmail(user.email) ? "Super Admin (Owner)" : "Admin");
   setText("userAvatar", (user.displayName || user.email || "A").slice(0, 2).toUpperCase());
 }
 async function enterAdmin(user) {
@@ -172,12 +174,15 @@ async function pinLogin(pin) {
 
 /* ---------- navigation ---------- */
 function switchTab(tab) {
+  if (STATE.tab === "studio" && tab !== "studio") stopStudio();
   if (!TAB_VIEWS[tab]) tab = "dashboard";
   STATE.tab = tab;
   document.querySelectorAll(".nav-btn").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
   document.querySelectorAll("section[id^=view]").forEach((section) => { section.hidden = section.id !== TAB_VIEWS[tab]; });
   const [title, subtitle] = TAB_TITLES[tab];
-  setText("pageTitle", title);
+  setText("pageTitle", title.replace(/^[^A-Za-z]+/, ""));
+  if (tab === "epg") safe("epgMapping", loadEpgMapping);
+  if (tab === "academy") window.MizanoraAcademy?.mountAll();
   setText("pageSub", subtitle);
 }
 
@@ -220,6 +225,9 @@ async function loadSystemHealth() {
 async function loadChannels() {
   const data = await apiGet("admin/channels");
   STATE.channels = data.channels || [];
+  if ($("studioChannel")) { const selected = $("studioChannel").value; $("studioChannel").innerHTML = '<option value="">Choose a live channel…</option>' + STATE.channels.filter(c => c.status !== "inactive").map(c => `<option value="${esc(c.id)}">#${esc(c.channelNumber || c.streamId || "")} ${esc(c.name)}</option>`).join(""); $("studioChannel").value = selected; }
+  const categoryFilter = $("chCategoryFilter");
+  if (categoryFilter) { const selected = categoryFilter.value; categoryFilter.innerHTML = '<option value="">All categories</option>' + [...new Set(STATE.channels.map(c => c.category).filter(Boolean))].sort().map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join(""); categoryFilter.value = selected; }
   setText("badgeChannels", STATE.channels.length);
   setText("kpiChannels", STATE.channels.length);
   const pro = STATE.channels.filter((c) => c.tier === "pro").length;
@@ -230,10 +238,15 @@ function renderChannels() {
   const body = $("chBody");
   if (!body) return;
   const query = queryFor("channels");
-  const list = STATE.channels.filter((c) => matches(c, query, ["name", "category", "url", "id"]));
+  let list = STATE.channels.filter((c) => matches(c, query, ["name", "category", "url", "id", "epgId", "channelNumber", "streamId"]));
+  const category = $("chCategoryFilter")?.value || "", access = $("chAccessFilter")?.value || "";
+  list = list.filter((c) => (!category || c.category === category) && (!access || c.tier === access));
+  const mode = $("chSort")?.value || "order";
+  const text = (v) => String(v || "").toLowerCase();
+  list = [...list].sort((a, b) => mode === "number-asc" ? a.channelNumber - b.channelNumber : mode === "number-desc" ? b.channelNumber - a.channelNumber : mode === "name-asc" ? text(a.name).localeCompare(text(b.name)) : mode === "name-desc" ? text(b.name).localeCompare(text(a.name)) : mode === "category-asc" ? text(a.category).localeCompare(text(b.category)) || a.channelNumber - b.channelNumber : mode === "epg-first" ? Number(!!b.epgId) - Number(!!a.epgId) || a.channelNumber - b.channelNumber : 0);
   body.innerHTML = list.map((channel) => {
     const index = STATE.channels.indexOf(channel) + 1;
-    return `<tr data-row><td>${index}</td><td>${channel.logo ? `<img src="${esc(channel.logo)}" alt="" style="width:28px;height:28px;border-radius:6px;object-fit:cover">` : "📺"}</td><td><b>${esc(channel.name)}</b><br><span class="cell-sub mono">${esc(channel.url || "")}</span><span class="cell-sub">EPG: ${esc(channel.epgId || "not mapped")}</span></td><td>${esc(channel.category || "")}</td><td><span class="pill ${channel.tier === "pro" ? "warn" : "ok"}">${channel.tier === "pro" ? "PRO" : "FREE"}</span></td><td class="actions"><button class="btn btn-ghost btn-sm" data-ch-move="${esc(channel.id)}" data-direction="-1" title="Move up" ${index === 1 ? "disabled" : ""}>↑</button><button class="btn btn-ghost btn-sm" data-ch-move="${esc(channel.id)}" data-direction="1" title="Move down" ${index === STATE.channels.length ? "disabled" : ""}>↓</button><button class="btn btn-ghost btn-sm" data-ch-edit="${esc(channel.id)}" title="Edit channel">✏️</button><button class="btn btn-danger btn-sm" data-ch-del="${esc(channel.id)}" title="Delete channel">🗑</button></td></tr>`;
+    return `<tr data-row><td><button class="number-chip" data-ch-edit="${esc(channel.id)}" title="Edit channel number">#${Number(channel.channelNumber) || index}</button><span class="cell-sub mono">ID ${esc(channel.streamId || "—")}</span></td><td>${channel.logo ? `<img src="${esc(channel.logo)}" alt="" style="width:28px;height:28px;border-radius:6px;object-fit:cover">` : "📺"}</td><td><b>${esc(channel.name)}</b><br><span class="cell-sub mono">${esc(channel.url || "")}</span><span class="cell-sub">EPG: ${esc(channel.epgId || "not mapped")}</span></td><td>${esc(channel.category || "")}</td><td><span class="pill ${channel.status === "offline" ? "bad" : channel.status === "inactive" ? "warn" : "ok"}">${esc(channel.status || "active")}</span> <span class="pill ${channel.tier === "pro" ? "warn" : "ok"}">${channel.tier === "pro" ? "PRO" : "FREE"}</span></td><td class="actions"><button class="btn btn-ghost btn-sm" data-ch-move="${esc(channel.id)}" data-direction="-1" title="Move up" ${index === 1 ? "disabled" : ""}>↑</button><button class="btn btn-ghost btn-sm" data-ch-move="${esc(channel.id)}" data-direction="1" title="Move down" ${index === STATE.channels.length ? "disabled" : ""}>↓</button><button class="btn btn-ghost btn-sm" data-ch-check="${esc(channel.id)}" title="Check upstream source">🩺</button><button class="btn btn-ghost btn-sm" data-ch-edit="${esc(channel.id)}" title="Edit channel">✏️</button><button class="btn btn-danger btn-sm" data-ch-del="${esc(channel.id)}" title="Delete channel">🗑</button></td></tr>`;
   }).join("") || '<tr><td colspan="6" class="empty">No matching channels.</td></tr>';
 }
 async function loadPlaylists() {
@@ -252,6 +265,15 @@ async function loadEpgSources() {
   const body = $("epgBody");
   if (!body) return;
   body.innerHTML = STATE.epgSources.map((source) => `<tr><td><b>${esc(source.name || source.id)}</b><span class="cell-sub mono">${esc(source.url || "Uploaded file")}</span></td><td>${Number(source.channelCount || 0)}</td><td>${Number(source.programmeCount || 0)}</td><td>${esc(String(source.updatedAt || "").replace("T", " ").slice(0, 19))}</td><td class="actions">${source.url ? `<button class="btn btn-ghost btn-sm" data-epg-refresh="${esc(source.id)}" title="Refresh remote EPG">↻</button>` : ""}<button class="btn btn-danger btn-sm" data-epg-delete="${esc(source.id)}" title="Delete source">🗑</button></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No EPG sources. Import XMLTV above.</td></tr>';
+}
+async function loadEpgMapping() {
+  const data = await apiGet("admin/epg-mapping");
+  const channels = data.channels || [], sources = data.sources || [];
+  const mapped = channels.filter((c) => c.mapped).length;
+  setText("epgCoverage", `${mapped}/${channels.length} channels mapped · ${sources.length} XMLTV channel IDs · times shown in your browser timezone`);
+  const body = $("epgMapBody");
+  if (!body) return;
+  body.innerHTML = channels.map((channel) => `<tr><td><b>#${Number(channel.channelNumber)} ${esc(channel.name)}</b><span class="cell-sub">${esc(channel.epgId || "Not mapped")}</span></td><td><select data-epg-channel="${esc(channel.id)}" aria-label="XMLTV mapping for ${esc(channel.name)}"><option value="">Not mapped</option>${sources.map((source) => `<option value="${esc(source.id)}" ${source.id === channel.epgId ? "selected" : ""}>${esc(source.name)} · ${esc(source.id)}</option>`).join("")}${channel.epgId && !sources.some((s) => s.id === channel.epgId) ? `<option value="${esc(channel.epgId)}" selected>${esc(channel.epgId)} (external ID)</option>` : ""}</select></td><td>${Number(channel.programmeCount || 0)}</td><td><button class="btn btn-primary btn-sm" data-epg-save="${esc(channel.id)}">Save mapping</button></td></tr>`).join("") || '<tr><td colspan="4" class="empty">Add channels and import XMLTV to begin.</td></tr>';
 }
 async function loadXtream() {
   const data = await apiGet("admin/xtream-accounts");
@@ -272,19 +294,32 @@ function renderXtream() {
     const active = String(account.status || "Active").toLowerCase() === "active" && !expired;
     const status = expired ? '<span class="pill warn">Expired</span>' : active ? '<span class="pill ok">Active</span>' : '<span class="pill bad">Suspended</span>';
     const expiry = account.expDate ? new Date(Number(account.expDate) * 1000).toLocaleDateString() : "—";
-    return `<tr data-row><td><b>${esc(account.username)}</b><br><span class="cell-sub">${esc(account.resellerCode || "direct")}</span></td><td class="mono">${esc(account.password)}</td><td class="mono">${esc(account.mac || "—")}</td><td>${status}</td><td>${expiry}</td><td class="actions"><button class="btn btn-ghost btn-sm" data-xt-renew="${esc(account.username)}" title="Renew">🔄</button><button class="btn btn-ghost btn-sm" data-xt-toggle="${esc(account.username)}" data-xt-active="${active}" title="${active ? "Suspend" : "Activate"}">${active ? "⏸" : "▶️"}</button><button class="btn btn-danger btn-sm" data-xt-del="${esc(account.username)}" title="Delete">🗑</button></td></tr>`;
+    return `<tr data-row><td><b>${esc(account.username)}</b><br><span class="cell-sub">${esc(account.resellerCode || "direct")}</span></td><td class="mono">${esc(account.password)}</td><td class="mono">${esc(account.mac || "—")}</td><td>${status}</td><td>${expiry}</td><td class="actions"><button class="btn btn-ghost btn-sm" data-xt-edit="${esc(account.username)}" title="Edit username / password">✏️</button><button class="btn btn-ghost btn-sm" data-xt-renew="${esc(account.username)}" title="Renew">🔄</button><button class="btn btn-ghost btn-sm" data-xt-toggle="${esc(account.username)}" data-xt-active="${active}" title="${active ? "Suspend" : "Activate"}">${active ? "⏸" : "▶️"}</button><button class="btn btn-danger btn-sm" data-xt-del="${esc(account.username)}" title="Delete">🗑</button></td></tr>`;
   }).join("") || '<tr><td colspan="6" class="empty">No matching Xtream accounts.</td></tr>';
 }
 let movieRequest = 0, seriesRequest = 0;
 async function loadMovies() {
   const request = ++movieRequest;
   const query = STATE.global || STATE.filters.movies || "";
-  const response = await fetch("/api/embed?action=movies&limit=80&q=" + encodeURIComponent(query));
+  const page = STATE.catalog.movies;
+  const params = new URLSearchParams({ action: "movies", limit: "80", offset: String(page.offset), q: query, sort: $("mvSort")?.value || "title-asc", category: $("mvCategory")?.value || "", ready: $("mvReady")?.checked ? "1" : "" });
+  const response = await fetch("/api/embed?" + params);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Movies failed to load");
   if (request !== movieRequest) return;
   STATE.movies = data.movies || [];
+  page.total = Number(data.total || 0);
+  fillCategoryFilter("mvCategory", data.categories || []);
+  setText("mvPageInfo", `${page.total ? page.offset + 1 : 0}–${Math.min(page.offset + 80, page.total)} of ${page.total}`);
+  if ($("mvPrev")) $("mvPrev").disabled = page.offset === 0;
+  if ($("mvNext")) $("mvNext").disabled = page.offset + 80 >= page.total;
   renderMovies();
+}
+function fillCategoryFilter(id, categories) {
+  const select = $(id); if (!select) return;
+  const value = select.value;
+  select.innerHTML = '<option value="">All categories</option>' + categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  select.value = value;
 }
 function sortCatalog(items, selectId) {
   const mode = $(selectId)?.value || "title-asc";
@@ -305,11 +340,18 @@ function renderMovies() {
 async function loadSeries() {
   const request = ++seriesRequest;
   const query = STATE.global || STATE.filters.series || "";
-  const response = await fetch("/api/embed?action=series&limit=80&q=" + encodeURIComponent(query));
+  const page = STATE.catalog.series;
+  const params = new URLSearchParams({ action: "series", limit: "80", offset: String(page.offset), q: query, sort: $("srSort")?.value || "title-asc", category: $("srCategory")?.value || "", ready: $("srReady")?.checked ? "1" : "" });
+  const response = await fetch("/api/embed?" + params);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Series failed to load");
   if (request !== seriesRequest) return;
   STATE.series = data.series || [];
+  page.total = Number(data.total || 0);
+  fillCategoryFilter("srCategory", data.categories || []);
+  setText("srPageInfo", `${page.total ? page.offset + 1 : 0}–${Math.min(page.offset + 80, page.total)} of ${page.total}`);
+  if ($("srPrev")) $("srPrev").disabled = page.offset === 0;
+  if ($("srNext")) $("srNext").disabled = page.offset + 80 >= page.total;
   const body = $("srBody");
   if (!body) return;
   body.innerHTML = sortCatalog(STATE.series, "srSort").map((s) => `<tr data-row><td><b>${esc(s.title)}</b><br><span class="cell-sub">${esc(s.category || "")}</span></td><td>${esc(s.year || "—")}</td><td>⭐ ${esc(s.rating || "—")}</td><td>${Number(s.episodeCount || 0)}</td><td>${s.streamAvailable ? '<span class="pill ok">Ready</span>' : '<span class="pill warn">Metadata only</span>'}</td><td><button class="btn btn-ghost btn-sm" data-sr-episodes="${esc(s.id)}" title="Configure episode stream">🔗 Episodes</button></td></tr>`).join("") || '<tr><td colspan="6" class="empty">No matching series.</td></tr>';
@@ -332,10 +374,14 @@ function renderUsers() {
 async function loadSettings() {
   const data = await apiGet("admin/settings");
   const settings = data.settings || {};
-  const map = { stWelcome: "welcomeVideoUrl", stOffline: "channelOfflineVideoUrl", stComing: "comingSoonVideoUrl", stPro: "proUnlockVideoUrl", stWa: "proWhatsapp", stWaIntl: "proWhatsappIntl", stTicker: "siteAnnouncement", stWelcomeDuration: "welcomeDurationSec", stRechargeNote: "rechargeNote", stResellerNote: "resellerContactNote" };
+  if ($("stServerlessHls")) $("stServerlessHls").checked = settings.serverlessHlsEnabled !== false;
+  setText("studioEngine", settings.serverlessHlsEnabled !== false ? "● Vercel HLS enabled" : "○ Direct-source mode");
+  const map = { stWelcome: "welcomeVideoUrl", stOffline: "channelOfflineVideoUrl", stComing: "comingSoonVideoUrl", stPro: "proUnlockVideoUrl", stWa: "proWhatsapp", stWaIntl: "proWhatsappIntl", stTicker: "siteAnnouncement", stWelcomeDuration: "welcomeDurationSec", stRechargeNote: "rechargeNote", stResellerNote: "resellerContactNote", stPaymentMethod: "paymentMethod", stPaymentAccount: "paymentAccountNumber", stPaymentTitle: "paymentAccountTitle", stBusinessIntro: "businessIntroText" };
   for (const [id, key] of Object.entries(map)) if ($(id)) $(id).value = settings[key] || "";
   if ($("stWelcomeEnabled")) $("stWelcomeEnabled").checked = settings.welcomeVideoEnabled !== false;
-  if ($("stWelcomeSkippable")) $("stWelcomeSkippable").checked = settings.welcomeSkippable !== false;
+  if ($("stWelcomeSkippable")) $("stWelcomeSkippable").checked = settings.welcomeSkippable === true;
+  if ($("stProEnabled")) $("stProEnabled").checked = settings.proUnlockVideoEnabled !== false;
+  if ($("introPreview") && settings.welcomeVideoUrl) $("introPreview").src = settings.welcomeVideoUrl;
 }
 async function loadAnalytics() {
   const [data, errors] = await Promise.all([apiGet("admin/analytics"), apiGet("admin/errors", { limit: 20 })]);
@@ -358,7 +404,7 @@ function renderResellers() {
   if (!body) return;
   const query = queryFor("resellers");
   const list = STATE.resellers.filter((r) => matches(r, query, ["code", "name", "email", "whatsapp"]));
-  body.innerHTML = list.map((r) => `<tr data-row><td class="mono"><b>${esc(r.code)}</b></td><td>${esc(r.name || "")}<br><span class="cell-sub">${esc(r.email || "")}</span></td><td>${Number(r.credits || 0)}</td><td>${r.status === "suspended" ? '<span class="pill bad">Suspended</span>' : '<span class="pill ok">Active</span>'}</td><td class="actions"><button class="btn btn-primary btn-sm" data-rs-topup="${esc(r.code)}">＋ Credits</button> <button class="btn btn-ghost btn-sm" data-rs-report="${esc(r.code)}">Report</button> <button class="btn btn-ghost btn-sm" data-rs-toggle="${esc(r.code)}" data-rs-suspended="${r.status === "suspended"}">${r.status === "suspended" ? "Activate" : "Suspend"}</button></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No matching resellers.</td></tr>';
+  body.innerHTML = list.map((r) => `<tr data-row><td class="mono"><b>${esc(r.code)}</b><span class="cell-sub">@${esc(r.username || r.code.toLowerCase())}</span></td><td>${esc(r.name || "")}<br><span class="cell-sub">${esc(r.email || "")}</span></td><td>${Number(r.credits || 0)}</td><td>${r.status === "suspended" ? '<span class="pill bad">Suspended</span>' : '<span class="pill ok">Active</span>'}</td><td class="actions"><button class="btn btn-primary btn-sm" data-rs-topup="${esc(r.code)}">＋ Credits</button> <button class="btn btn-ghost btn-sm" data-rs-edit="${esc(r.code)}">✏️ Login</button> <button class="btn btn-ghost btn-sm" data-rs-report="${esc(r.code)}">Report</button> <button class="btn btn-ghost btn-sm" data-rs-toggle="${esc(r.code)}" data-rs-suspended="${r.status === "suspended"}">${r.status === "suspended" ? "Activate" : "Suspend"}</button></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No matching resellers.</td></tr>';
 }
 async function loadOrders() {
   const data = await apiGet("admin/orders");
@@ -443,15 +489,16 @@ function channelForm(channel) {
     { name: "category", label: "Category", value: existing.category || "General", required: true },
     { name: "logo", label: "Logo URL (optional)", value: existing.logo, placeholder: "https://…/logo.png" },
     { name: "epgId", label: "XMLTV EPG ID", value: existing.epgId || "" },
-    { name: "position", label: "Channel number / playlist position", type: "number", value: existing.id ? STATE.channels.indexOf(existing) + 1 : STATE.channels.length + 1, min: 1, max: existing.id ? Math.max(1, STATE.channels.length) : STATE.channels.length + 1, required: true, help: "Controls the order shown in the website, M3U, Xtream and MAG lists." },
-    { name: "status", label: "Visibility", value: existing.status || "active", options: [["active", "Active"], ["inactive", "Inactive"]] },
+    { name: "channelNumber", label: "Channel number (remote-control number)", type: "number", value: existing.channelNumber || STATE.channels.length + 1, min: 1, max: 999999, required: true, help: "Unique and stable. Reordering does not change this number or the stream ID." },
+    { name: "position", label: "Channel number / playlist position", type: "number", value: existing.id ? STATE.channels.findIndex((c) => c.id === existing.id) + 1 : STATE.channels.length + 1, min: 1, max: existing.id ? Math.max(1, STATE.channels.length) : STATE.channels.length + 1, required: true, help: "Controls the order shown in the website, M3U, Xtream and MAG lists." },
+    { name: "status", label: "Visibility", value: existing.status || "active", options: [["active", "Active / online"], ["offline", "Offline — show standby video"], ["inactive", "Hidden / inactive"]] },
     { name: "tier", label: "Access", value: existing.tier || "free", options: [["free", "Free preview"], ["pro", "PRO subscribers"]] }
   ], async (values) => {
     const position = Number(values.position);
     delete values.position;
     const result = await apiPost(existing.id ? "admin/channel-update" : "admin/channel-create", existing.id ? { id: existing.id, patch: values } : values);
     const channelId = existing.id || result.channel?.id;
-    const currentPosition = existing.id ? STATE.channels.indexOf(existing) + 1 : STATE.channels.length + 1;
+    const currentPosition = existing.id ? STATE.channels.findIndex((c) => c.id === existing.id) + 1 : STATE.channels.length + 1;
     if (channelId && position !== currentPosition) await apiPost("admin/channel-move", { id: channelId, position });
     toast(existing.id ? "Channel updated" : "Channel added");
     await loadChannels();
@@ -489,15 +536,16 @@ function resellerCreateForm() {
   openForm("Create reseller", [
     { name: "name", label: "Dealer name", required: true },
     { name: "code", label: "Dealer code (optional)", placeholder: "AUTO" },
+    { name: "username", label: "Login username (optional)", help: "3–24 lowercase letters, numbers or underscore. Defaults to dealer code." },
     { name: "email", label: "Email", type: "email", required: true },
-    { name: "password", label: "Panel password", type: "password", required: true, help: "Minimum 6 characters; dealer can also use the API key." },
+    { name: "password", label: "Panel password", type: "password", required: true, help: "Minimum 8 characters; dealer can change it later in Account security." },
     { name: "whatsapp", label: "WhatsApp" },
     { name: "credits", label: "Starter credits", type: "number", value: 10, min: 0, max: 10000 }
   ], async (values) => {
     const result = await apiPost("admin/reseller-create", values);
     const reseller = result.reseller;
     if ($("resellerNewCard")) $("resellerNewCard").hidden = false;
-    setText("resellerNewValue", `Panel: ${location.origin}/reseller\nCode: ${reseller.code}\nAPI key: ${reseller.apiKey}`);
+    setText("resellerNewValue", `Panel: ${location.origin}/reseller\nCode: ${reseller.code}\nUsername: ${reseller.username || reseller.code.toLowerCase()}\nAPI key: ${reseller.apiKey}`);
     toast("🏪 Reseller created — copy credentials now");
     await loadResellers();
   }, "Create reseller");
@@ -550,7 +598,7 @@ async function importM3u(source) {
     toast(`📥 ${result.imported} channels imported`);
     if ($("m3uUrl")) $("m3uUrl").value = "";
     if ($("m3uFile")) $("m3uFile").value = "";
-    await Promise.all([loadChannels(), loadPlaylists(), loadEpgSources(), loadAudit()]);
+    await Promise.all([loadChannels(), loadPlaylists(), loadEpgSources(), loadEpgMapping(), loadAudit()]);
   } catch (error) { importStatus("m3uImportStatus", error.message, "err"); toast(error.message, "error"); }
   finally { buttons.forEach((button) => { button.disabled = false; }); }
 }
@@ -573,7 +621,7 @@ async function importEpg(source) {
     toast("🗓️ EPG guide updated");
     if ($("epgUrl")) $("epgUrl").value = "";
     if ($("epgFile")) $("epgFile").value = "";
-    await Promise.all([loadEpgSources(), loadAudit()]);
+    await Promise.all([loadEpgSources(), loadEpgMapping(), loadAudit()]);
   } catch (error) { importStatus("epgImportStatus", error.message, "err"); toast(error.message, "error"); }
   finally { buttons.forEach((button) => { button.disabled = false; }); }
 }
@@ -597,8 +645,28 @@ function appInit() {
   for (const [id, key] of [["mvSearch", "movies"], ["srSearch", "series"]]) {
     $(id)?.addEventListener("input", (event) => { activateLocalSearch(); STATE.filters[key] = event.target.value; catalogSearch(); });
   }
-  $("mvSort")?.addEventListener("change", renderMovies);
-  $("srSort")?.addEventListener("change", renderSeries);
+  for (const id of ["chCategoryFilter", "chAccessFilter", "chSort"]) $(id)?.addEventListener("change", renderChannels);
+  $("chApplySort")?.addEventListener("click", async () => {
+    const mode = $("chSort")?.value || "order";
+    if (mode === "order") return toast("Choose a sort mode first.", "error");
+    try { await apiPost("admin/channel-sort", { mode }); await loadChannels(); toast("Sort published to website, M3U, Xtream and MAG"); } catch (e) { toast(e.message, "error"); }
+  });
+  for (const [prefix, kind, loader] of [["mv", "movies", loadMovies], ["sr", "series", loadSeries]]) {
+    for (const suffix of ["Sort", "Category", "Ready"]) $(prefix + suffix)?.addEventListener("change", () => { STATE.catalog[kind].offset = 0; loader().catch((e) => toast(e.message, "error")); });
+    for (const [suffix, delta] of [["Prev", -80], ["Next", 80]]) $(prefix + suffix)?.addEventListener("click", () => { STATE.catalog[kind].offset = Math.max(0, STATE.catalog[kind].offset + delta); loader().catch((e) => toast(e.message, "error")); });
+    $(prefix + "PersistSort")?.addEventListener("click", async () => {
+      if (!confirm("Save this sort order for the entire catalog and IPTV outputs?")) return;
+      try { const result = await apiPost("admin/catalog-sort", { kind, mode: $(prefix + "Sort").value }); STATE.catalog[kind].offset = 0; await loader(); toast(`${result.count} titles ordered`); } catch (e) { toast(e.message, "error"); }
+    });
+  }
+  $("epgAutoMap")?.addEventListener("click", async () => { try { const result = await apiPost("admin/epg-auto-map"); await Promise.all([loadEpgMapping(), loadChannels()]); toast(`${result.mapped} unique channel mappings added`); } catch (e) { toast(e.message, "error"); } });
+  $("epgMapRefresh")?.addEventListener("click", () => loadEpgMapping().catch((e) => toast(e.message, "error")));
+  $("stUseBundled")?.addEventListener("click", () => {
+    const values = { stWelcome: "/media/welcome/video.mp4", stOffline: "/media/channel-offline/index.m3u8", stComing: "/media/coming-soon/index.m3u8", stPro: "/media/pro-unlock/index.m3u8", stWelcomeDuration: "8" };
+    for (const [id, value] of Object.entries(values)) if ($(id)) $(id).value = value;
+    $("stServerlessHls").checked = true; $("stWelcomeEnabled").checked = true; $("stWelcomeSkippable").checked = false; $("stProEnabled").checked = true;
+    $("introPreview").src = values.stWelcome; toast("New video package selected — save settings to publish.");
+  });
 
   $("lockGoogleBtn")?.addEventListener("click", async () => {
     lockErr("");
@@ -627,11 +695,11 @@ function appInit() {
     const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
     document.documentElement.dataset.theme = next;
     try { localStorage.setItem("mz_theme", next); } catch {}
-    setText("btnTheme", next === "dark" ? "🌙" : "☀️");
+    setText("btnTheme", next === "dark" ? "◐" : "◑");
   });
   safe("theme", () => {
     const theme = localStorage.getItem("mz_theme");
-    if (theme) { document.documentElement.dataset.theme = theme; setText("btnTheme", theme === "dark" ? "🌙" : "☀️"); }
+    if (theme) { document.documentElement.dataset.theme = theme; setText("btnTheme", theme === "dark" ? "◐" : "◑"); }
   });
   $("btnRefresh")?.addEventListener("click", async () => { await loadAll(); toast("Panel data refreshed"); });
 
@@ -664,14 +732,18 @@ function appInit() {
       await apiPost("admin/settings-set", { patch: {
         welcomeVideoUrl: $("stWelcome")?.value.trim(), channelOfflineVideoUrl: $("stOffline")?.value.trim(),
         comingSoonVideoUrl: $("stComing")?.value.trim(), proUnlockVideoUrl: $("stPro")?.value.trim(),
+        serverlessHlsEnabled: !!$("stServerlessHls")?.checked,
         welcomeVideoEnabled: !!$("stWelcomeEnabled")?.checked, welcomeSkippable: !!$("stWelcomeSkippable")?.checked,
-        welcomeDurationSec: Number($("stWelcomeDuration")?.value || 4),
+        welcomeDurationSec: Number($("stWelcomeDuration")?.value || 8),
+        proUnlockVideoEnabled: !!$("stProEnabled")?.checked,
+        paymentMethod: $("stPaymentMethod")?.value.trim(), paymentAccountNumber: $("stPaymentAccount")?.value.trim(),
+        paymentAccountTitle: $("stPaymentTitle")?.value.trim(), businessIntroText: $("stBusinessIntro")?.value.trim(),
         proWhatsapp: $("stWa")?.value.trim(), proWhatsappIntl: $("stWaIntl")?.value.trim(),
         siteAnnouncement: $("stTicker")?.value.trim(), rechargeNote: $("stRechargeNote")?.value.trim(),
         resellerContactNote: $("stResellerNote")?.value.trim()
       } });
       toast("💾 Settings saved");
-      await loadAudit();
+      await Promise.all([loadSettings(), loadAudit()]);
     } catch (error) { toast(error.message, "error"); }
     finally { if (button) button.disabled = false; }
   });
@@ -690,7 +762,7 @@ function appInit() {
   $("keyCopyBtn")?.addEventListener("click", async () => toast(await copyText($("keyNewValue")?.textContent || "") ? "API key copied" : "Clipboard unavailable — key manually select karein", "ok"));
 
   document.addEventListener("click", async (event) => {
-    const el = event.target.closest("[data-rs-topup],[data-rs-report],[data-rs-toggle],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-toggle],[data-xt-del],[data-ch-move],[data-ch-edit],[data-ch-del],[data-pl-edit],[data-pl-del],[data-epg-refresh],[data-epg-delete],[data-mv-stream],[data-sr-episodes],[data-user-copy]");
+    const el = event.target.closest("[data-ch-check],[data-epg-save],[data-rs-edit],[data-xt-edit],[data-rs-topup],[data-rs-report],[data-rs-toggle],[data-or-approve],[data-or-reject],[data-key-revoke],[data-xt-renew],[data-xt-toggle],[data-xt-del],[data-ch-move],[data-ch-edit],[data-ch-del],[data-pl-edit],[data-pl-del],[data-epg-refresh],[data-epg-delete],[data-mv-stream],[data-sr-episodes],[data-user-copy]");
     if (!el) return;
     try {
       if (el.dataset.chMove) {
@@ -700,6 +772,45 @@ function appInit() {
         el.disabled = true;
         await apiPost("admin/channel-move", { id: el.dataset.chMove, position });
         toast("Channel order updated"); await loadChannels(); return;
+      }
+      if (el.dataset.chCheck) {
+        el.disabled = true;
+        try { const result = await apiPost("admin/channel-check", { id: el.dataset.chCheck }); toast(result.message, result.online ? "ok" : "error"); await loadChannels(); } finally { el.disabled = false; }
+        return;
+      }
+      if (el.dataset.epgSave) {
+        const select = document.querySelector(`[data-epg-channel="${el.dataset.epgSave}"]`);
+        await apiPost("admin/epg-map", { id: el.dataset.epgSave, epgId: select?.value || "" });
+        toast("EPG mapping saved"); await Promise.all([loadEpgMapping(), loadChannels()]); return;
+      }
+      if (el.dataset.rsEdit) {
+        const record = STATE.resellers.find((r) => r.code === el.dataset.rsEdit);
+        return openForm(`Reseller login · ${record.code}`, [
+          { name: "username", label: "Login username", value: record.username || record.code.toLowerCase(), required: true },
+          { name: "newPassword", label: "New password (optional)", type: "password", help: "Leave blank to keep password. Setting a password rotates the API key and signs out other sessions." },
+          { name: "name", label: "Business name", value: record.name || "" },
+          { name: "whatsapp", label: "WhatsApp", value: record.whatsapp || "" }
+        ], async (values) => {
+          const result = await apiPost("admin/reseller-update", { code: record.code, patch: values });
+          if (result.apiKey) { $("resellerNewCard").hidden = false; setText("resellerNewValue", `Code: ${record.code}\nUsername: ${result.reseller.username}\nNew API key: ${result.apiKey}`); }
+          toast("Reseller login updated"); await loadResellers();
+        });
+      }
+      if (el.dataset.xtEdit) {
+        const account = STATE.xtream.find((a) => a.username === el.dataset.xtEdit);
+        const client = STATE.clients.find((c) => c.username === account.username) || {};
+        return openForm(`Edit client · ${account.username}`, [
+          { name: "newUsername", label: "Username", value: account.username, required: true },
+          { name: "password", label: "New password (optional)", type: "password", help: "Leave blank to keep current password. Old playlist URLs stop working after a credential change." },
+          { name: "name", label: "Client name", value: client.name || account.displayName || "" },
+          { name: "whatsapp", label: "WhatsApp", value: client.whatsapp || "" },
+          { name: "mac", label: "MAG MAC", value: account.mac || "" },
+          { name: "devices", label: "Connections", type: "number", value: account.maxConnections || 1, min: 1, max: 20 }
+        ], async (values) => {
+          if (!values.password) delete values.password;
+          await apiPost("admin/xtream/update", { username: account.username, ...values });
+          toast("Client credentials updated — share the new playlist links"); await Promise.all([loadXtream(), loadUsers(), loadStalker()]);
+        });
       }
       if (el.dataset.chEdit) return channelForm(STATE.channels.find((c) => c.id === el.dataset.chEdit));
       if (el.dataset.plEdit) return playlistForm(STATE.playlists.find((p) => p.id === el.dataset.plEdit));
@@ -811,3 +922,61 @@ function appInit() {
   console.error("boot failed", error);
   showLock("Boot error: " + (error?.message || error));
 });
+
+
+// Broadcast Studio: the preview exercises the same Vercel manifest path as IPTV.
+let studioHls = null, studioUrl = "", studioRequest = 0;
+function stopStudio() {
+  studioRequest++; studioUrl = "";
+  studioHls?.destroy(); studioHls = null;
+  const video = $("studioVideo");
+  if (video) { video.pause(); video.removeAttribute("src"); video.load(); }
+  setText("studioMode", "Preview stopped");
+}
+async function inspectStudio() {
+  if (!studioUrl) return;
+  const request = studioRequest;
+  const response = await fetch(studioUrl, { cache: "no-store" });
+  const text = await response.text();
+  if (request !== studioRequest) return;
+  if (!response.ok) throw new Error("Preview manifest unavailable");
+  studioUrl = response.url || studioUrl;
+  setText("studioManifest", text);
+  setText("studioMode", response.headers.get("x-mizanora-playout") || "HLS preview");
+}
+async function startStudio(card = "") {
+  stopStudio();
+  const request = studioRequest;
+  if (card === "intro") card = "";
+  const id = $("studioChannel")?.value || STATE.channels.find(c => c.status !== "inactive")?.id;
+  if (!card && !id) return toast("Add or choose a channel first", "error");
+  setText("studioStatus", "Preparing signed HLS preview…");
+  try {
+    const result = await apiPost("admin/playout-preview", card ? { card } : { id });
+    if (request !== studioRequest) return;
+    studioUrl = result.url;
+    await inspectStudio();
+    if (request !== studioRequest) return;
+    const video = $("studioVideo");
+    video.muted = true;
+    if (window.Hls?.isSupported()) {
+      studioHls = new window.Hls({ startPosition: 0, manifestLoadingTimeOut: 30000, levelLoadingTimeOut: 30000 });
+      studioHls.loadSource(studioUrl); studioHls.attachMedia(video);
+      studioHls.on(window.Hls.Events.MANIFEST_PARSED, () => { if (request === studioRequest) video.play().catch(() => setText("studioStatus", "Press Play to begin the preview.")); });
+      studioHls.on(window.Hls.Events.ERROR, (_, data) => { if (request === studioRequest && data.fatal) setText("studioStatus", "Player error: " + data.details + ". Inspect the manifest and source codec/CORS settings."); });
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) { video.src = studioUrl; video.play().catch(() => {}); }
+    else setText("studioStatus", "HLS preview needs a compatible browser. The manifest below can still be inspected.");
+    if (window.Hls?.isSupported() || video.canPlayType("application/vnd.apple.mpegurl")) setText("studioStatus", "Preview playing muted. Use the player controls for sound; refresh the inspector to see the current live sequence.");
+  } catch (error) { if (request === studioRequest) { setText("studioStatus", error.message); toast(error.message, "error"); } }
+}
+document.addEventListener("click", event => {
+  const nav = event.target.closest("[data-open-tab]");
+  if (nav) switchTab(nav.dataset.openTab);
+  const card = event.target.closest("[data-studio-card]");
+  if (card) startStudio(card.dataset.studioCard);
+});
+$("studioStart")?.addEventListener("click", () => startStudio());
+$("studioStop")?.addEventListener("click", stopStudio);
+$("studioInspect")?.addEventListener("click", () => inspectStudio().catch(error => toast(error.message, "error")));
+$("btnLogout")?.addEventListener("click", stopStudio);
+window.addEventListener("pagehide", stopStudio);

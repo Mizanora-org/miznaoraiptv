@@ -1,4 +1,4 @@
-# 📺 Mizanora IPTV — Reseller Suite v5.1.0
+# 📺 Mizanora IPTV — Reseller Suite v6.1.0
 
 ![Animated Mizanora IPTV reseller suite banner](docs/assets/reseller-suite.gif)
 
@@ -7,6 +7,24 @@
 [Quick start](#run-and-verify-locally) · [Reseller API](docs/RESELLER.md) · [Deployment](docs/VERCEL.md) · [Changelog](CHANGELOG.md)
 
 **Live TV, animated welcome intro, M3U imports, XMLTV guides, Xtream Codes, MAG/Stalker, owner admin, reseller workspace and website integrations.** A **Mizanora Projects** product by **Muaaz Iqbal** (Kasur, Punjab, Pakistan).
+
+## What's new in v6.1
+
+- **Vercel-native HLS playout** with a durable, concurrency-safe media sequence and no long-running video process.
+- **Broadcast Studio** with real playback previews, manifest inspection and a redesigned responsive owner workspace.
+- **Rotating offline, recharge and cinema loops**, plus automatic live-source recovery for compatible feeds.
+- Real HTTP, FFmpeg decode and local Chromium playback checks.
+
+## What's new in v6
+
+- Reseller usernames/passwords, scrypt hashing, 12-hour browser sessions and client credential editing.
+- Stable channel numbers, saved sorting, source health checks and explicit XMLTV mapping.
+- Movie/series category filters, pagination, playable-only filters and saved catalog order.
+- MAG setup at `/c/`, authenticated Stalker actions at `/c/portal.php`.
+- Seventeen practical Academy lessons at `/academy`, also available inside both panels.
+- Replaced bundled videos: eight-second Mizanora intro, offline, recharge and cinema cards in MP4/HLS. Channel identity and configured payment/contact details are overlaid by the website.
+
+See the [v6 operations guide](docs/V6-OPERATIONS.md) for setup, migration, verification and limitations. The new default [Vercel HLS playout](docs/VERCEL-PLAYOUT.md) stitches compatible live HLS with intro/offline/recharge/coming-soon segments, without a VPS. The optional [encoder gateway](docs/MEDIA-GATEWAY.md) remains available for transcoding.
 
 ## What's new in v5.1
 
@@ -116,14 +134,15 @@ The suites cover real HTTP flows (imports, EPG, public/admin/reseller, Xtream, s
 
 ## Playback and channel management
 
-- **Website player:** each channel selection starts the welcome video (8 seconds by default) with the selected channel name and loading indicator, then loads that channel. Retry skips the intro. Browsers may block autoplay, and an intro load error advances to the channel. In **Admin → Settings**, change the intro URL/duration and enable or disable the skip button. Existing saved settings take precedence over the new defaults; set the duration to 8 and enable the intro there if an older installation still uses another value.
+- **Website player:** each channel selection starts the welcome video (8 seconds by default) with the selected channel name and loading indicator, then loads that channel. Retry starts a fresh intro. Browsers may block autoplay, and an intro load error advances to the channel. In **Admin → Settings**, change the intro URL/duration and enable or disable the skip button. Existing saved settings take precedence over the new defaults; set the duration to 8 and enable the intro there if an older installation still uses another value.
 - **Website fallback videos:** a detected playback error shows the configured offline video and retry button. A PRO-only public preview displays the configured unlock/recharge video and trial link. The Movies & Series section can play the coming-soon announcement.
-- **Xtream/M3U:** metadata-only movie and series episodes redirect to the configured coming-soon video; actual licensed URLs continue to play normally. Correctly authenticated expired live URLs redirect to the configured PRO/recharge video, while login remains disabled. Some apps will not request a live URL once login has expired or may not follow redirects.
+- **Xtream/M3U/MAG:** compatible live HLS uses Vercel playout: eight-second intro → source media, with offline/frozen-source detection and recovery. Expired authenticated live links play a recharge loop; missing movie/episode streams play a coming-soon loop. All three cards are rotating live playlists, not finite VOD files. Actual configured movie/episode URLs remain direct playback. New expired logins remain disabled.
+- **Admin → Broadcast Studio:** private signed previews of the real HLS engine, channel selector, four broadcast cards and a live manifest inspector.
 - **Admin → Channels:** add, edit (including visibility, EPG ID, access and an exact 1-based channel number / playlist position), delete, and move channels up/down. Saved ordering is used by the public channel list, M3U, Xtream and MAG outputs; numeric stream IDs stay stable when you reorder.
 - **Admin → Movies / Series:** search the catalog and sort results by title, release year, rating or playable status before managing licensed stream URLs.
-- Configure video URLs under **Admin → Settings**. Use supported formats and reliable HTTPS sources; external videos used in the browser also need CORS. These are playback fallbacks, not upstream health checks or automatic recovery.
+- Configure video URLs under **Admin → Settings**. Use supported formats and reliable HTTPS sources; external videos used in the browser also need CORS. Website custom videos are separate from the bundled serverless broadcast package.
 
-**External-player limitation:** the timed welcome intro and detected-offline fallback are implemented in the built-in website player. Xtream/M3U live streams redirect directly to the provider; this serverless application does not stitch an intro into external IPTV apps, transcode streams, or detect upstream outages after redirect. Live playback still depends on the provider and player.
+**Format boundary:** Vercel assembles manifests; it does not transcode frames. The playout path supports muxed MPEG-TS HLS, clear/AES-128. fMP4, DRM, byte-range, separate audio or non-HLS sources need direct mode or an encoder. Browser CORS and player codec support still matter. See [setup and tested behavior](docs/VERCEL-PLAYOUT.md).
 
 ### Rebuild branded videos
 

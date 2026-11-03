@@ -43,8 +43,9 @@ window.fetch = async (url, options = {}) => {
     return J({ ok: true, reseller: { code: state.code, apiKey: state.validKey, credits: state.credits } }, 201);
   }
   const key = options.headers?.["x-api-key"];
-  const authenticated = key === state.validKey || (body.code === state.code && body.password === (state.code === "DOMDEALER" ? "dealerpass" : "newpass"));
+  const authenticated = options.headers?.["x-reseller-token"] === "mzs_dom_session" || key === state.validKey || (body.code === state.code && body.password === (state.code === "DOMDEALER" ? "dealerpass" : "newpass"));
   if (!authenticated) return J({ ok: false, error: "Invalid reseller credentials" }, 401);
+  if (["reseller/login", "reseller/login-password"].includes(action)) return J({ ok: true, resellerToken: "mzs_dom_session" });
   if (action === "reseller/me") {
     const active = state.clients.filter((c) => c.status === "active" && !c.expired).length;
     return J({ ok: true, reseller: { code: state.code, name: state.name, status: "active", credits: state.credits, pricing: state.pricing }, stats: { active, expired: 0, suspended: state.clients.length - active }, finance: { credits: state.credits, collectedTotal: state.payments.reduce((sum, p) => sum + p.amount, 0) }, clients: state.clients.map(publicClient) });
@@ -89,7 +90,7 @@ $("dealerPassword").value = "dealerpass";
 await submit("resellerLoginForm");
 check("code/password login loads dashboard and clients", !$("resellerApp").hidden && $("dealerName").textContent === "DOM Dealer" && $("dealerClients").textContent.includes("existing"));
 check("expiring clients and business activity render on dashboard", $("dealerExpiring").textContent.includes("due_soon") && $("dealerActivity").textContent.includes("client.created"));
-check("password authentication is sent in request body", state.lastRequest.body.code === "DOMDEALER" && state.lastRequest.body.password === "dealerpass" && !state.lastRequest.headers["x-api-key"]);
+check("subsequent requests use a session, not the password", state.lastRequest.headers["x-reseller-token"] === "mzs_dom_session" && !state.lastRequest.body.password);
 
 $("clientName").value = "New DOM Client"; $("clientWhatsapp").value = "03000000000"; $("clientPlan").value = "monthly"; $("clientAmount").value = "250";
 await submit("clientCreateForm");
@@ -118,9 +119,9 @@ check("client search has a genuine empty state", $("dealerClients").textContent.
 $("dealerClientSearch").value = ""; $("dealerClientSearch").dispatchEvent(new window.Event("input", { bubbles: true }));
 $("rotateKeyBtn").click(); await sleep();
 const storedAuth = JSON.parse(window.sessionStorage.getItem("mz_reseller_auth"));
-check("key rotation visibly returns and stores only the new key", !$("credentialOut").hidden && $("credentialOut").textContent.includes("mzr_rotated_dom") && storedAuth.apiKey === "mzr_rotated_dom");
+check("key rotation displays key without replacing secure session", !$("credentialOut").hidden && $("credentialOut").textContent.includes("mzr_rotated_dom") && storedAuth.resellerToken === "mzs_dom_session" && !storedAuth.password);
 $("dealerRefresh").click(); await sleep(220);
-check("post-rotation requests authenticate with x-api-key", state.lastRequest.headers["x-api-key"] === "mzr_rotated_dom" && !state.lastRequest.body.password);
+check("post-rotation requests keep session authentication", state.lastRequest.headers["x-reseller-token"] === "mzs_dom_session" && !state.lastRequest.body.password);
 document.querySelector("[data-dealer-del='dom_client']").click(); await sleep(220);
 check("dealer can delete only the selected client from workspace", !state.clients.some((c) => c.username === "dom_client") && state.clients.some((c) => c.username === "existing"));
 $("dealerLogout").click();
@@ -131,7 +132,7 @@ await submit("resellerRegisterForm");
 check("registration provisions a dealer and displays one-time API key", !$("resellerApp").hidden && $("dealerName").textContent === "Registered Dealer" && $("credentialOut").textContent.includes("mzr_registered_dom"));
 $("dealerLogout").click(); $("dealerApiKey").value = "mzr_registered_dom";
 await submit("resellerLoginForm");
-check("API-key login restores the workspace", !$("resellerApp").hidden && state.lastRequest.headers["x-api-key"] === "mzr_registered_dom");
+check("API-key login restores the workspace", !$("resellerApp").hidden && state.lastRequest.headers["x-reseller-token"] === "mzs_dom_session");
 
 await sleep(80);
 for (const [status, name] of results) console.log(`  ${status} ${name}`);

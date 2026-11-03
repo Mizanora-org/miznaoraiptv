@@ -1,0 +1,25 @@
+services:
+  media:
+    build:
+      context: ..
+      dockerfile: gateway/Dockerfile
+    restart: unless-stopped
+    # Put a TLS reverse proxy in front. Do not expose this plain HTTP port publicly.
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      MZ_GATEWAY_SECRET: ${MZ_GATEWAY_SECRET:?Set a private random secret of at least 32 characters}
+      MZ_APP_ORIGINS: ${MZ_APP_ORIGINS:?Set the exact HTTPS app origin}
+      MZ_SOURCE_ORIGINS: ${MZ_SOURCE_ORIGINS:?Set comma-separated trusted HTTPS feed origins}
+      MZ_GATEWAY_MAX_SESSIONS: ${MZ_GATEWAY_MAX_SESSIONS:-4}
+    read_only: true
+    tmpfs:
+      - /tmp:size=1073741824,uid=1000,gid=1000,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 4
+    stop_grace_period: 15s

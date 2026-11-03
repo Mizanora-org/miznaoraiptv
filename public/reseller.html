@@ -7,8 +7,9 @@
 <meta name="description" content="Mizanora IPTV reseller dashboard for credits, clients, renewals, payments and API integration.">
 <meta name="robots" content="noindex,nofollow">
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" href="/assets/css/site.css?v=5.1.0">
-<link rel="stylesheet" href="/assets/css/reseller.css?v=5.1.0">
+<link rel="stylesheet" href="/assets/css/site.css?v=6.0.0">
+<link rel="stylesheet" href="/assets/css/reseller.css?v=6.0.0">
+<link rel="stylesheet" href="/assets/css/academy.css?v=6.0.0">
 </head>
 <body class="dealer-body">
 <header><div class="wrap nav">
@@ -21,7 +22,7 @@
     <div class="forms auth-grid">
       <form class="form" id="resellerLoginForm">
         <h3>🔐 Reseller login</h3>
-        <label for="dealerCode">Dealer code</label><input id="dealerCode" placeholder="ALPHA" autocomplete="username">
+        <label for="dealerCode">Username or dealer code</label><input id="dealerCode" placeholder="your_username or ALPHA" autocomplete="username">
         <label for="dealerPassword">Password</label><input id="dealerPassword" type="password" autocomplete="current-password">
         <div class="form-divider">or use API key</div>
         <label for="dealerApiKey">mzr_ API key</label><input id="dealerApiKey" type="password" placeholder="mzr_…" autocomplete="off">
@@ -31,9 +32,10 @@
       <form class="form" id="resellerRegisterForm">
         <h3>🚀 Create reseller account</h3>
         <label for="regName">Business / name</label><input id="regName" required>
+        <label for="regUsername">Login username (optional)</label><input id="regUsername" placeholder="auto from dealer code" autocomplete="username">
         <label for="regEmail">Email</label><input id="regEmail" type="email" required>
         <label for="regWhatsapp">WhatsApp</label><input id="regWhatsapp" required placeholder="0306-XXXXXXX">
-        <label for="regPassword">Password</label><input id="regPassword" type="password" minlength="6" required>
+        <label for="regPassword">Password</label><input id="regPassword" type="password" minlength="8" required>
         <button class="btn btn-gold" type="submit">Register &amp; get starter credits</button>
         <div class="note">API key ek dafa show hoga—copy karke safe rakhein.</div>
       </form>
@@ -42,7 +44,7 @@
   </section>
 
   <section id="resellerApp" hidden>
-    <div class="dealer-heading"><div><span class="eyebrow">DEALER DASHBOARD</span><h1 id="dealerName">Reseller</h1><p>Code: <code id="dealerCodeOut">—</code> · <span id="dealerStatus">Active</span></p></div><div class="dealer-toolbar"><a class="btn btn-ghost btn-sm" id="dealerTopup" href="https://wa.me/923062015326" target="_blank" rel="noopener">💳 Buy credits</a><button class="btn btn-ghost btn-sm" id="dealerRefresh" type="button">↻ Refresh</button></div></div>
+    <div class="dealer-heading"><div><span class="eyebrow">DEALER DASHBOARD</span><h1 id="dealerName">Reseller</h1><p>Code: <code id="dealerCodeOut">—</code> · Username: <code id="dealerUsernameOut">—</code> · <span id="dealerStatus">Active</span></p></div><div class="dealer-toolbar"><a class="btn btn-ghost btn-sm" id="dealerTopup" href="https://wa.me/923062015326" target="_blank" rel="noopener">💳 Buy credits</a><button class="btn btn-ghost btn-sm" id="dealerRefresh" type="button">↻ Refresh</button></div></div>
     <div class="kpis">
       <div class="kpi"><b id="kCredits">0</b><span>Credits left</span></div><div class="kpi"><b id="kActive">0</b><span>Active clients</span></div><div class="kpi"><b id="kExpired">0</b><span>Expired / suspended</span></div><div class="kpi"><b id="kCollected">Rs 0</b><span>Collected payments</span></div>
     </div>
@@ -53,6 +55,7 @@
       <form class="panel-card" id="clientCreateForm">
         <h2>＋ Create client</h2><p>Plan months = credit cost. Credentials appear after creation.</p>
         <div class="field-grid">
+          <label>Username (optional)<input id="clientUsername" placeholder="auto-generate" autocomplete="off"></label><label>Password (optional)<input id="clientPassword" type="password" minlength="8" maxlength="80" placeholder="secure random if blank" autocomplete="new-password"></label>
           <label>Client name<input id="clientName" required></label><label>WhatsApp<input id="clientWhatsapp" placeholder="0306-XXXXXXX"></label>
           <label>Plan<select id="clientPlan"><option value="monthly">Monthly · 1 credit</option><option value="quarterly">3 months · 3 credits</option><option value="half-yearly">6 months · 6 credits</option><option value="yearly">Yearly · 12 credits</option></select></label>
           <label>Connections<input id="clientDevices" type="number" min="1" max="20" value="1"></label>
@@ -68,7 +71,11 @@
       </form>
     </div>
 
-    <div class="panel-card"><div class="section-title"><h2>👥 My clients</h2><input id="dealerClientSearch" type="search" placeholder="Search clients…" aria-label="Search clients"></div><div class="table-wrap"><table><thead><tr><th>User</th><th>Plan</th><th>Status</th><th>Days left</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="dealerClients"></tbody></table></div></div>
+    <div class="panel-card"><div class="section-title"><h2>👥 My clients</h2><input id="dealerClientSearch" type="search" placeholder="Search clients…" aria-label="Search clients"><select id="dealerClientStatus" aria-label="Filter client status"><option value="">All statuses</option><option value="active">Active</option><option value="expired">Expired</option><option value="suspended">Suspended</option></select><select id="dealerClientSort" aria-label="Sort clients"><option value="expiry">Expiry soonest</option><option value="username">Username A–Z</option><option value="name">Name A–Z</option></select></div><div class="table-wrap"><table><thead><tr><th>User</th><th>Plan</th><th>Status</th><th>Days left</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="dealerClients"></tbody></table></div></div>
+    <div class="dealer-grid">
+      <form class="panel-card" id="accountForm"><h2>🔐 Account security</h2><p>Apna username/password set karein. Password badalne par doosre browser sessions sign out ho jate hain.</p><div class="field-grid"><label>Login username<input id="accountUsername" required autocomplete="username"></label><label>Business name<input id="accountName"></label><label>WhatsApp<input id="accountWhatsapp"></label><label>Current password<input id="accountCurrentPassword" type="password" autocomplete="current-password" placeholder="Required for login changes"></label><label>New password<input id="accountNewPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label><label>Confirm new password<input id="accountConfirmPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password"></label></div><button class="btn btn-primary" type="submit">Save account</button></form>
+      <form class="panel-card" id="brandingForm"><h2>🎬 Your intro & payment card</h2><p>Ye details aapke branded website link ke channel intro mein show hongi. Sirf apna verified receiving account enter karein.</p><div class="field-grid"><label>Payment method<input id="brandMethod" placeholder="JazzCash / EasyPaisa / bank"></label><label>Payment account / number<input id="brandAccount"></label><label>Account title<input id="brandTitle"></label><label>Business headline<input id="brandTagline" maxlength="160"></label></div><button class="btn btn-gold" type="submit">Save intro branding</button><a class="btn btn-ghost btn-sm" id="brandedSiteLink" href="/" target="_blank" rel="noopener">↗ Open my branded channel page</a></form>
+    </div>
     <div class="dealer-grid">
       <div class="panel-card"><h2>⏳ Expiring in 7 days</h2><p>Active clients approaching expiry. Refresh to see the latest data.</p><div class="table-wrap"><table><thead><tr><th>Client</th><th>Days left</th><th>Expiry</th></tr></thead><tbody id="dealerExpiring"></tbody></table></div></div>
       <div class="panel-card"><h2>📈 Business activity</h2><p>Recent account, client, payment and credit changes. This is not viewer tracking.</p><div class="table-wrap"><table><thead><tr><th>Event</th><th>Client / credits</th><th>Date</th></tr></thead><tbody id="dealerActivity"></tbody></table></div></div>
@@ -77,9 +84,12 @@
       <form class="panel-card" id="paymentForm"><h2>🧾 Record payment / extension</h2><p>Each extension month consumes one credit.</p><div class="field-grid"><label class="span-2">Client username<input id="paymentUsername" required></label><label>Amount PKR<input id="paymentAmount" type="number" min="0" required></label><label>Extension months<input id="paymentMonths" type="number" min="0" max="120" value="0"></label><label>Method<select id="paymentVia"><option>cash</option><option>JazzCash</option><option>EasyPaisa</option><option>bank</option></select></label></div><button class="btn btn-gold" type="submit">Record payment</button></form>
       <div class="panel-card"><h2>📚 Recent ledger</h2><div class="table-wrap"><table><thead><tr><th>Client</th><th>Amount</th><th>Months</th><th>Date</th></tr></thead><tbody id="dealerLedger"></tbody></table></div></div>
     </div>
+    <div class="panel-card"><h2>🎓 Reseller IPTV Academy</h2><p>Credits, client setup, EPG, MAG portal, payments and troubleshooting — practical Roman Urdu lessons.</p><div data-academy="reseller"></div></div>
   </section>
 </main>
+<dialog id="clientEditDialog" class="dealer-dialog"><form id="clientEditForm"><h2>✏️ Edit client credentials</h2><p>Changing username/password invalidates old Xtream/M3U links. Share the new links with the client.</p><input id="editClientOriginal" type="hidden"><div class="field-grid"><label>Username<input id="editClientUsername" required></label><label>New password (optional)<input id="editClientPassword" type="password" minlength="8" maxlength="80" autocomplete="new-password"></label><label>Client name<input id="editClientName"></label><label>WhatsApp<input id="editClientWhatsapp"></label><label>MAG MAC<input id="editClientMac"></label><label>Connections<input id="editClientDevices" type="number" min="1" max="20"></label></div><div id="clientEditError" role="alert"></div><div class="dealer-toolbar"><button class="btn btn-primary" type="submit">Save client</button><button class="btn btn-ghost" id="clientEditCancel" type="button">Cancel</button><button class="btn btn-ghost" id="clientEditClose" type="button" aria-label="Close">✕</button></div></form></dialog>
 <footer><div class="wrap"><p>Mizanora IPTV Reseller Suite · <a href="/">Main site</a> · <a href="/developers">Developer guide</a> · WhatsApp 0306-2015326</p></div></footer>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script src="/assets/js/reseller.js?v=5.1.0" defer></script>
+<script src="/assets/js/academy.js?v=6.0.0" defer></script>
+<script src="/assets/js/reseller.js?v=6.0.0" defer></script>
 </body></html>

@@ -95,3 +95,37 @@ export async function fetchRemoteText(value, { maxBytes = 5_000_000, timeoutMs =
 }
 
 export const remoteImportInternals = { privateAddress, validateRemoteUrl };
+
+/** Owner-triggered, bounded source probe. This is a point-in-time check, not
+ * continuous monitoring or a promise that every player can decode the source. */
+export async function probeMediaUrl(value, baseUrl = "") {
+  const absolute = new URL(value, baseUrl || "http://localhost").toString();
+  let url = await validateRemoteUrl(absolute);
+  const started = Date.now();
+  for (let redirect = 0; redirect < 4; redirect++) {
+    const response = await fetch(url, {
+      redirect: "manual", headers: { "User-Agent": "Mizanora-SourceCheck/6.0", Range: "bytes=0-65535", Accept: "application/vnd.apple.mpegurl,video/*,*/*" },
+      signal: AbortSignal.timeout(8000)
+    });
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get("location");
+      await response.body?.cancel();
+      if (!location) throw fail("Source redirect has no location.", 422);
+      url = await validateRemoteUrl(new URL(location, url).toString());
+      continue;
+    }
+    const type = response.headers.get("content-type") || "";
+    let valid = response.ok;
+    if (valid && /mpegurl|xml|text/i.test(type)) {
+      const text = (await readBounded(response, 65536)).toString("utf8");
+      valid = text.includes("#EXTM3U") || text.includes("<MPD");
+    } else {
+      const reader = response.body?.getReader();
+      const first = reader ? await reader.read() : { value: null };
+      valid = valid && (first.value?.length > 0 || Number(response.headers.get("content-length")) > 0);
+      await reader?.cancel();
+    }
+    return { online: valid, httpStatus: response.status, contentType: type, latencyMs: Date.now() - started, checkedAt: new Date().toISOString() };
+  }
+  throw fail("Too many source redirects.", 422);
+}

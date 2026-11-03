@@ -4,7 +4,8 @@
  */
 import crypto from "node:crypto";
 import { rtdbGet, rtdbSet, verifyFirebaseIdToken } from "./rtdb.js";
-import { sha256, hmacSHA256, randomHex, b64url, serverSecret, BOOTSTRAP_PIN, OWNER_EMAIL } from "./util.js";
+import { sha256, hmacSHA256, randomHex, b64url, serverSecret, signPayload, verifyPayload, checkRateLimit, BOOTSTRAP_PIN, OWNER_EMAIL } from "./util.js";
+import { verifyPassword, verifyLegacyPassword, needsPasswordUpgrade, hashPassword } from "./password.js";
 
 const SESSION_SECRET = serverSecret("MZ_SESSION_SECRET", "mizanora-iptv-v3-session-secret");
 const SESSION_TTL_MS = 12 * 3600 * 1000;
@@ -90,27 +91,59 @@ export async function authenticateAdmin(req) {
 }
 
 /* ---------- reseller auth ---------- */
+const RESELLER_SESSION_SECRET = serverSecret("MZ_SESSION_SECRET", "mizanora-iptv-reseller-v6-session");
+export function createResellerSession(reseller) {
+  return "mzs_" + signPayload({ code: reseller.code, ver: Number(reseller.authVersion || 0), role: "reseller" }, RESELLER_SESSION_SECRET, 12 * 3600);
+}
+export async function verifyResellerSession(token) {
+  if (!String(token || "").startsWith("mzs_")) return null;
+  const payload = verifyPayload(String(token).slice(4), RESELLER_SESSION_SECRET);
+  if (!payload || payload.role !== "reseller" || !payload.code) return null;
+  const all = (await rtdbGet("panel/resellers")) || {};
+  const record = all[payload.code];
+  if (!record || record.status === "suspended" || Number(record.authVersion || 0) !== Number(payload.ver)) return null;
+  return { code: payload.code, ...record };
+}
+export async function verifyResellerPassword(record, password) {
+  if (!record || !password) return false;
+  if (needsPasswordUpgrade(record.passwordHash)) return verifyLegacyPassword(password, record.passwordHash);
+  return verifyPassword(password, record.passwordHash);
+}
+export async function upgradeResellerPassword(code, password) {
+  const record = await rtdbGet(`panel/resellers/${code}`);
+  if (record && needsPasswordUpgrade(record.passwordHash)) {
+    await rtdbSet(`panel/resellers/${code}/passwordHash`, await hashPassword(password));
+  }
+}
 export async function authorizeReseller(req, body = {}) {
+  const auth = String(req.headers.authorization || "");
+  const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+  const session = String(req.headers["x-reseller-token"] || body.resellerToken || (bearer.startsWith("mzs_") ? bearer : "")).trim();
+  if (session) {
+    const record = await verifyResellerSession(session);
+    return record ? { ok: true, via: "session", reseller: record } : { ok: false, status: 401, error: "Reseller session expired. Please login again." };
+  }
   const apiKey = String(req.headers["x-api-key"] || body.apiKey || "").trim();
   if (apiKey.startsWith("mzr_")) {
     const hash = hashApiKey(apiKey);
     const all = (await rtdbGet("panel/resellers")) || {};
     for (const [code, r] of Object.entries(all)) {
-      if (r.apiKeyHash === hash && r.status !== "suspended") {
-        return { ok: true, reseller: { code, ...r } };
-      }
+      if (r.apiKeyHash === hash && r.status !== "suspended") return { ok: true, via: "apiKey", reseller: { code, ...r } };
     }
     return { ok: false, status: 401, error: "Invalid reseller API key" };
   }
-  const code = String(body.code || "").toUpperCase();
+  const login = String(body.username || body.code || "").trim();
   const password = String(body.password || "");
-  if (code && password) {
-    const r = (await rtdbGet("panel/resellers")) || {};
-    const rec = r[code];
-    if (rec && rec.status !== "suspended" && rec.passwordHash === sha256(password)) {
-      return { ok: true, reseller: { code, ...rec } };
+  if (login && password) {
+    const rl = checkRateLimit(req, `reseller_login:${login.toLowerCase()}`, 12, 15 * 60_000);
+    if (!rl.allowed) return { ok: false, status: 429, error: "Too many login attempts. Try again in 15 minutes." };
+    const all = (await rtdbGet("panel/resellers")) || {};
+    const needle = login.toLowerCase();
+    const entry = Object.entries(all).find(([code, r]) => code.toLowerCase() === needle || String(r.username || "").toLowerCase() === needle);
+    if (entry && entry[1].status !== "suspended" && await verifyResellerPassword(entry[1], password)) {
+      return { ok: true, via: "password", reseller: { code: entry[0], ...entry[1] } };
     }
     return { ok: false, status: 401, error: "Invalid reseller credentials" };
   }
-  return { ok: false, status: 401, error: "Reseller auth required (x-api-key: mzr_… or code+password)" };
+  return { ok: false, status: 401, error: "Reseller authentication required (session, API key, or username + password)." };
 }

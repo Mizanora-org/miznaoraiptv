@@ -61,3 +61,8 @@ Then check `/`, `/admin`, `/reseller`, `/developers`, a trial, a channel save an
 ## Import notes
 
 Vercel request-size limits can be lower than the application's parser limits. For large M3U/XMLTV documents, prefer remote HTTPS import over uploading through a serverless request. Remote imports have timeout, size, redirect and production private-network guards.
+
+
+## Vercel-native intro and fallback playout (v6.1)
+
+See [VERCEL-PLAYOUT.md](VERCEL-PLAYOUT.md). Compatible live HLS now uses Vercel manifest stitching by default, without the optional VPS encoder. Publish the updated Firebase rules (`hlsSessions` expiry index), configure service-account credentials, and test Admin → Broadcast Studio after deployment.

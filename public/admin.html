@@ -6,7 +6,8 @@
 <title>🛡️ Mizanora IPTV — Admin Panel</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/favicon.ico">
-<link rel="stylesheet" href="/assets/css/admin.css?v=5.1.2">
+<link rel="stylesheet" href="/assets/css/admin.css?v=6.1.0">
+<link rel="stylesheet" href="/assets/css/academy.css?v=6.0.0">
 </head>
 <body data-bw-app="admin">
 
@@ -36,51 +37,79 @@
   <aside>
     <div class="brand-row">
       <img src="/assets/img/brand/miznaoraiptv-logo.png" alt="">
-      <b>Mizanora IPTV<small>ADMIN PANEL</small></b>
+      <b>Mizanora IPTV<small>NETWORK OPERATIONS</small></b>
     </div>
-    <button class="nav-btn active" data-tab="dashboard">📊 Dashboard <span class="badge" id="badgeSystem" style="display:none"></span></button>
-    <button class="nav-btn" data-tab="channels">📺 Channels <span class="badge" id="badgeChannels">0</span></button>
-    <button class="nav-btn" data-tab="playlists">📋 Playlists <span class="badge" id="badgePlaylists">0</span></button>
-    <button class="nav-btn" data-tab="epg">🗓️ EPG Guide <span class="badge" id="badgeEpg">0</span></button>
-    <button class="nav-btn" data-tab="xtream">⚡ Xtream <span class="badge" id="badgeXtream">0</span></button>
-    <button class="nav-btn" data-tab="movies">🎬 Movies</button>
-    <button class="nav-btn" data-tab="series">📺 Series</button>
-    <button class="nav-btn" data-tab="analytics">📈 Analytics</button>
-    <button class="nav-btn" data-tab="users">👤 Users</button>
-    <button class="nav-btn" data-tab="settings">⚙️ Settings</button>
-    <button class="nav-btn" data-tab="resellers">🏪 Resellers</button>
-    <button class="nav-btn" data-tab="orders">🧾 Orders</button>
-    <button class="nav-btn" data-tab="stalker">🛰️ Stalker/MAG</button>
-    <button class="nav-btn" data-tab="apikeys">🔑 API Keys</button>
+    <div class="nav-section">WORKSPACE</div>
+    <button class="nav-btn active" data-tab="dashboard"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Dashboard <span class="badge" id="badgeSystem" style="display:none"></span></button>
+    <button class="nav-btn" data-tab="studio"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/></svg>Broadcast Studio <span class="nav-new">NEW</span></button>
+    <div class="nav-section">CONTENT LIBRARY</div>
+    <button class="nav-btn" data-tab="channels"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="m8 2 4 4 4-4"/></svg>Channels <span class="badge" id="badgeChannels">0</span></button>
+    <button class="nav-btn" data-tab="playlists"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 10h16M4 15h10M4 20h10m3-7 5 4-5 4z"/></svg>Playlists <span class="badge" id="badgePlaylists">0</span></button>
+    <button class="nav-btn" data-tab="epg"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6m10-6v6M3 11h18m-13 4h3m3 0h3"/></svg>EPG Guide <span class="badge" id="badgeEpg">0</span></button>
+    <button class="nav-btn" data-tab="xtream"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m13 2-9 12h7l-1 8 10-13h-8z"/></svg>Xtream <span class="badge" id="badgeXtream">0</span></button>
+    <button class="nav-btn" data-tab="movies"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18m10-18v18M3 8h4m10 0h4M3 16h4m10 0h4"/></svg>Movies</button>
+    <button class="nav-btn" data-tab="series"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="15" height="15" rx="2"/><path d="M17 3H5a2 2 0 0 0-2 2v12m8-6 6 3-6 3z"/></svg>Series</button>
+    <div class="nav-section">BUSINESS &amp; CONTROL</div>
+    <button class="nav-btn" data-tab="analytics"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18M7 17v-6m5 6V7m5 10V3"/></svg>Analytics</button>
+    <button class="nav-btn" data-tab="users"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>Users</button>
+    <button class="nav-btn" data-tab="settings"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="16" cy="17" r="3"/></svg>Settings</button>
+    <button class="nav-btn" data-tab="resellers"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10h18L18 3H6zM5 10v11h14V10m-9 11v-6h4v6"/></svg>Resellers</button>
+    <button class="nav-btn" data-tab="orders"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h14v18l-3-2-4 2-4-2-3 2zM9 8h6m-6 5h6"/></svg>Orders</button>
+    <button class="nav-btn" data-tab="stalker"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="12" rx="2"/><path d="M7 11h3m5 4h2M8 3h8"/></svg>Stalker/MAG</button>
+    <button class="nav-btn" data-tab="apikeys"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5"/><path d="m12 12 9 9m-4-4 3-3m-6 0 3-3"/></svg>API Keys</button>
+    <button class="nav-btn" data-tab="academy"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 9 10-6 10 6-10 6zM5 11v7l7 4 7-4v-7m3-2v9"/></svg>IPTV Academy</button>
+    <a class="sidebar-help" href="/academy"><span>✦</span><div><b>Build a better service</b><small>Open the IPTV Academy ↗</small></div></a>
   </aside>
 
   <main>
     <div class="topbar">
-      <div><h1 id="pageTitle">📊 Dashboard</h1><div class="sub" id="pageSub">Real-time IPTV server overview</div></div>
+      <div><h1 id="pageTitle">Dashboard</h1><div class="sub" id="pageSub">Real-time IPTV server overview</div></div>
       <div class="search">
-        <input id="globalSearch" type="search" placeholder="🔍 Search current data…" aria-label="Search panel data">
+        <input id="globalSearch" type="search" placeholder="Search current data…" aria-label="Search panel data">
         <button class="icon-btn" id="btnRefresh" title="Refresh all data" aria-label="Refresh all data">↻</button>
-        <button class="icon-btn" id="btnTheme" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+        <button class="icon-btn" id="btnTheme" title="Toggle theme" aria-label="Toggle theme">◐</button>
         <div class="user-chip" id="userChip">
           <div class="u-avatar" id="userAvatar">AD</div>
           <div class="meta"><b id="userName">Admin</b><span id="userRole">Super Admin</span></div>
-          <button class="btn btn-ghost btn-sm" id="btnLogout">🚪</button>
+          <button class="btn btn-ghost btn-sm" id="btnLogout">↪</button>
         </div>
         <div id="admPinStatic" hidden></div>
       </div>
     </div>
 
     <section id="viewDashboard">
+      <div class="ops-hero">
+        <div class="ops-hero-copy"><span class="ops-eyebrow"><i></i> MIZANORA CONTROL ROOM</span><h2>Your network.<br><em>Under control.</em></h2><p>Manage the broadcast. Grow your business.<br>One workspace for every screen.</p><div class="ops-hero-actions"><button class="btn btn-gold" data-open-tab="studio">Open broadcast studio <span>↗</span></button><button class="btn btn-ghost" data-open-tab="channels">Manage channels</button></div></div>
+        <div class="ops-hero-art" aria-hidden="true"><div class="ops-orbit orbit-one"></div><div class="ops-orbit orbit-two"></div><img src="/assets/img/brand/miznaoraiptv-logo.png" alt=""><span class="orbit-label label-top">LIVE / ON DEMAND</span><span class="orbit-label label-bottom">MIZANORA IPTV</span></div>
+      </div>
+      <div class="section-caption"><h3>Network at a glance</h3><span>Current service data · refresh to update</span></div>
       <div class="kpis">
         <div class="kpi"><b id="kpiChannels">0</b><span>Channels</span><small id="kpiChannelsSub"></small></div>
         <div class="kpi"><b id="kpiPlaylists">0</b><span>Playlists</span><small></small></div>
         <div class="kpi"><b id="kpiXtream">0</b><span>Xtream Users</span><small id="kpiXtreamSub"></small></div>
-        <div class="kpi"><b id="kpiSystem">100%</b><span>System</span><small id="kpiSysSub">online</small></div>
+        <div class="kpi"><b id="kpiSystem">—</b><span>System</span><small id="kpiSysSub">Checking storage &amp; API</small></div>
       </div>
-      <div class="card"><h3>⚡ Quick actions <span class="right"><button class="btn btn-primary btn-sm" id="qAddChannel">＋ Channel</button></span></h3>
+      <div class="card"><h3>Quick actions <span class="right"><button class="btn btn-primary btn-sm" id="qAddChannel">+ Channel</button></span></h3>
         <div class="row"><input id="qSearch" placeholder="Search…"><button class="btn btn-ghost btn-sm" id="qGo">Go</button></div>
       </div>
-      <div class="card"><h3>🕘 Recent activity</h3><div class="table-wrap"><table><tbody id="actBody"></tbody></table></div></div>
+      <div class="card"><h3>Recent activity</h3><div class="table-wrap"><table><tbody id="actBody"></tbody></table></div></div>
+    </section>
+
+    <section id="viewStudio" hidden>
+      <div class="studio-intro"><div><span class="ops-eyebrow">SERVERLESS PLAYOUT</span><h2>Make every tune-in<br><em>feel like your brand.</em></h2><p>Real HLS playlists. An eight-second introduction. A broadcast that knows what to show next.</p></div><span class="engine-badge" id="studioEngine">Loading engine settings</span></div>
+      <div class="studio-grid">
+        <div class="studio-monitor card"><div class="monitor-heading"><span><i></i> PLAYOUT MONITOR</span><span id="studioMode">Ready to preview</span></div><video id="studioVideo" controls playsinline preload="none" poster="/media/welcome/poster.jpg"></video><div class="monitor-controls"><label for="studioChannel">Test your channel</label><div class="row"><select id="studioChannel"><option value="">Choose a live channel…</option></select><button class="btn btn-gold" id="studioStart" type="button">▶ Start broadcast</button><button class="icon-btn" id="studioStop" type="button" title="Stop preview" aria-label="Stop preview">■</button></div><p id="studioStatus" role="status">Choose a channel or a broadcast card below. Preview links are private, signed and expire after 15 minutes.</p></div></div>
+        <div class="studio-flow card"><span class="ops-eyebrow">THE VIEWER JOURNEY</span><h3>One link.<br>Every state covered.</h3><ol><li><span>01</span><div><b>Welcome to Mizanora</b><small>Four segments. Eight seconds.</small></div></li><li><span>02</span><div><b>Go live</b><small>Resolve the source, append its media.</small></div></li><li><span>03</span><div><b>Never leave a blank screen</b><small>Offline, recharge or coming-soon loops.</small></div></li></ol><div class="engine-note">Runs as short Vercel requests. Video segments stream from the CDN/provider, not a running server encoder.</div><button class="btn btn-ghost" data-open-tab="settings">Configure playback →</button></div>
+      </div>
+      <div class="section-caption"><h3>Your broadcast package</h3><span>Click a card to test its live playlist</span></div>
+      <div class="broadcast-cards">
+        <button class="broadcast-card" data-studio-card="intro"><img src="/media/welcome/poster.jpg" alt="Mizanora welcome video"><span class="broadcast-card-copy"><b>Welcome intro</b><small>08 seconds · before live TV</small><i>↗</i></span></button>
+        <button class="broadcast-card" data-studio-card="offline"><img src="/media/channel-offline/poster.jpg" alt="Offline standby video"><span class="broadcast-card-copy"><b>Offline standby</b><small>Source unavailable · live loop</small><i>↗</i></span></button>
+        <button class="broadcast-card" data-studio-card="recharge"><img src="/media/pro-unlock/poster.jpg" alt="Recharge broadcast video"><span class="broadcast-card-copy"><b>Time to recharge</b><small>Expired subscription · live loop</small><i>↗</i></span></button>
+        <button class="broadcast-card" data-studio-card="comingSoon"><img src="/media/coming-soon/poster.jpg" alt="Cinema coming soon video"><span class="broadcast-card-copy"><b>Coming to your screen</b><small>Unconfigured VOD · live loop</small><i>↗</i></span></button>
+      </div>
+      <div class="manifest-panel card"><div class="section-caption"><h3>Manifest inspector</h3><button class="btn btn-ghost btn-sm" id="studioInspect" type="button">↻ Refresh manifest</button></div><p>Inspect the actual media sequence, discontinuities and segment URLs. Signed links are private — do not share screenshots of source credentials.</p><pre id="studioManifest">Start a preview to inspect its live .m3u8 playlist.</pre></div>
+      <p class="studio-compatibility">Compatibility: muxed MPEG-TS HLS, clear or AES-128. Separate audio, fMP4, DRM and non-HLS feeds need direct mode or a transcoder. External players use the baked brand cards; dynamic channel/payment overlays remain available on the website or optional encoder.</p>
     </section>
 
     <section id="viewChannels" hidden>
@@ -96,7 +125,7 @@
         <div id="m3uImportStatus" class="import-status" role="status"></div>
       </div>
       <div class="card"><h3>📺 Channels <span class="right"><input id="chSearch" type="search" placeholder="Search channels…" aria-label="Search channels"><button class="btn btn-primary btn-sm" id="chAddBtn">＋ Add</button></span></h3>
-        <div class="table-wrap"><table><thead><tr><th>#</th><th>Logo</th><th>Name / EPG</th><th>Group</th><th>Access</th><th>Actions</th></tr></thead><tbody id="chBody"></tbody></table></div></div>
+        <div class="manager-toolbar"><select id="chCategoryFilter" aria-label="Filter channel category"><option value="">All categories</option></select><select id="chAccessFilter" aria-label="Filter channel access"><option value="">All access</option><option value="free">Free</option><option value="pro">PRO</option></select><select id="chSort" aria-label="Sort channels"><option value="order">Saved order</option><option value="number-asc">Channel number ↑</option><option value="number-desc">Channel number ↓</option><option value="name-asc">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="category-asc">Category A–Z</option><option value="epg-first">EPG mapped first</option></select><button class="btn btn-ghost btn-sm" id="chApplySort" type="button">💾 Save sort to playlists</button></div><p class="table-note">Channel number, stream ID and playlist order are separate: numbers stay stable when you reorder. “Save sort” publishes the selected order to M3U, Xtream and MAG.</p><div class="table-wrap"><table><thead><tr><th>No. / ID</th><th>Logo</th><th>Name / EPG</th><th>Group</th><th>Status / Access</th><th>Actions</th></tr></thead><tbody id="chBody"></tbody></table></div></div>
     </section>
 
     <section id="viewPlaylists" hidden>
@@ -114,6 +143,7 @@
         <div class="row"><button class="btn btn-primary btn-sm" id="epgUrlBtn" type="button">🌐 Import EPG URL</button><button class="btn btn-gold btn-sm" id="epgFileBtn" type="button">📄 Upload XMLTV</button><a class="btn btn-ghost btn-sm" href="/#guide" target="_blank" rel="noopener">↗ View public guide</a></div>
         <div id="epgImportStatus" class="import-status" role="status"></div>
       </div>
+      <div class="card"><h3>🔗 Channel → XMLTV mapping <span class="right"><button class="btn btn-gold btn-sm" id="epgAutoMap" type="button">✨ Auto-map unique names</button><button class="btn btn-ghost btn-sm" id="epgMapRefresh" type="button">↻ Refresh</button></span></h3><p class="table-note" id="epgCoverage">Import XMLTV, then map each channel. Auto-map only uses unique normalized names and never overwrites an existing EPG ID.</p><div class="table-wrap"><table><thead><tr><th>Channel</th><th>XMLTV source channel</th><th>Programmes</th><th>Action</th></tr></thead><tbody id="epgMapBody"></tbody></table></div></div>
       <div class="card"><h3>📚 EPG sources <span class="right"><button class="btn btn-ghost btn-sm" id="epgRefreshList" type="button">↻ Refresh list</button></span></h3>
         <div class="table-wrap"><table><thead><tr><th>Source</th><th>Channels</th><th>Programmes</th><th>Updated</th><th>Actions</th></tr></thead><tbody id="epgBody"></tbody></table></div>
       </div>
@@ -126,11 +156,13 @@
 
     <section id="viewMovies" hidden>
       <div class="card"><h3>🎬 Movies <span class="right"><input id="mvSearch" type="search" placeholder="Search full IMDb catalog…" aria-label="Search movies"><select id="mvSort" aria-label="Sort movies"><option value="title-asc">Title A–Z</option><option value="title-desc">Title Z–A</option><option value="year-desc">Newest year</option><option value="year-asc">Oldest year</option><option value="rating-desc">Highest rated</option><option value="ready-first">Playable first</option></select></span></h3>
+        <div class="manager-toolbar"><select id="mvCategory" aria-label="Filter movies category"><option value="">All categories</option></select><label class="check"><input id="mvReady" type="checkbox"> Playable only</label><button class="btn btn-ghost btn-sm" id="mvPersistSort" type="button">💾 Save catalog order</button><span id="mvPageInfo" class="table-note"></span><button class="btn btn-ghost btn-sm" id="mvPrev" type="button">← Previous</button><button class="btn btn-ghost btn-sm" id="mvNext" type="button">Next →</button></div>
         <p class="table-note">IMDb metadata is built in. Add your licensed MP4/HLS URL to make a title playable.</p><div class="table-wrap"><table><thead><tr><th>Title</th><th>Year</th><th>Rating</th><th>Playback</th><th>Actions</th></tr></thead><tbody id="mvBody"></tbody></table></div></div>
     </section>
 
     <section id="viewSeries" hidden>
       <div class="card"><h3>📺 Series <span class="right"><input id="srSearch" type="search" placeholder="Search full IMDb catalog…" aria-label="Search series"><select id="srSort" aria-label="Sort series"><option value="title-asc">Title A–Z</option><option value="title-desc">Title Z–A</option><option value="year-desc">Newest year</option><option value="year-asc">Oldest year</option><option value="rating-desc">Highest rated</option><option value="ready-first">Playable first</option></select></span></h3>
+        <div class="manager-toolbar"><select id="srCategory" aria-label="Filter series category"><option value="">All categories</option></select><label class="check"><input id="srReady" type="checkbox"> Playable only</label><button class="btn btn-ghost btn-sm" id="srPersistSort" type="button">💾 Save catalog order</button><span id="srPageInfo" class="table-note"></span><button class="btn btn-ghost btn-sm" id="srPrev" type="button">← Previous</button><button class="btn btn-ghost btn-sm" id="srNext" type="button">Next →</button></div>
         <p class="table-note">Search the catalog, then configure a licensed URL for each episode.</p><div class="table-wrap"><table><thead><tr><th>Title</th><th>Year</th><th>Rating</th><th>Episodes</th><th>Playback</th><th>Actions</th></tr></thead><tbody id="srBody"></tbody></table></div></div>
     </section>
 
@@ -153,19 +185,24 @@
     <section id="viewSettings" hidden>
       <div class="card"><h3>🎞️ Welcome intro &amp; playback</h3>
         <div class="settings-grid">
+          <label class="check settings-check span-2"><input id="stServerlessHls" type="checkbox"> Vercel HLS playout for external Xtream / MAG (intro + live + fallback loops)</label><p class="span-2 table-note">Serverless playout uses the bundled four-segment broadcast package. Custom video URLs below control the website player; keep direct mode for incompatible sources.</p>
           <label class="span-2">Welcome intro video URL<input id="stWelcome" placeholder="/media/welcome/video.mp4"></label>
           <label>Intro duration (seconds)<input id="stWelcomeDuration" type="number" min="1" max="30" value="8"></label>
           <label class="check settings-check"><input id="stWelcomeEnabled" type="checkbox"> Play intro before channel fetch</label>
           <label class="check settings-check"><input id="stWelcomeSkippable" type="checkbox"> Show Skip intro button</label>
           <label class="span-2">Offline fallback video URL<input id="stOffline" placeholder="Offline video URL"></label>
           <label class="span-2">Coming soon video URL<input id="stComing" placeholder="Coming soon video URL"></label>
-          <label class="span-2">PRO unlock video URL<input id="stPro" placeholder="PRO unlock video URL"></label>
+          <label class="span-2">PRO unlock / recharge video URL<input id="stPro" placeholder="PRO unlock video URL"></label>
+          <label class="check settings-check"><input id="stProEnabled" type="checkbox"> Enable recharge video</label>
+          <div class="span-2 video-preview-row"><video id="introPreview" controls playsinline preload="metadata" poster="/media/welcome/poster.jpg" src="/media/welcome/video.mp4"></video><div><b>New Mizanora broadcast package</b><p>8-second animated intro, channel-name overlay, reseller business card, payment details, offline and recharge loops.</p><button class="btn btn-gold btn-sm" id="stUseBundled" type="button">↺ Use new bundled videos + 8s intro</button><p class="table-note">This replaces old video settings with the new bundled files. Save settings afterward.</p></div></div>
         </div>
       </div>
       <div class="card"><h3>💳 Recharge, reseller &amp; announcements</h3>
         <div class="settings-grid">
           <label>PRO WhatsApp number<input id="stWa" placeholder="03062015326"></label>
           <label>International WhatsApp<input id="stWaIntl" placeholder="923062015326"></label>
+          <label>Payment method<input id="stPaymentMethod" placeholder="JazzCash / bank"></label><label>Payment account / number<input id="stPaymentAccount" placeholder="Account number"></label>
+          <label>Account title<input id="stPaymentTitle" placeholder="Verified account title"></label><label>Reseller business headline<input id="stBusinessIntro" placeholder="Start your IPTV reseller business"></label>
           <label class="span-2">Announcement ticker<textarea id="stTicker" rows="3" placeholder="Announcement ticker"></textarea></label>
           <label class="span-2">Recharge instructions<textarea id="stRechargeNote" rows="3"></textarea></label>
           <label class="span-2">Reseller contact instructions<textarea id="stResellerNote" rows="3"></textarea></label>
@@ -177,7 +214,7 @@
     <section id="viewResellers" hidden>
       <div class="card"><h3>🏪 Resellers <span class="right"><input id="rsSearch" type="search" placeholder="Search resellers…" aria-label="Search resellers"><a class="btn btn-ghost btn-sm" href="/reseller" target="_blank" rel="noopener">↗ Dealer panel</a><button class="btn btn-primary btn-sm" id="rsAddBtn">＋ Create</button></span></h3>
         <div id="resellerNewCard" class="card secret-card" hidden><b>New reseller credentials — copy API key now:</b><pre id="resellerNewValue" class="mono"></pre><button class="btn btn-ghost btn-sm" id="resellerCopyBtn" type="button">📋 Copy</button></div>
-        <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Credits</th><th>Status</th><th>Actions</th></tr></thead><tbody id="rsBody"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Code / Username</th><th>Name</th><th>Credits</th><th>Status</th><th>Actions</th></tr></thead><tbody id="rsBody"></tbody></table></div>
         <div id="rsReport" class="card" hidden aria-live="polite"></div></div>
     </section>
 
@@ -189,7 +226,7 @@
     <section id="viewStalker" hidden>
       <div class="card"><h3>🛰️ Stalker / MAG clients <span class="right"><button class="btn btn-ghost btn-sm" id="stRefreshBtn">🔄 Refresh</button></span></h3>
         <div class="table-wrap"><table><thead><tr><th>MAC</th><th>User</th><th>Status</th><th>Expiry</th></tr></thead><tbody id="stBody"></tbody></table></div>
-        <p style="color:var(--dim);font-size:.76rem;margin:10px 0 0">MAG box: Portal <code id="portalUrl"></code> + MAC</p></div>
+        <p class="table-note">MAG box: Portal <code id="portalUrl"></code> + registered MAC. <a href="/c/" target="_blank" rel="noopener">Open setup page</a> · <a href="/academy?role=setup">Portal training</a></p></div>
     </section>
 
     <section id="viewApiKeys" hidden>
@@ -197,6 +234,7 @@
         <div id="keyNewCard" class="card" style="border-color:var(--gold)" hidden><b>🆕 New key — abhi copy kar lo, dobara show nahi hogi:</b><pre id="keyNewValue" class="mono" style="white-space:pre-wrap;word-break:break-all"></pre><button class="btn btn-ghost btn-sm" id="keyCopyBtn" type="button">📋 Copy key</button></div>
         <div class="table-wrap"><table><thead><tr><th>Label</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody id="keyBody"></tbody></table></div></div>
     </section>
+    <section id="viewAcademy" hidden><div class="card"><h3>🎓 Owner IPTV Academy</h3><p class="table-note">Practical lessons, checks and knowledge checks. Progress is saved on this device.</p><div data-academy="admin"></div></div></section>
   </main>
 </div>
 
@@ -209,6 +247,8 @@
   </form>
 </dialog>
 <div id="toasts" aria-live="polite"></div>
-<script type="module" src="/assets/js/admin.js?v=5.1.2"></script>
+<script src="/assets/vendor/hls.min.js?v=1.7.4" defer></script>
+<script src="/assets/js/academy.js?v=6.0.0" defer></script>
+<script type="module" src="/assets/js/admin.js?v=6.1.0"></script>
 </body>
 </html>
